@@ -1,4 +1,4 @@
-import { Plus, Minus, Car, StickyNote, Bell, ChevronRight } from "lucide-react";
+import { Plus, Minus, Car, StickyNote, Bell, ChevronRight, AlertTriangle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
@@ -92,11 +92,11 @@ export default function HomePage() {
         </Card>
       </motion.div>
 
-      {/* Ad Banner */}
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }} className="flex justify-center">
-        <div className="w-full max-w-[320px] h-[50px] rounded-lg bg-muted border border-border flex items-center justify-center overflow-hidden">
-          <span className="text-xs text-muted-foreground">Advertisement</span>
-        </div>
+      {/* SOS Button */}
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }}>
+        <Button variant="destructive" className="w-full gap-2 py-3 text-base font-bold shadow-md" onClick={() => navigate("/sos")}>
+          <AlertTriangle className="h-5 w-5" /> Emergency SOS
+        </Button>
       </motion.div>
 
       {/* Quick Actions */}
