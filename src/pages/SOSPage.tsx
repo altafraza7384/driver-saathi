@@ -7,12 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { AlertTriangle, Phone, Plus, Trash2, MapPin } from "lucide-react";
+import { AlertTriangle, Phone, Plus, Trash2, MapPin, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 
 export default function SOSPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [sosTriggered, setSosTriggered] = useState(false);
@@ -77,6 +79,9 @@ export default function SOSPage() {
 
   return (
     <div className="space-y-5 p-4 pt-6">
+      <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-sm text-muted-foreground mb-2">
+        <ArrowLeft className="h-4 w-4" /> Back
+      </button>
       <h1 className="text-2xl font-bold">Emergency SOS</h1>
 
       {/* SOS Button */}
