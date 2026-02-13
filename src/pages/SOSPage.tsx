@@ -79,7 +79,7 @@ export default function SOSPage() {
 
   return (
     <div className="space-y-5 p-4 pt-6">
-      <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-sm text-muted-foreground mb-2">
+      <button onClick={() => navigate("/more")} className="flex items-center gap-1 text-sm text-muted-foreground mb-2">
         <ArrowLeft className="h-4 w-4" /> Back
       </button>
       <h1 className="text-2xl font-bold">Emergency SOS</h1>
