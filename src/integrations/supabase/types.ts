@@ -14,6 +14,72 @@ export type Database = {
   }
   public: {
     Tables: {
+      car_checks: {
+        Row: {
+          check_date: string
+          check_type: string
+          cost: number | null
+          created_at: string
+          description: string | null
+          id: string
+          is_completed: boolean
+          next_due_date: string | null
+          odometer_reading: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          check_date?: string
+          check_type: string
+          cost?: number | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_completed?: boolean
+          next_due_date?: string | null
+          odometer_reading?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          check_date?: string
+          check_type?: string
+          cost?: number | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_completed?: boolean
+          next_due_date?: string | null
+          odometer_reading?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      chat_messages: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          role: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          role?: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          role?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       debt_payments: {
         Row: {
           amount: number
@@ -97,6 +163,36 @@ export type Database = {
         }
         Relationships: []
       }
+      emergency_contacts: {
+        Row: {
+          created_at: string
+          id: string
+          is_primary: boolean
+          name: string
+          phone: string
+          relationship: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_primary?: boolean
+          name: string
+          phone: string
+          relationship?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_primary?: boolean
+          name?: string
+          phone?: string
+          relationship?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       goals: {
         Row: {
           created_at: string
@@ -127,6 +223,81 @@ export type Database = {
           is_completed?: boolean
           saved_amount?: number
           target_amount?: number
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      health_logs: {
+        Row: {
+          breaks_taken: number | null
+          created_at: string
+          id: string
+          log_date: string
+          notes: string | null
+          sleep_hours: number | null
+          steps: number | null
+          updated_at: string
+          user_id: string
+          water_glasses: number | null
+        }
+        Insert: {
+          breaks_taken?: number | null
+          created_at?: string
+          id?: string
+          log_date?: string
+          notes?: string | null
+          sleep_hours?: number | null
+          steps?: number | null
+          updated_at?: string
+          user_id: string
+          water_glasses?: number | null
+        }
+        Update: {
+          breaks_taken?: number | null
+          created_at?: string
+          id?: string
+          log_date?: string
+          notes?: string | null
+          sleep_hours?: number | null
+          steps?: number | null
+          updated_at?: string
+          user_id?: string
+          water_glasses?: number | null
+        }
+        Relationships: []
+      }
+      notes: {
+        Row: {
+          audio_url: string | null
+          content: string
+          created_at: string
+          id: string
+          is_voice_note: boolean
+          tags: string[] | null
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          audio_url?: string | null
+          content?: string
+          created_at?: string
+          id?: string
+          is_voice_note?: boolean
+          tags?: string[] | null
+          title?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          audio_url?: string | null
+          content?: string
+          created_at?: string
+          id?: string
+          is_voice_note?: boolean
+          tags?: string[] | null
           title?: string
           updated_at?: string
           user_id?: string
@@ -199,6 +370,42 @@ export type Database = {
           user_id?: string
           vehicle_number?: string | null
           vehicle_type?: string | null
+        }
+        Relationships: []
+      }
+      reminders: {
+        Row: {
+          category: string
+          created_at: string
+          description: string | null
+          id: string
+          is_completed: boolean
+          reminder_date: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_completed?: boolean
+          reminder_date: string
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_completed?: boolean
+          reminder_date?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
