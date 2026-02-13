@@ -64,13 +64,13 @@ export default function TransactionsPage() {
 
   return (
     <div className="space-y-4 p-4 pt-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{t("nav.transactions")}</h1>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-xl font-bold sm:text-2xl">{t("nav.transactions")}</h1>
         <div className="flex gap-2">
-          <Button size="sm" onClick={() => navigate("/transactions/add?type=income")} className="gap-1 bg-success text-success-foreground hover:bg-success/90">
+          <Button size="sm" onClick={() => navigate("/transactions/add?type=income")} className="flex-1 gap-1 bg-success text-success-foreground hover:bg-success/90 sm:flex-none">
             <Plus className="h-4 w-4" /> Income
           </Button>
-          <Button size="sm" onClick={() => navigate("/transactions/add?type=expense")} variant="destructive" className="gap-1">
+          <Button size="sm" onClick={() => navigate("/transactions/add?type=expense")} variant="destructive" className="flex-1 gap-1 sm:flex-none">
             <Minus className="h-4 w-4" /> Expense
           </Button>
         </div>

@@ -106,8 +106,8 @@ export default function DebtsPage() {
         <ArrowLeft className="h-4 w-4" /> Back
       </button>
 
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Debt & EMI</h1>
+      <div className="flex items-center justify-between gap-2">
+        <h1 className="text-xl font-bold sm:text-2xl">Debt & EMI</h1>
         <Dialog open={showAdd} onOpenChange={setShowAdd}>
           <DialogTrigger asChild>
             <Button size="sm" className="gap-1"><Plus className="h-4 w-4" /> Add Loan</Button>
