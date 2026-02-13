@@ -14,6 +14,125 @@ export type Database = {
   }
   public: {
     Tables: {
+      debt_payments: {
+        Row: {
+          amount: number
+          created_at: string
+          debt_id: string
+          id: string
+          note: string | null
+          payment_date: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          debt_id: string
+          id?: string
+          note?: string | null
+          payment_date?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          debt_id?: string
+          id?: string
+          note?: string | null
+          payment_date?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "debt_payments_debt_id_fkey"
+            columns: ["debt_id"]
+            isOneToOne: false
+            referencedRelation: "debts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      debts: {
+        Row: {
+          created_at: string
+          emi_amount: number | null
+          id: string
+          interest_rate: number
+          is_active: boolean
+          name: string
+          principal: number
+          start_date: string
+          tenure_months: number
+          total_paid: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          emi_amount?: number | null
+          id?: string
+          interest_rate?: number
+          is_active?: boolean
+          name: string
+          principal: number
+          start_date?: string
+          tenure_months?: number
+          total_paid?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          emi_amount?: number | null
+          id?: string
+          interest_rate?: number
+          is_active?: boolean
+          name?: string
+          principal?: number
+          start_date?: string
+          tenure_months?: number
+          total_paid?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      goals: {
+        Row: {
+          created_at: string
+          deadline: string | null
+          id: string
+          is_completed: boolean
+          saved_amount: number
+          target_amount: number
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          deadline?: string | null
+          id?: string
+          is_completed?: boolean
+          saved_amount?: number
+          target_amount: number
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          deadline?: string | null
+          id?: string
+          is_completed?: boolean
+          saved_amount?: number
+          target_amount?: number
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       platform_affiliations: {
         Row: {
           created_at: string
@@ -80,6 +199,45 @@ export type Database = {
           user_id?: string
           vehicle_number?: string | null
           vehicle_type?: string | null
+        }
+        Relationships: []
+      }
+      transactions: {
+        Row: {
+          amount: number
+          category: string
+          created_at: string
+          description: string | null
+          id: string
+          platform: string | null
+          transaction_date: string
+          type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          category: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          platform?: string | null
+          transaction_date?: string
+          type: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          category?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          platform?: string | null
+          transaction_date?: string
+          type?: string
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }

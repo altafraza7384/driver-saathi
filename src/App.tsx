@@ -8,6 +8,9 @@ import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { AppLayout } from "@/components/layout/AppLayout";
 import HomePage from "./pages/HomePage";
 import TransactionsPage from "./pages/TransactionsPage";
+import AddTransactionPage from "./pages/AddTransactionPage";
+import DebtsPage from "./pages/DebtsPage";
+import GoalsPage from "./pages/GoalsPage";
 import HealthPage from "./pages/HealthPage";
 import AssistantPage from "./pages/AssistantPage";
 import MorePage from "./pages/MorePage";
@@ -47,6 +50,9 @@ const App = () => (
               <Route element={<ProtectedRoutes />}>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/transactions" element={<TransactionsPage />} />
+                <Route path="/transactions/add" element={<AddTransactionPage />} />
+                <Route path="/debts" element={<DebtsPage />} />
+                <Route path="/goals" element={<GoalsPage />} />
                 <Route path="/health" element={<HealthPage />} />
                 <Route path="/assistant" element={<AssistantPage />} />
                 <Route path="/more" element={<MorePage />} />
