@@ -79,7 +79,7 @@ export default function SettingsPage() {
       <Card>
         <CardContent className="space-y-3 p-4">
           <div className="flex items-center gap-2 mb-1"><Car className="h-4 w-4 text-muted-foreground" /><span className="text-sm font-semibold">Vehicle Details</span></div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div><Label>Type</Label><Input value={form.vehicle_type} onChange={(e) => setForm({ ...form, vehicle_type: e.target.value })} placeholder="Sedan, SUV..." /></div>
             <div><Label>Number</Label><Input value={form.vehicle_number} onChange={(e) => setForm({ ...form, vehicle_number: e.target.value })} placeholder="MH 12 AB 1234" /></div>
           </div>
