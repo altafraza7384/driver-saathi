@@ -2,19 +2,21 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Bell, Check, Trash2 } from "lucide-react";
+import { Plus, Bell, Check, Trash2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 
 const CATEGORIES = ["insurance", "puc", "license", "emi", "maintenance", "general"];
 
 export default function RemindersPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ title: "", description: "", reminder_date: "", category: "general" });
@@ -67,6 +69,9 @@ export default function RemindersPage() {
 
   return (
     <div className="space-y-5 p-4 pt-6">
+      <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-sm text-muted-foreground mb-2">
+        <ArrowLeft className="h-4 w-4" /> Back
+      </button>
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Reminders</h1>
         <Dialog open={open} onOpenChange={setOpen}>

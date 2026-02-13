@@ -10,14 +10,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Car, Wrench, Fuel, Check, Trash2 } from "lucide-react";
+import { Plus, Car, Wrench, Fuel, Check, Trash2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 
 const CHECK_TYPES = ["Oil Change", "Tire Rotation", "Brake Check", "Battery", "Air Filter", "Coolant", "PUC", "Insurance", "Fitness Certificate", "General Service"];
 
 export default function CarChecksPage() {
   const { user } = useAuth();
   const { t } = useI18n();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ check_type: "", description: "", odometer_reading: "", cost: "", check_date: new Date().toISOString().split("T")[0], next_due_date: "" });
@@ -65,6 +67,9 @@ export default function CarChecksPage() {
 
   return (
     <div className="space-y-5 p-4 pt-6">
+      <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-sm text-muted-foreground mb-2">
+        <ArrowLeft className="h-4 w-4" /> Back
+      </button>
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Car Checks</h1>
         <Dialog open={open} onOpenChange={setOpen}>
