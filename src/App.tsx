@@ -14,6 +14,11 @@ import GoalsPage from "./pages/GoalsPage";
 import HealthPage from "./pages/HealthPage";
 import AssistantPage from "./pages/AssistantPage";
 import MorePage from "./pages/MorePage";
+import CarChecksPage from "./pages/CarChecksPage";
+import RemindersPage from "./pages/RemindersPage";
+import NotesPage from "./pages/NotesPage";
+import SOSPage from "./pages/SOSPage";
+import SettingsPage from "./pages/SettingsPage";
 import AuthPage from "./pages/AuthPage";
 import NotFound from "./pages/NotFound";
 
@@ -56,6 +61,11 @@ const App = () => (
                 <Route path="/health" element={<HealthPage />} />
                 <Route path="/assistant" element={<AssistantPage />} />
                 <Route path="/more" element={<MorePage />} />
+                <Route path="/car-checks" element={<CarChecksPage />} />
+                <Route path="/reminders" element={<RemindersPage />} />
+                <Route path="/notes" element={<NotesPage />} />
+                <Route path="/sos" element={<SOSPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>
