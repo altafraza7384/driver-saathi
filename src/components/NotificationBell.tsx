@@ -11,7 +11,7 @@ interface Notification {
   id: string;
   title: string;
   description: string;
-  type: "reminder" | "emi" | "car_check" | "goal";
+  type: "reminder" | "emi" | "car_check" | "goal" | "health";
   date: string;
 }
 
@@ -64,6 +64,20 @@ export function NotificationBell() {
         .select("*")
         .eq("is_completed", false);
       return data ?? [];
+    },
+    enabled: !!user,
+  });
+
+  const todayStr = format(now, "yyyy-MM-dd");
+  const { data: healthLog } = useQuery({
+    queryKey: ["notifications_health", todayStr],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("health_logs")
+        .select("*")
+        .eq("log_date", todayStr)
+        .maybeSingle();
+      return data;
     },
     enabled: !!user,
   });
@@ -152,6 +166,39 @@ export function NotificationBell() {
     }
   });
 
+  // Daily health reminders
+  const waterCount = healthLog?.water_glasses || 0;
+  const breaksCount = healthLog?.breaks_taken || 0;
+  const sleepHours = healthLog?.sleep_hours || 0;
+
+  if (waterCount < 8) {
+    notifications.push({
+      id: "health-water",
+      title: "💧 Drink Water",
+      description: `You've had ${waterCount}/8 glasses today. Stay hydrated!`,
+      type: "health",
+      date: todayStr,
+    });
+  }
+  if (breaksCount < 4) {
+    notifications.push({
+      id: "health-break",
+      title: "☕ Take a Break",
+      description: `${breaksCount}/4 breaks taken today. Rest your eyes & stretch!`,
+      type: "health",
+      date: todayStr,
+    });
+  }
+  if (sleepHours === 0 && !healthLog) {
+    notifications.push({
+      id: "health-sleep",
+      title: "😴 Log Your Sleep",
+      description: "Don't forget to log last night's sleep hours!",
+      type: "health",
+      date: todayStr,
+    });
+  }
+
   const count = notifications.length;
 
   const typeColor = (type: Notification["type"]) => {
@@ -160,6 +207,7 @@ export function NotificationBell() {
       case "reminder": return "bg-warning/10 text-warning";
       case "car_check": return "bg-primary/10 text-primary";
       case "goal": return "bg-success/10 text-success";
+      case "health": return "bg-accent text-accent-foreground";
     }
   };
 
@@ -169,6 +217,7 @@ export function NotificationBell() {
       case "reminder": return "Reminder";
       case "car_check": return "Car Check";
       case "goal": return "Goal";
+      case "health": return "Health";
     }
   };
 
