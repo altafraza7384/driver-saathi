@@ -102,37 +102,33 @@
   }
 
   body {
-    @apply bg-background text-foreground font-body antialiased font-medium text-base;
-    font-size: 17px;
-    line-height: 1.6;
+    @apply bg-background text-foreground font-body antialiased font-medium;
+    font-size: 18px;
+    line-height: 1.65;
   }
 
   h1, h2, h3, h4, h5, h6 {
     @apply font-heading font-bold;
   }
 
-  p, span, label, a, li, td, th, input, textarea, select, button {
-    font-size: inherit;
-  }
-
   .text-xs {
-    font-size: 0.8125rem !important;
-    line-height: 1.4 !important;
+    font-size: 0.875rem !important;
+    line-height: 1.45 !important;
   }
 
   .text-sm {
-    font-size: 0.9375rem !important;
-    line-height: 1.5 !important;
+    font-size: 1rem !important;
+    line-height: 1.55 !important;
   }
 
   .text-\[10px\] {
-    font-size: 0.75rem !important;
+    font-size: 0.8125rem !important;
     line-height: 1.4 !important;
   }
 
   .text-\[11px\] {
-    font-size: 0.8125rem !important;
-    line-height: 1.4 !important;
+    font-size: 0.875rem !important;
+    line-height: 1.45 !important;
   }
 }
 
