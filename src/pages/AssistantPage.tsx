@@ -178,7 +178,7 @@ export default function AssistantPage() {
   }, [isListening, send]);
 
   return (
-    <div className="flex h-[calc(100vh-5rem)] flex-col p-4 pt-6">
+    <div className="flex h-[calc(100vh-7rem)] flex-col p-4 pt-6">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">{t("nav.assistant")}</h1>
         {messages.length > 0 && (
