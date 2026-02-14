@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import { Moon, Droplets, Coffee, Footprints, Save } from "lucide-react";
+import { Moon, Droplets, Coffee, Footprints, Save, CheckCircle2, PlusCircle } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO } from "date-fns";
@@ -37,7 +37,7 @@ export default function HealthPage() {
   const [form, setForm] = useState({ sleep_hours: "0", water_glasses: "0", breaks_taken: "0", steps: "0" });
 
   // Sync form with loaded data
-  useState(() => {
+  useEffect(() => {
     if (log) {
       setForm({
         sleep_hours: String(log.sleep_hours || 0),
@@ -46,28 +46,42 @@ export default function HealthPage() {
         steps: String(log.steps || 0),
       });
     }
-  });
+  }, [log]);
+
+  const upsertLog = async (updates: Partial<{ sleep_hours: number; water_glasses: number; breaks_taken: number; steps: number }>) => {
+    if (!user) return;
+    const payload = {
+      user_id: user.id,
+      log_date: today,
+      sleep_hours: Number(form.sleep_hours),
+      water_glasses: Number(form.water_glasses),
+      breaks_taken: Number(form.breaks_taken),
+      steps: Number(form.steps),
+      ...updates,
+    };
+    if (log) {
+      await supabase.from("health_logs").update(payload).eq("id", log.id);
+    } else {
+      await supabase.from("health_logs").insert(payload);
+    }
+    queryClient.invalidateQueries({ queryKey: ["health_log"] });
+    queryClient.invalidateQueries({ queryKey: ["health_logs_week"] });
+    queryClient.invalidateQueries({ queryKey: ["notifications_health"] });
+  };
+
+  const quickMark = async (key: "water_glasses" | "breaks_taken" | "steps", increment: number) => {
+    const newVal = Number(form[key]) + increment;
+    setForm(prev => ({ ...prev, [key]: String(newVal) }));
+    await upsertLog({ [key]: newVal });
+    const labels = { water_glasses: "💧 Water logged!", breaks_taken: "☕ Break logged!", steps: "🚶 Steps added!" };
+    toast.success(labels[key]);
+  };
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const payload = {
-        user_id: user!.id,
-        log_date: today,
-        sleep_hours: Number(form.sleep_hours),
-        water_glasses: Number(form.water_glasses),
-        breaks_taken: Number(form.breaks_taken),
-        steps: Number(form.steps),
-      };
-      if (log) {
-        const { error } = await supabase.from("health_logs").update(payload).eq("id", log.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("health_logs").insert(payload);
-        if (error) throw error;
-      }
+      await upsertLog({});
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["health_log"] });
       toast.success("Health log saved!");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -106,25 +120,50 @@ export default function HealthPage() {
     <div className="space-y-5 p-4 pt-6">
       <h1 className="text-2xl font-bold">{t("nav.health")}</h1>
 
+      {/* Quick Mark Buttons */}
+      <div className="grid grid-cols-3 gap-2">
+        <Button variant="outline" className="flex-col h-auto py-3 gap-1" onClick={() => quickMark("water_glasses", 1)}>
+          <Droplets className="h-5 w-5 text-cyan-500" />
+          <span className="text-xs font-medium">+1 Water</span>
+          <span className="text-[10px] text-muted-foreground">{form.water_glasses}/8</span>
+        </Button>
+        <Button variant="outline" className="flex-col h-auto py-3 gap-1" onClick={() => quickMark("breaks_taken", 1)}>
+          <Coffee className="h-5 w-5 text-amber-500" />
+          <span className="text-xs font-medium">+1 Break</span>
+          <span className="text-[10px] text-muted-foreground">{form.breaks_taken}/4</span>
+        </Button>
+        <Button variant="outline" className="flex-col h-auto py-3 gap-1" onClick={() => quickMark("steps", 1000)}>
+          <Footprints className="h-5 w-5 text-green-500" />
+          <span className="text-xs font-medium">+1K Steps</span>
+          <span className="text-[10px] text-muted-foreground">{Number(form.steps).toLocaleString()}</span>
+        </Button>
+      </div>
+
       {/* Today's Log */}
       <div className="space-y-3">
-        {metrics.map((m, i) => (
-          <motion.div key={m.key} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.1 }}>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <m.icon className={`h-5 w-5 ${m.color}`} />
-                    <span className="text-sm font-medium">{m.label}</span>
+        {metrics.map((m, i) => {
+          const isDone = m.key === "water_glasses" ? Number(m.value) >= 8
+            : m.key === "breaks_taken" ? Number(m.value) >= 4
+            : m.key === "sleep_hours" ? Number(m.value) >= 7
+            : Number(m.value) >= 5000;
+          return (
+            <motion.div key={m.key} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.1 }}>
+              <Card className={isDone ? "border-success/30 bg-success/5" : ""}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      {isDone ? <CheckCircle2 className="h-5 w-5 text-success" /> : <m.icon className={`h-5 w-5 ${m.color}`} />}
+                      <span className="text-sm font-medium">{m.label}</span>
+                    </div>
+                    <Input type="number" className="w-20 text-right" value={m.value}
+                      onChange={(e) => setForm({ ...form, [m.key]: e.target.value })} />
                   </div>
-                  <Input type="number" className="w-20 text-right" value={m.value}
-                    onChange={(e) => setForm({ ...form, [m.key]: e.target.value })} />
-                </div>
-                <Progress value={Math.min((Number(m.value) / m.max) * 100, 100)} className="h-2" />
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
+                  <Progress value={Math.min((Number(m.value) / m.max) * 100, 100)} className="h-2" />
+                </CardContent>
+              </Card>
+            </motion.div>
+          );
+        })}
       </div>
 
       <Button className="w-full gap-2" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
