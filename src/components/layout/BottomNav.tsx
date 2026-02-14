@@ -17,8 +17,8 @@ export function BottomNav() {
   const { t } = useI18n();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-card/95 backdrop-blur-md">
-      <div className="mx-auto flex w-full max-w-md items-center justify-around py-1 pb-safe sm:max-w-lg">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-card/95 backdrop-blur-md safe-bottom">
+      <div className="mx-auto flex w-full max-w-md items-stretch justify-around sm:max-w-lg">
         {navItems.map((item) => {
           const isActive = location.pathname === item.path;
           return (
@@ -26,16 +26,16 @@ export function BottomNav() {
               key={item.path}
               onClick={() => navigate(item.path)}
               className={cn(
-                "flex flex-col items-center gap-0.5 px-3 py-2 text-xs transition-colors",
+                "flex flex-1 flex-col items-center justify-center gap-0.5 min-h-[56px] py-2 text-[11px] transition-colors",
                 isActive
                   ? "text-primary"
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
               <item.icon
-                className={cn("h-5 w-5", isActive && "stroke-[2.5px]")}
+                className={cn("h-5 w-5 shrink-0", isActive && "stroke-[2.5px]")}
               />
-              <span className={cn("font-medium", isActive && "font-semibold")}>
+              <span className={cn("font-medium truncate max-w-full px-1", isActive && "font-semibold")}>
                 {t(item.labelKey)}
               </span>
             </button>
