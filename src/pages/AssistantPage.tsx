@@ -163,6 +163,47 @@ export default function AssistantPage() {
     }
   }, [input, isLoading, messages, session]);
 
+  // Normalize Hinglish transcript: convert Hindi number words & common terms
+  const normalizeTranscript = useCallback((text: string): string => {
+    let t = text;
+    // Hindi number words to digits
+    const numberMap: Record<string, string> = {
+      "ek": "1", "do": "2", "teen": "3", "char": "4", "chaar": "4",
+      "paanch": "5", "panch": "5", "chhah": "6", "chhe": "6", "saat": "7",
+      "aath": "8", "nau": "9", "das": "10", "gyarah": "11", "barah": "12",
+      "terah": "13", "chaudah": "14", "pandrah": "15", "solah": "16",
+      "satrah": "17", "athaarah": "18", "unees": "19", "bees": "20",
+      "pachees": "25", "tees": "30", "pachas": "50", "saath": "60",
+      "sattar": "70", "assi": "80", "nabbe": "90",
+      "sau": "100", "do sau": "200", "teen sau": "300", "paanch sau": "500",
+      "hazaar": "1000", "hazar": "1000", "lakh": "100000", "lac": "100000",
+    };
+    // Replace "dedh sau" = 150, "dhai sau" = 250, etc.
+    t = t.replace(/dedh\s*sau/gi, "150");
+    t = t.replace(/dhai\s*sau/gi, "250");
+    t = t.replace(/dedh\s*hazaa?r/gi, "1500");
+    t = t.replace(/dhai\s*hazaa?r/gi, "2500");
+    
+    // Replace individual number words (longest first)
+    const sorted = Object.entries(numberMap).sort((a, b) => b[0].length - a[0].length);
+    for (const [word, num] of sorted) {
+      const regex = new RegExp(`\\b${word}\\b`, "gi");
+      t = t.replace(regex, num);
+    }
+    
+    // Normalize common Hinglish words for clarity
+    t = t.replace(/rupay[ae]?/gi, "rupees");
+    t = t.replace(/\bkharcha\b/gi, "expense");
+    t = t.replace(/\bkamaya\b|\bkamayi\b|\bkamaye\b|\bkamai\b/gi, "earned");
+    t = t.replace(/\blagaye\b|\blagaya\b|\blage\b/gi, "spent");
+    t = t.replace(/\bkhane\s*ka\b/gi, "food");
+    t = t.replace(/\bpetrol\b/gi, "fuel");
+    t = t.replace(/\bpaani\s*piya\b|\bpani\s*pi\s*liya\b|\bpani\s*piya\b/gi, "drank water");
+    t = t.replace(/\badd\s*karo\b|\bjodo\b|\bdaalo\b|\bdaal\s*do\b/gi, "add");
+    
+    return t;
+  }, []);
+
   const toggleVoice = useCallback(() => {
     if (isListening) {
       recognitionRef.current?.stop();
@@ -177,39 +218,52 @@ export default function AssistantPage() {
     }
 
     const recognition = new SpeechRecognition();
-    recognition.lang = "hi-IN"; // Hindi + Hinglish recognition (also picks up English naturally)
+    recognition.lang = "hi-IN"; // Hindi + Hinglish recognition
     recognition.interimResults = true;
-    recognition.continuous = false;
-    recognition.maxAlternatives = 3; // Better accuracy for mixed languages
+    recognition.continuous = true; // Keep listening for longer commands
+    recognition.maxAlternatives = 5; // More alternatives for better accuracy
 
     let finalTranscript = "";
+    let silenceTimer: ReturnType<typeof setTimeout> | null = null;
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
       let interim = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) {
+      finalTranscript = ""; // Reset to rebuild from all final results
+      for (let i = 0; i < event.results.length; i++) {
         const transcript = event.results[i][0].transcript;
         if (event.results[i].isFinal) {
-          finalTranscript += transcript;
+          finalTranscript += transcript + " ";
         } else {
           interim += transcript;
         }
       }
-      setInput(finalTranscript + interim);
+      setInput((finalTranscript + interim).trim());
+
+      // Auto-stop after 2s of silence once we have final text
+      if (finalTranscript.trim()) {
+        if (silenceTimer) clearTimeout(silenceTimer);
+        silenceTimer = setTimeout(() => {
+          recognition.stop();
+        }, 2000);
+      }
     };
 
     recognition.onend = () => {
+      if (silenceTimer) clearTimeout(silenceTimer);
       setIsListening(false);
-      if (finalTranscript.trim()) {
-        // Auto-send voice message
+      const trimmed = finalTranscript.trim();
+      if (trimmed) {
+        const normalized = normalizeTranscript(trimmed);
         setInput("");
-        send(finalTranscript.trim());
+        send(normalized);
       }
     };
 
     recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
       console.error("Speech error:", event.error);
+      if (silenceTimer) clearTimeout(silenceTimer);
       setIsListening(false);
-      if (event.error !== "no-speech") {
+      if (event.error !== "no-speech" && event.error !== "aborted") {
         toast.error(`Voice error: ${event.error}`);
       }
     };
@@ -217,7 +271,7 @@ export default function AssistantPage() {
     recognitionRef.current = recognition;
     recognition.start();
     setIsListening(true);
-  }, [isListening, send]);
+  }, [isListening, send, normalizeTranscript]);
 
   return (
     <div className="flex h-[calc(100vh-7rem)] flex-col p-4 pt-6">
