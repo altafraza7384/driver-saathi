@@ -12,13 +12,13 @@ import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO } from "date-fns";
 
-const today = new Date().toISOString().split("T")[0];
+// Computed inside the component to avoid stale dates
 
 export default function HealthPage() {
   const { user } = useAuth();
   const { t } = useI18n();
   const queryClient = useQueryClient();
-
+  const today = new Date().toISOString().split("T")[0];
   const { data: log, isLoading } = useQuery({
     queryKey: ["health_log", today],
     queryFn: async () => {

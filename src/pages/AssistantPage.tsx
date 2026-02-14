@@ -60,6 +60,10 @@ export default function AssistantPage() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
+  // Use ref for speakEnabled to avoid stale closures in async callbacks
+  const speakEnabledRef = useRef(speakEnabled);
+  useEffect(() => { speakEnabledRef.current = speakEnabled; }, [speakEnabled]);
+
   const send = useCallback(async (text?: string) => {
     const msgText = text || input.trim();
     if (!msgText || isLoading) return;
@@ -82,14 +86,15 @@ export default function AssistantPage() {
       });
 
       if (!resp.ok) {
-        if (resp.status === 429) { toast.error("Rate limit exceeded, try again later."); setIsLoading(false); return; }
-        if (resp.status === 402) { toast.error("Usage limit reached."); setIsLoading(false); return; }
+        if (resp.status === 429) { toast.error("Rate limit exceeded, try again later."); return; }
+        if (resp.status === 402) { toast.error("Usage limit reached."); return; }
         // Try parsing non-streamed response
         try {
           const json = await resp.json();
           if (json.choices?.[0]?.message?.content) {
-            setMessages((prev) => [...prev, { role: "assistant", content: json.choices[0].message.content }]);
-            setIsLoading(false);
+            const content = json.choices[0].message.content;
+            assistantSoFar = content;
+            setMessages((prev) => [...prev, { role: "assistant", content }]);
             return;
           }
         } catch {}
@@ -102,8 +107,8 @@ export default function AssistantPage() {
       if (contentType.includes("application/json")) {
         const json = await resp.json();
         const content = json.choices?.[0]?.message?.content || "Done!";
+        assistantSoFar = content;
         setMessages((prev) => [...prev, { role: "assistant", content }]);
-        setIsLoading(false);
         return;
       }
 
@@ -151,12 +156,12 @@ export default function AssistantPage() {
       toast.error("Failed to get response");
     } finally {
       setIsLoading(false);
-      // Speak the final assistant message
-      if (speakEnabled && assistantSoFar) {
+      // Speak the final assistant message using ref to avoid stale closure
+      if (speakEnabledRef.current && assistantSoFar) {
         speakText(assistantSoFar);
       }
     }
-  }, [input, isLoading, messages, session, speakEnabled]);
+  }, [input, isLoading, messages, session]);
 
   const toggleVoice = useCallback(() => {
     if (isListening) {
