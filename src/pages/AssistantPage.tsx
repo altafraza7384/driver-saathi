@@ -4,7 +4,7 @@ import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Send, Bot, User, Trash2, Mic, Square, Volume2, VolumeX } from "lucide-react";
+import { Send, Bot, User, Trash2, Mic, Square, Volume2, VolumeX, Headphones } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,35 +14,34 @@ type Msg = { role: "user" | "assistant"; content: string };
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 
 // Speak text aloud using browser TTS
-function speakText(text: string) {
-  if (!("speechSynthesis" in window)) return;
-  // Cancel any ongoing speech
-  window.speechSynthesis.cancel();
-  
-  // Clean text: remove emojis, markdown symbols for cleaner speech
-  const cleanText = text
-    .replace(/[\u{1F600}-\u{1F9FF}|\u{2600}-\u{26FF}|\u{2700}-\u{27BF}|\u{1F300}-\u{1F5FF}|\u{1F680}-\u{1F6FF}|\u{1F1E0}-\u{1F1FF}|\u{2702}-\u{27B0}|\u{FE0F}|\u{200D}]/gu, "")
-    .replace(/[*#_~`]/g, "")
-    .replace(/\n+/g, ". ")
-    .trim();
-  
-  if (!cleanText) return;
-  
-  const utterance = new SpeechSynthesisUtterance(cleanText);
-  
-  // Detect language: if mostly Devanagari/Hindi chars, use Hindi voice
-  const hindiChars = (cleanText.match(/[\u0900-\u097F]/g) || []).length;
-  const isHindi = hindiChars > cleanText.length * 0.2;
-  utterance.lang = isHindi ? "hi-IN" : "en-IN";
-  utterance.rate = 1.05;
-  utterance.pitch = 1;
-  
-  // Try to find a good voice
-  const voices = window.speechSynthesis.getVoices();
-  const preferred = voices.find(v => v.lang === utterance.lang) || voices.find(v => v.lang.startsWith(isHindi ? "hi" : "en"));
-  if (preferred) utterance.voice = preferred;
-  
-  window.speechSynthesis.speak(utterance);
+function speakText(text: string): Promise<void> {
+  return new Promise((resolve) => {
+    if (!("speechSynthesis" in window)) { resolve(); return; }
+    window.speechSynthesis.cancel();
+
+    const cleanText = text
+      .replace(/[\u{1F600}-\u{1F9FF}|\u{2600}-\u{26FF}|\u{2700}-\u{27BF}|\u{1F300}-\u{1F5FF}|\u{1F680}-\u{1F6FF}|\u{1F1E0}-\u{1F1FF}|\u{2702}-\u{27B0}|\u{FE0F}|\u{200D}]/gu, "")
+      .replace(/[*#_~`]/g, "")
+      .replace(/\n+/g, ". ")
+      .trim();
+
+    if (!cleanText) { resolve(); return; }
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    const hindiChars = (cleanText.match(/[\u0900-\u097F]/g) || []).length;
+    const isHindi = hindiChars > cleanText.length * 0.2;
+    utterance.lang = isHindi ? "hi-IN" : "en-IN";
+    utterance.rate = 1.05;
+    utterance.pitch = 1;
+
+    const voices = window.speechSynthesis.getVoices();
+    const preferred = voices.find(v => v.lang === utterance.lang) || voices.find(v => v.lang.startsWith(isHindi ? "hi" : "en"));
+    if (preferred) utterance.voice = preferred;
+
+    utterance.onend = () => resolve();
+    utterance.onerror = () => resolve();
+    window.speechSynthesis.speak(utterance);
+  });
 }
 
 export default function AssistantPage() {
@@ -53,16 +52,57 @@ export default function AssistantPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [speakEnabled, setSpeakEnabled] = useState(true);
+  const [drivingMode, setDrivingMode] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
+  const drivingModeRef = useRef(false);
+  const isLoadingRef = useRef(false);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  // Use ref for speakEnabled to avoid stale closures in async callbacks
   const speakEnabledRef = useRef(speakEnabled);
   useEffect(() => { speakEnabledRef.current = speakEnabled; }, [speakEnabled]);
+  useEffect(() => { drivingModeRef.current = drivingMode; }, [drivingMode]);
+  useEffect(() => { isLoadingRef.current = isLoading; }, [isLoading]);
+
+  // Normalize Hinglish transcript
+  const normalizeTranscript = useCallback((text: string): string => {
+    let t = text;
+    const numberMap: Record<string, string> = {
+      "ek": "1", "do": "2", "teen": "3", "char": "4", "chaar": "4",
+      "paanch": "5", "panch": "5", "chhah": "6", "chhe": "6", "saat": "7",
+      "aath": "8", "nau": "9", "das": "10", "gyarah": "11", "barah": "12",
+      "terah": "13", "chaudah": "14", "pandrah": "15", "solah": "16",
+      "satrah": "17", "athaarah": "18", "unees": "19", "bees": "20",
+      "pachees": "25", "tees": "30", "pachas": "50", "saath": "60",
+      "sattar": "70", "assi": "80", "nabbe": "90",
+      "sau": "100", "do sau": "200", "teen sau": "300", "paanch sau": "500",
+      "hazaar": "1000", "hazar": "1000", "lakh": "100000", "lac": "100000",
+    };
+    t = t.replace(/dedh\s*sau/gi, "150");
+    t = t.replace(/dhai\s*sau/gi, "250");
+    t = t.replace(/dedh\s*hazaa?r/gi, "1500");
+    t = t.replace(/dhai\s*hazaa?r/gi, "2500");
+
+    const sorted = Object.entries(numberMap).sort((a, b) => b[0].length - a[0].length);
+    for (const [word, num] of sorted) {
+      const regex = new RegExp(`\\b${word}\\b`, "gi");
+      t = t.replace(regex, num);
+    }
+
+    t = t.replace(/rupay[ae]?/gi, "rupees");
+    t = t.replace(/\bkharcha\b/gi, "expense");
+    t = t.replace(/\bkamaya\b|\bkamayi\b|\bkamaye\b|\bkamai\b/gi, "earned");
+    t = t.replace(/\blagaye\b|\blagaya\b|\blage\b/gi, "spent");
+    t = t.replace(/\bkhane\s*ka\b/gi, "food");
+    t = t.replace(/\bpetrol\b/gi, "fuel");
+    t = t.replace(/\bpaani\s*piya\b|\bpani\s*pi\s*liya\b|\bpani\s*piya\b/gi, "drank water");
+    t = t.replace(/\badd\s*karo\b|\bjodo\b|\bdaalo\b|\bdaal\s*do\b/gi, "add");
+
+    return t;
+  }, []);
 
   const send = useCallback(async (text?: string) => {
     const msgText = text || input.trim();
@@ -88,7 +128,6 @@ export default function AssistantPage() {
       if (!resp.ok) {
         if (resp.status === 429) { toast.error("Rate limit exceeded, try again later."); return; }
         if (resp.status === 402) { toast.error("Usage limit reached."); return; }
-        // Try parsing non-streamed response
         try {
           const json = await resp.json();
           if (json.choices?.[0]?.message?.content) {
@@ -103,7 +142,6 @@ export default function AssistantPage() {
 
       const contentType = resp.headers.get("content-type") || "";
 
-      // Handle non-streamed JSON response (tool call fallback)
       if (contentType.includes("application/json")) {
         const json = await resp.json();
         const content = json.choices?.[0]?.message?.content || "Done!";
@@ -112,7 +150,6 @@ export default function AssistantPage() {
         return;
       }
 
-      // Streamed SSE response
       if (!resp.body) throw new Error("No response body");
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
@@ -156,61 +193,22 @@ export default function AssistantPage() {
       toast.error("Failed to get response");
     } finally {
       setIsLoading(false);
-      // Speak the final assistant message using ref to avoid stale closure
+      // Speak response, then auto-restart mic in driving mode
       if (speakEnabledRef.current && assistantSoFar) {
-        speakText(assistantSoFar);
+        await speakText(assistantSoFar);
+      }
+      // Auto-restart listening in driving mode after response
+      if (drivingModeRef.current) {
+        setTimeout(() => {
+          if (drivingModeRef.current && !isLoadingRef.current) {
+            startListening();
+          }
+        }, 800);
       }
     }
   }, [input, isLoading, messages, session]);
 
-  // Normalize Hinglish transcript: convert Hindi number words & common terms
-  const normalizeTranscript = useCallback((text: string): string => {
-    let t = text;
-    // Hindi number words to digits
-    const numberMap: Record<string, string> = {
-      "ek": "1", "do": "2", "teen": "3", "char": "4", "chaar": "4",
-      "paanch": "5", "panch": "5", "chhah": "6", "chhe": "6", "saat": "7",
-      "aath": "8", "nau": "9", "das": "10", "gyarah": "11", "barah": "12",
-      "terah": "13", "chaudah": "14", "pandrah": "15", "solah": "16",
-      "satrah": "17", "athaarah": "18", "unees": "19", "bees": "20",
-      "pachees": "25", "tees": "30", "pachas": "50", "saath": "60",
-      "sattar": "70", "assi": "80", "nabbe": "90",
-      "sau": "100", "do sau": "200", "teen sau": "300", "paanch sau": "500",
-      "hazaar": "1000", "hazar": "1000", "lakh": "100000", "lac": "100000",
-    };
-    // Replace "dedh sau" = 150, "dhai sau" = 250, etc.
-    t = t.replace(/dedh\s*sau/gi, "150");
-    t = t.replace(/dhai\s*sau/gi, "250");
-    t = t.replace(/dedh\s*hazaa?r/gi, "1500");
-    t = t.replace(/dhai\s*hazaa?r/gi, "2500");
-    
-    // Replace individual number words (longest first)
-    const sorted = Object.entries(numberMap).sort((a, b) => b[0].length - a[0].length);
-    for (const [word, num] of sorted) {
-      const regex = new RegExp(`\\b${word}\\b`, "gi");
-      t = t.replace(regex, num);
-    }
-    
-    // Normalize common Hinglish words for clarity
-    t = t.replace(/rupay[ae]?/gi, "rupees");
-    t = t.replace(/\bkharcha\b/gi, "expense");
-    t = t.replace(/\bkamaya\b|\bkamayi\b|\bkamaye\b|\bkamai\b/gi, "earned");
-    t = t.replace(/\blagaye\b|\blagaya\b|\blage\b/gi, "spent");
-    t = t.replace(/\bkhane\s*ka\b/gi, "food");
-    t = t.replace(/\bpetrol\b/gi, "fuel");
-    t = t.replace(/\bpaani\s*piya\b|\bpani\s*pi\s*liya\b|\bpani\s*piya\b/gi, "drank water");
-    t = t.replace(/\badd\s*karo\b|\bjodo\b|\bdaalo\b|\bdaal\s*do\b/gi, "add");
-    
-    return t;
-  }, []);
-
-  const toggleVoice = useCallback(() => {
-    if (isListening) {
-      recognitionRef.current?.stop();
-      setIsListening(false);
-      return;
-    }
-
+  const startListening = useCallback(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       toast.error("Speech recognition not supported on this browser");
@@ -218,17 +216,17 @@ export default function AssistantPage() {
     }
 
     const recognition = new SpeechRecognition();
-    recognition.lang = "hi-IN"; // Hindi + Hinglish recognition
+    recognition.lang = "hi-IN";
     recognition.interimResults = true;
-    recognition.continuous = true; // Keep listening for longer commands
-    recognition.maxAlternatives = 5; // More alternatives for better accuracy
+    recognition.continuous = true;
+    recognition.maxAlternatives = 5;
 
     let finalTranscript = "";
     let silenceTimer: ReturnType<typeof setTimeout> | null = null;
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
       let interim = "";
-      finalTranscript = ""; // Reset to rebuild from all final results
+      finalTranscript = "";
       for (let i = 0; i < event.results.length; i++) {
         const transcript = event.results[i][0].transcript;
         if (event.results[i].isFinal) {
@@ -239,7 +237,6 @@ export default function AssistantPage() {
       }
       setInput((finalTranscript + interim).trim());
 
-      // Auto-stop after 2s of silence once we have final text
       if (finalTranscript.trim()) {
         if (silenceTimer) clearTimeout(silenceTimer);
         silenceTimer = setTimeout(() => {
@@ -256,6 +253,13 @@ export default function AssistantPage() {
         const normalized = normalizeTranscript(trimmed);
         setInput("");
         send(normalized);
+      } else if (drivingModeRef.current) {
+        // No speech detected, restart listening in driving mode
+        setTimeout(() => {
+          if (drivingModeRef.current && !isLoadingRef.current) {
+            startListening();
+          }
+        }, 500);
       }
     };
 
@@ -266,18 +270,141 @@ export default function AssistantPage() {
       if (event.error !== "no-speech" && event.error !== "aborted") {
         toast.error(`Voice error: ${event.error}`);
       }
+      // Retry in driving mode on no-speech
+      if (drivingModeRef.current && (event.error === "no-speech" || event.error === "aborted")) {
+        setTimeout(() => {
+          if (drivingModeRef.current && !isLoadingRef.current) {
+            startListening();
+          }
+        }, 500);
+      }
     };
 
     recognitionRef.current = recognition;
     recognition.start();
     setIsListening(true);
-  }, [isListening, send, normalizeTranscript]);
+  }, [send, normalizeTranscript]);
+
+  const toggleVoice = useCallback(() => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+    startListening();
+  }, [isListening, startListening]);
+
+  const toggleDrivingMode = useCallback(() => {
+    if (drivingMode) {
+      // Turn off driving mode
+      setDrivingMode(false);
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      window.speechSynthesis.cancel();
+      toast("🚗 Driving mode off");
+    } else {
+      // Turn on driving mode
+      setDrivingMode(true);
+      setSpeakEnabled(true);
+      toast("🚗 Driving mode ON — just talk, I'm listening!");
+      startListening();
+    }
+  }, [drivingMode, startListening]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.stop();
+      window.speechSynthesis.cancel();
+    };
+  }, []);
 
   return (
     <div className="flex h-[calc(100vh-7rem)] flex-col p-4 pt-6">
+      {/* Driving Mode Full Screen Overlay */}
+      <AnimatePresence>
+        {drivingMode && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background p-6"
+          >
+            <div className="flex flex-col items-center gap-6 w-full max-w-sm">
+              <div className="flex items-center gap-2">
+                <Headphones className="h-6 w-6 text-primary" />
+                <h2 className="text-xl font-bold">Driving Mode</h2>
+              </div>
+
+              <p className="text-center text-muted-foreground">
+                {isLoading
+                  ? "Soch raha hoon... 🤔"
+                  : isListening
+                    ? "Sun raha hoon... bolo! 🎤"
+                    : "Ready — bolo kuch bhi!"}
+              </p>
+
+              {/* Big pulsing mic */}
+              <motion.button
+                onClick={toggleVoice}
+                disabled={isLoading}
+                animate={isListening ? { scale: [1, 1.15, 1] } : {}}
+                transition={isListening ? { repeat: Infinity, duration: 1.2 } : {}}
+                className={`h-32 w-32 rounded-full flex items-center justify-center shadow-lg transition-colors ${
+                  isListening
+                    ? "bg-destructive text-destructive-foreground"
+                    : "bg-primary text-primary-foreground"
+                }`}
+              >
+                {isListening ? <Square className="h-12 w-12" /> : <Mic className="h-12 w-12" />}
+              </motion.button>
+
+              {/* Live transcript */}
+              {input && (
+                <Card className="w-full">
+                  <CardContent className="p-3 text-center">
+                    <p className="text-muted-foreground text-xs mb-1">Heard:</p>
+                    <p className="font-medium">{input}</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Last assistant response */}
+              {messages.length > 0 && messages[messages.length - 1].role === "assistant" && (
+                <Card className="w-full">
+                  <CardContent className="p-3">
+                    <p className="text-muted-foreground text-xs mb-1">Response:</p>
+                    <p className="whitespace-pre-wrap">{messages[messages.length - 1].content}</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              <Button
+                variant="outline"
+                className="w-full gap-2 mt-4"
+                onClick={toggleDrivingMode}
+              >
+                <Square className="h-4 w-4" /> Exit Driving Mode
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Normal chat header */}
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">{t("nav.assistant")}</h1>
         <div className="flex items-center gap-1">
+          <Button
+            variant={drivingMode ? "default" : "outline"}
+            size="sm"
+            className="gap-1"
+            onClick={toggleDrivingMode}
+            title="Driving Mode — hands-free voice control"
+          >
+            <Headphones className="h-4 w-4" />
+            <span className="hidden sm:inline">Drive</span>
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -301,47 +428,35 @@ export default function AssistantPage() {
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
             <Bot className="h-12 w-12 mb-3 opacity-50" />
-            <p className="text-sm font-medium">Hi! I'm your driving assistant 🚗</p>
-            <p className="text-xs mt-1">Mic dabao aur bolo — Hindi, Hinglish, English sab samjhta hoon!</p>
-            <div className="mt-4 grid grid-cols-1 gap-2 text-xs w-full max-w-sm">
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">💾 Save Data</p>
-              <button onClick={() => send("I earned ₹1500 from Uber today")} className="rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent transition-colors">
-                💰 "I earned ₹1500 from Uber today"
-              </button>
-              <button onClick={() => send("Spent ₹500 on fuel")} className="rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent transition-colors">
-                ⛽ "Spent ₹500 on fuel"
-              </button>
-              <button onClick={() => send("I drank a glass of water")} className="rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent transition-colors">
-                💧 "I drank a glass of water"
-              </button>
-              <button onClick={() => send("Got car oil changed for ₹800")} className="rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent transition-colors">
-                🔧 "Oil changed for ₹800"
-              </button>
-              <button onClick={() => send("Note: Passenger left phone in car")} className="rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent transition-colors">
-                📝 "Note: Passenger left phone in car"
-              </button>
-              <button onClick={() => send("Remind me car insurance renewal March 15")} className="rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent transition-colors">
-                🔔 "Remind me insurance renewal March 15"
-              </button>
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mt-2">📊 Ask About Data</p>
-              <button onClick={() => send("How much did I earn today?")} className="rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent transition-colors">
-                📊 "How much did I earn today?"
-              </button>
-              <button onClick={() => send("Show my notes")} className="rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent transition-colors">
-                📝 "Show my notes"
-              </button>
-              <button onClick={() => send("What are my upcoming reminders?")} className="rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent transition-colors">
-                🔔 "What are my upcoming reminders?"
-              </button>
-              <button onClick={() => send("Show my car service history")} className="rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent transition-colors">
-                🔧 "Show my car service history"
-              </button>
-              <button onClick={() => send("What's my health stats today?")} className="rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent transition-colors">
-                🏥 "What's my health stats today?"
-              </button>
-              <button onClick={() => send("Show my savings goals")} className="rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent transition-colors">
-                🎯 "Show my savings goals"
-              </button>
+            <p className="font-medium">Hi! I'm your driving assistant 🚗</p>
+            <p className="text-muted-foreground mt-1">Mic dabao ya Driving Mode on karo — Hindi, Hinglish, English sab samjhta hoon!</p>
+            <div className="mt-4 grid grid-cols-1 gap-2 w-full max-w-sm">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">💾 Save Data (voice ya type karo)</p>
+              {[
+                { emoji: "💰", text: "Uber se 1500 kamaye aaj" },
+                { emoji: "⛽", text: "500 rupay petrol mein lagaye" },
+                { emoji: "💧", text: "Paani piya" },
+                { emoji: "🔧", text: "Oil change karwaya 800 mein" },
+                { emoji: "📝", text: "Note: Passenger ne phone chhoda" },
+                { emoji: "🔔", text: "Yaad dilana insurance renewal 15 March" },
+              ].map(({ emoji, text }) => (
+                <button key={text} onClick={() => send(text)} className="rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent transition-colors">
+                  {emoji} "{text}"
+                </button>
+              ))}
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-2">📊 Poocho apna data</p>
+              {[
+                { emoji: "📊", text: "Aaj kitna kamaya?" },
+                { emoji: "📝", text: "Mere notes dikhao" },
+                { emoji: "🔔", text: "Kya kya yaad dilana hai?" },
+                { emoji: "🔧", text: "Gaadi ki service history dikhao" },
+                { emoji: "🏥", text: "Aaj ki health stats?" },
+                { emoji: "🎯", text: "Savings goals dikhao" },
+              ].map(({ emoji, text }) => (
+                <button key={text} onClick={() => send(text)} className="rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent transition-colors">
+                  {emoji} "{text}"
+                </button>
+              ))}
             </div>
           </div>
         )}
@@ -355,7 +470,7 @@ export default function AssistantPage() {
                 </div>
               )}
               <Card className={`max-w-[80%] ${msg.role === "user" ? "bg-primary text-primary-foreground" : ""}`}>
-                <CardContent className="p-3 text-sm whitespace-pre-wrap">{msg.content}</CardContent>
+                <CardContent className="p-3 whitespace-pre-wrap">{msg.content}</CardContent>
               </Card>
               {msg.role === "user" && (
                 <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted">
@@ -371,7 +486,7 @@ export default function AssistantPage() {
               <Bot className="h-4 w-4" />
             </div>
             <Card>
-              <CardContent className="p-3 text-sm text-muted-foreground">Thinking...</CardContent>
+              <CardContent className="p-3 text-muted-foreground">Thinking...</CardContent>
             </Card>
           </div>
         )}
@@ -390,7 +505,7 @@ export default function AssistantPage() {
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={isListening ? "Listening..." : "Ask me anything..."}
+          placeholder={isListening ? "Sun raha hoon..." : "Type ya mic dabao..."}
           onKeyDown={(e) => e.key === "Enter" && send()}
           disabled={isLoading || isListening}
         />
