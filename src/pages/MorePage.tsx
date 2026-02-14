@@ -10,6 +10,7 @@ import { useState } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -85,6 +86,7 @@ export default function MorePage() {
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>About</DialogTitle>
+            <DialogDescription>App information, privacy policy and terms of use.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 text-sm">
             <div className="flex items-center justify-between">
