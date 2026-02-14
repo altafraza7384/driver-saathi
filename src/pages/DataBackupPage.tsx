@@ -1,129 +1,102 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Download, Upload, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+import { ArrowLeft, Download, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 const BACKUP_TABLES = [
-  "transactions",
-  "debts",
-  "debt_payments",
-  "goals",
-  "health_logs",
-  "car_checks",
-  "reminders",
-  "notes",
-  "emergency_contacts",
-  "platform_affiliations",
-  "profiles",
+  { key: "transactions", label: "Transactions" },
+  { key: "debts", label: "Debts" },
+  { key: "debt_payments", label: "Debt Payments" },
+  { key: "goals", label: "Goals" },
+  { key: "health_logs", label: "Health Logs" },
+  { key: "car_checks", label: "Car Checks" },
+  { key: "reminders", label: "Reminders" },
+  { key: "notes", label: "Notes" },
+  { key: "emergency_contacts", label: "Emergency Contacts" },
+  { key: "platform_affiliations", label: "Platform Affiliations" },
+  { key: "profiles", label: "Profile" },
 ] as const;
 
-type BackupTable = (typeof BACKUP_TABLES)[number];
+type BackupTable = (typeof BACKUP_TABLES)[number]["key"];
 
 export default function DataBackupPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
   const [exporting, setExporting] = useState(false);
-  const [importing, setImporting] = useState(false);
 
   const exportData = async () => {
     if (!user) return;
     setExporting(true);
     try {
-      const backup: Record<string, unknown[]> = {};
+      const doc = new jsPDF();
+      let currentY = 20;
+
+      // Title
+      doc.setFontSize(18);
+      doc.text("Driver Buddy - Data Export", 14, currentY);
+      currentY += 8;
+      doc.setFontSize(10);
+      doc.text(`Exported on: ${new Date().toLocaleString()}`, 14, currentY);
+      currentY += 12;
 
       for (const table of BACKUP_TABLES) {
         const { data, error } = await supabase
-          .from(table)
+          .from(table.key)
           .select("*");
         if (error) throw error;
-        backup[table] = data ?? [];
+        if (!data || data.length === 0) continue;
+
+        // Check if we need a new page
+        if (currentY > 250) {
+          doc.addPage();
+          currentY = 20;
+        }
+
+        doc.setFontSize(14);
+        doc.text(table.label, 14, currentY);
+        currentY += 4;
+
+        // Build table columns (exclude user_id for cleanliness)
+        const columns = Object.keys(data[0]).filter(
+          (k) => k !== "user_id"
+        );
+
+        const rows = data.map((row: any) =>
+          columns.map((col) => {
+            const val = row[col];
+            if (val === null || val === undefined) return "";
+            if (typeof val === "object") return JSON.stringify(val);
+            return String(val);
+          })
+        );
+
+        autoTable(doc, {
+          startY: currentY,
+          head: [columns],
+          body: rows,
+          styles: { fontSize: 7, cellPadding: 1.5 },
+          headStyles: { fillColor: [59, 130, 246] },
+          margin: { left: 14, right: 14 },
+          tableWidth: "auto",
+          didDrawPage: () => {},
+        });
+
+        currentY = (doc as any).lastAutoTable.finalY + 12;
       }
 
-      const blob = new Blob(
-        [JSON.stringify({ version: "1.0.0", exportedAt: new Date().toISOString(), data: backup }, null, 2)],
-        { type: "application/json" }
-      );
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `driver-buddy-backup-${new Date().toISOString().slice(0, 10)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-
-      toast({ title: "Export successful", description: "Your data has been downloaded." });
+      doc.save(`driver-buddy-export-${new Date().toISOString().slice(0, 10)}.pdf`);
+      toast({ title: "Export successful", description: "Your data PDF has been downloaded." });
     } catch (err: any) {
       toast({ title: "Export failed", description: err.message, variant: "destructive" });
     } finally {
       setExporting(false);
     }
-  };
-
-  const importData = async (file: File) => {
-    if (!user) return;
-    setImporting(true);
-    try {
-      const text = await file.text();
-      const parsed = JSON.parse(text);
-      if (!parsed.data) throw new Error("Invalid backup file format");
-
-      const backupData = parsed.data as Record<string, any[]>;
-
-      // Import order matters for foreign keys – debts before debt_payments
-      const importOrder: BackupTable[] = [
-        "profiles",
-        "platform_affiliations",
-        "transactions",
-        "debts",
-        "debt_payments",
-        "goals",
-        "health_logs",
-        "car_checks",
-        "reminders",
-        "notes",
-        "emergency_contacts",
-      ];
-
-      let totalImported = 0;
-
-      for (const table of importOrder) {
-        const rows = backupData[table];
-        if (!rows || rows.length === 0) continue;
-
-        // Override user_id to current user for security
-        const sanitized = rows.map((row: any) => {
-          const { id, created_at, updated_at, ...rest } = row;
-          return { ...rest, user_id: user.id };
-        });
-
-        const { error } = await supabase.from(table).upsert(sanitized, { onConflict: "id", ignoreDuplicates: true });
-        if (error) {
-          console.warn(`Import warning for ${table}:`, error.message);
-        } else {
-          totalImported += sanitized.length;
-        }
-      }
-
-      toast({ title: "Import complete", description: `${totalImported} records processed.` });
-    } catch (err: any) {
-      toast({ title: "Import failed", description: err.message, variant: "destructive" });
-    } finally {
-      setImporting(false);
-    }
-  };
-
-  const handleFileSelect = () => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = ".json";
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (file) importData(file);
-    };
-    input.click();
   };
 
   return (
@@ -132,42 +105,25 @@ export default function DataBackupPage() {
         <button onClick={() => navigate("/more")} className="rounded-lg p-1 hover:bg-muted">
           <ArrowLeft className="h-5 w-5" />
         </button>
-        <h1 className="text-2xl font-bold">Data Backup</h1>
+        <h1 className="text-2xl font-bold">Data Export</h1>
       </div>
 
       <p className="text-sm text-muted-foreground">
-        Export your data as a JSON file for safekeeping, or import a previously exported backup to restore your data.
+        Export all your data as a PDF file for safekeeping or offline viewing.
       </p>
 
-      {/* Export */}
       <div className="rounded-xl border bg-card p-5 space-y-3">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
             <Download className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <h2 className="font-semibold">Export Data</h2>
-            <p className="text-xs text-muted-foreground">Download all your data as a JSON file</p>
+            <h2 className="font-semibold">Export All Data</h2>
+            <p className="text-xs text-muted-foreground">Download everything as a formatted PDF</p>
           </div>
         </div>
         <Button onClick={exportData} disabled={exporting} className="w-full">
-          {exporting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Exporting...</> : "Export All Data"}
-        </Button>
-      </div>
-
-      {/* Import */}
-      <div className="rounded-xl border bg-card p-5 space-y-3">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent/50">
-            <Upload className="h-5 w-5 text-accent-foreground" />
-          </div>
-          <div>
-            <h2 className="font-semibold">Import Data</h2>
-            <p className="text-xs text-muted-foreground">Restore data from a backup JSON file</p>
-          </div>
-        </div>
-        <Button variant="outline" onClick={handleFileSelect} disabled={importing} className="w-full">
-          {importing ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Importing...</> : "Select Backup File"}
+          {exporting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating PDF...</> : "Export as PDF"}
         </Button>
       </div>
 
@@ -175,7 +131,7 @@ export default function DataBackupPage() {
         <div className="flex items-start gap-2">
           <AlertCircle className="mt-0.5 h-4 w-4 text-muted-foreground shrink-0" />
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Importing data will add records to your account. Existing records with the same ID will be skipped. Your data is always tied to your account for security.
+            The PDF includes all your transactions, debts, goals, health logs, car checks, reminders, notes, emergency contacts, and profile data.
           </p>
         </div>
       </div>
