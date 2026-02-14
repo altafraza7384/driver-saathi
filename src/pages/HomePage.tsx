@@ -9,6 +9,7 @@ import { formatINR } from "@/lib/currency";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { NotificationBell } from "@/components/NotificationBell";
 
 function getGreetingKey(): string {
   const hour = new Date().getHours();
@@ -49,15 +50,6 @@ export default function HomePage() {
     enabled: !!user,
   });
 
-  const { data: reminders = [] } = useQuery({
-    queryKey: ["reminders_pending"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("reminders").select("*").eq("is_completed", false).limit(5);
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!user,
-  });
 
   const { data: debts = [] } = useQuery({
     queryKey: ["debts_active"],
@@ -91,12 +83,7 @@ export default function HomePage() {
           <p className="text-sm text-muted-foreground">{t("home.greeting")} {t(getGreetingKey())} 👋</p>
           <h1 className="text-2xl font-bold">{driverName}</h1>
         </div>
-        <Button variant="ghost" size="icon" className="relative" onClick={() => navigate("/reminders")}>
-          <Bell className="h-5 w-5" />
-          {reminders.length > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] text-destructive-foreground">{reminders.length}</span>
-          )}
-        </Button>
+        <NotificationBell />
       </motion.div>
 
       {/* Today's Earnings Card */}
@@ -204,23 +191,6 @@ export default function HomePage() {
         </motion.section>
       )}
 
-      {/* Pending Reminders */}
-      {reminders.length > 0 && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} onClick={() => navigate("/reminders")} className="cursor-pointer">
-          <Card className="border-warning/30 bg-warning/5">
-            <CardContent className="flex items-center justify-between p-4">
-              <div className="flex items-center gap-3">
-                <Bell className="h-5 w-5 text-warning" />
-                <div>
-                  <p className="text-sm font-semibold">{t("home.pendingReminders")}</p>
-                  <p className="text-xs text-muted-foreground">{reminders.map((r) => r.title).slice(0, 3).join(", ")}</p>
-                </div>
-              </div>
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-warning text-sm font-bold text-warning-foreground">{reminders.length}</span>
-            </CardContent>
-          </Card>
-        </motion.div>
-      )}
 
       {/* Recent Transactions */}
       <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
