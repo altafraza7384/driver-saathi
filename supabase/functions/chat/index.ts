@@ -174,6 +174,90 @@ const tools = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "get_transactions_summary",
+      description: "Get user's transaction summary. Use when user asks about earnings, spending, income, expenses, or financial summary for today/week/month.",
+      parameters: {
+        type: "object",
+        properties: {
+          period: { type: "string", enum: ["today", "week", "month", "all"], description: "Time period" },
+        },
+        required: ["period"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_notes",
+      description: "Get user's saved notes. Use when user asks to show, list, or read their notes.",
+      parameters: {
+        type: "object",
+        properties: {
+          search: { type: "string", description: "Optional search term" },
+        },
+        required: [],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_reminders",
+      description: "Get user's reminders. Use when user asks about upcoming reminders.",
+      parameters: {
+        type: "object",
+        properties: {
+          show_completed: { type: "boolean", description: "Include completed reminders" },
+        },
+        required: [],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_car_checks",
+      description: "Get vehicle maintenance history. Use when user asks about car service history or upcoming maintenance.",
+      parameters: {
+        type: "object",
+        properties: {
+          limit: { type: "integer", description: "Number of recent checks (default 5)" },
+        },
+        required: [],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_goals",
+      description: "Get savings goals and progress. Use when user asks about goals or savings.",
+      parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_debts",
+      description: "Get debts/loans and EMI status. Use when user asks about loans, debts, or EMI.",
+      parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_health_today",
+      description: "Get today's health stats. Use when user asks about today's water, steps, breaks, or sleep.",
+      parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+    },
+  },
 ];
 
 const systemPrompt = `You are a helpful AI driving assistant for Indian ride-hailing and gig drivers. You help them manage everything hands-free while driving.
@@ -185,16 +269,18 @@ CAPABILITIES - You can:
 - Set reminders with notification dates
 - Manage savings goals & add savings
 - Track debts/loans & record EMI payments
+- QUERY any saved data: earnings summary, notes, reminders, car checks, goals, debts, health stats
 - Provide driving tips, financial advice, and emergency help
 
 RULES:
 1. When user tells you data, ALWAYS use the appropriate tool to save it
-2. For health: use "add_water", "add_breaks", "add_steps" fields to INCREMENT values. Use direct fields to SET values.
-3. For reminders/debts/goals/car checks: always set notify_at so user gets notified
-4. After saving, confirm briefly what was saved with emoji
-5. Be concise - drivers are driving! Short responses.
-6. Use ₹ for currency. Support Hindi and English naturally.
-7. If user says "drank water" or "took a break" without a number, assume 1 glass or 1 break.
+2. When user ASKS about data, use the appropriate get_ tool to fetch it and summarize
+3. For health: use "add_water", "add_breaks", "add_steps" fields to INCREMENT values. Use direct fields to SET values.
+4. For reminders/debts/goals/car checks: always set notify_at so user gets notified
+5. After saving, confirm briefly what was saved with emoji
+6. Be concise - drivers are driving! Short responses.
+7. Use ₹ for currency. Support Hindi and English naturally.
+8. If user says "drank water" or "took a break" without a number, assume 1 glass or 1 break.
 
 Today's date is ${new Date().toISOString().split("T")[0]}.`;
 
@@ -374,6 +460,71 @@ async function executeToolCall(
         return isFullyPaid
           ? `🎉 "${debt.name}" FULLY PAID! Total paid: ₹${newPaid}`
           : `✅ ₹${args.amount} EMI paid for "${debt.name}". Remaining: ₹${Number(debt.principal) - newPaid}`;
+      }
+      case "get_transactions_summary": {
+        const period = args.period as string;
+        let query = supabaseAdmin.from("transactions").select("*").eq("user_id", userId);
+        if (period === "today") query = query.eq("transaction_date", today);
+        else if (period === "week") {
+          const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
+          query = query.gte("transaction_date", weekAgo.toISOString().split("T")[0]);
+        } else if (period === "month") {
+          const monthAgo = new Date(); monthAgo.setDate(monthAgo.getDate() - 30);
+          query = query.gte("transaction_date", monthAgo.toISOString().split("T")[0]);
+        }
+        const { data: txns } = await query.order("transaction_date", { ascending: false }).limit(50);
+        if (!txns?.length) return `📊 No transactions found for ${period}.`;
+        const income = txns.filter(t => t.type === "income").reduce((s, t) => s + Number(t.amount), 0);
+        const expense = txns.filter(t => t.type === "expense").reduce((s, t) => s + Number(t.amount), 0);
+        const platforms = [...new Set(txns.filter(t => t.platform).map(t => t.platform))];
+        return `📊 ${period.toUpperCase()} Summary:\n💰 Income: ₹${income}\n💸 Expenses: ₹${expense}\n📈 Net: ₹${income - expense}\n📝 ${txns.length} transactions${platforms.length ? `\n🚗 Platforms: ${platforms.join(", ")}` : ""}`;
+      }
+      case "get_notes": {
+        let query = supabaseAdmin.from("notes").select("*").eq("user_id", userId);
+        if (args.search) query = query.ilike("title", `%${args.search}%`);
+        const { data: notes } = await query.order("created_at", { ascending: false }).limit(10);
+        if (!notes?.length) return `📝 No notes found.`;
+        return `📝 Your Notes (${notes.length}):\n` + notes.map((n, i) => `${i + 1}. **${n.title}** — ${n.content?.slice(0, 60) || ""}`).join("\n");
+      }
+      case "get_reminders": {
+        let query = supabaseAdmin.from("reminders").select("*").eq("user_id", userId);
+        if (!args.show_completed) query = query.eq("is_completed", false);
+        const { data: rems } = await query.order("reminder_date", { ascending: true }).limit(10);
+        if (!rems?.length) return `🔔 No upcoming reminders.`;
+        return `🔔 Reminders (${rems.length}):\n` + rems.map((r, i) => `${i + 1}. ${r.title} — ${r.reminder_date}${r.category !== "general" ? ` [${r.category}]` : ""}`).join("\n");
+      }
+      case "get_car_checks": {
+        const limit = (args.limit as number) || 5;
+        const { data: checks } = await supabaseAdmin.from("car_checks").select("*").eq("user_id", userId)
+          .order("check_date", { ascending: false }).limit(limit);
+        if (!checks?.length) return `🔧 No car checks logged.`;
+        return `🔧 Car Checks (${checks.length}):\n` + checks.map((c, i) =>
+          `${i + 1}. ${c.check_type} — ${c.check_date}${c.cost ? ` (₹${c.cost})` : ""}${c.next_due_date ? ` | Next: ${c.next_due_date}` : ""}`
+        ).join("\n");
+      }
+      case "get_goals": {
+        const { data: goals } = await supabaseAdmin.from("goals").select("*").eq("user_id", userId)
+          .order("created_at", { ascending: false });
+        if (!goals?.length) return `🎯 No goals set.`;
+        return `🎯 Goals (${goals.length}):\n` + goals.map((g, i) => {
+          const pct = Math.round((Number(g.saved_amount) / Number(g.target_amount)) * 100);
+          return `${i + 1}. ${g.title} — ₹${g.saved_amount}/₹${g.target_amount} (${pct}%)${g.is_completed ? " ✅" : ""}${g.deadline ? ` | Due: ${g.deadline}` : ""}`;
+        }).join("\n");
+      }
+      case "get_debts": {
+        const { data: debts } = await supabaseAdmin.from("debts").select("*").eq("user_id", userId)
+          .order("created_at", { ascending: false });
+        if (!debts?.length) return `💳 No debts recorded.`;
+        return `💳 Debts (${debts.length}):\n` + debts.map((d, i) => {
+          const remaining = Number(d.principal) - Number(d.total_paid);
+          return `${i + 1}. ${d.name} — ₹${d.principal}${d.emi_amount ? ` | EMI: ₹${d.emi_amount}` : ""} | Paid: ₹${d.total_paid} | Left: ₹${remaining}${d.is_active ? "" : " ✅ PAID"}`;
+        }).join("\n");
+      }
+      case "get_health_today": {
+        const { data: log } = await supabaseAdmin.from("health_logs").select("*")
+          .eq("user_id", userId).eq("log_date", today).maybeSingle();
+        if (!log) return `🏥 No health data logged today yet.`;
+        return `🏥 Today's Health:\n😴 Sleep: ${log.sleep_hours || 0}hrs\n💧 Water: ${log.water_glasses || 0} glasses\n🚶 Steps: ${log.steps || 0}\n☕ Breaks: ${log.breaks_taken || 0}${log.notes ? `\n📝 ${log.notes}` : ""}`;
       }
       default:
         return `Unknown tool: ${toolName}`;
