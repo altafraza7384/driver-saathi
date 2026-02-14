@@ -3,13 +3,13 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { formatINR } from "@/lib/currency";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, ArrowLeft, CreditCard, Trash2 } from "lucide-react";
+import { Plus, ArrowLeft, CreditCard, Trash2, Pencil, Banknote } from "lucide-react";
 import { motion } from "framer-motion";
 import {
   Dialog,
@@ -52,6 +52,17 @@ export default function DebtsPage() {
   const [tenure, setTenure] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // Edit state
+  const [editDebt, setEditDebt] = useState<Debt | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editPrincipal, setEditPrincipal] = useState("");
+  const [editRate, setEditRate] = useState("");
+  const [editTenure, setEditTenure] = useState("");
+
+  // Pay EMI state
+  const [payDebtId, setPayDebtId] = useState<string | null>(null);
+  const [payAmount, setPayAmount] = useState("");
+
   useEffect(() => {
     if (user) fetchDebts();
   }, [user]);
@@ -92,8 +103,71 @@ export default function DebtsPage() {
     setSaving(false);
   };
 
+  const openEdit = (debt: Debt) => {
+    setEditDebt(debt);
+    setEditName(debt.name);
+    setEditPrincipal(String(debt.principal));
+    setEditRate(String(debt.interest_rate));
+    setEditTenure(String(debt.tenure_months));
+  };
+
+  const handleUpdate = async () => {
+    if (!editDebt) return;
+    setSaving(true);
+    const p = parseFloat(editPrincipal);
+    const r = parseFloat(editRate) || 0;
+    const m = parseInt(editTenure) || 12;
+    const emi = calculateEMI(p, r, m);
+
+    const { error } = await supabase.from("debts").update({
+      name: editName,
+      principal: p,
+      interest_rate: r,
+      tenure_months: m,
+      emi_amount: Math.round(emi * 100) / 100,
+    }).eq("id", editDebt.id);
+
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Loan updated!" });
+      setEditDebt(null);
+      fetchDebts();
+    }
+    setSaving(false);
+  };
+
+  const handlePayEMI = async () => {
+    if (!payDebtId || !payAmount || !user) return;
+    const debt = debts.find(d => d.id === payDebtId);
+    if (!debt) return;
+
+    const amount = parseFloat(payAmount);
+    const newTotalPaid = Number(debt.total_paid) + amount;
+    const isFullyPaid = newTotalPaid >= Number(debt.principal);
+
+    // Record payment
+    await supabase.from("debt_payments").insert({
+      user_id: user.id,
+      debt_id: payDebtId,
+      amount,
+    });
+
+    // Update debt
+    await supabase.from("debts").update({
+      total_paid: newTotalPaid,
+      is_active: !isFullyPaid,
+    }).eq("id", payDebtId);
+
+    toast({ title: isFullyPaid ? "🎉 Loan fully paid!" : `₹${payAmount} payment recorded!` });
+    setPayDebtId(null);
+    setPayAmount("");
+    fetchDebts();
+  };
+
   const handleDelete = async (id: string) => {
     await supabase.from("debts").delete().eq("id", id);
+    toast({ title: "Loan deleted" });
     fetchDebts();
   };
 
@@ -191,9 +265,14 @@ export default function DebtsPage() {
                           <p className="text-xs text-muted-foreground">{debt.interest_rate}% • {debt.tenure_months} months</p>
                         </div>
                       </div>
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDelete(debt.id)}>
-                        <Trash2 className="h-4 w-4 text-muted-foreground" />
-                      </Button>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(debt)}>
+                          <Pencil className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDelete(debt.id)}>
+                          <Trash2 className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                      </div>
                     </div>
                     <div className="flex justify-between text-xs">
                       <span>Paid: {formatINR(Number(debt.total_paid))}</span>
@@ -203,6 +282,28 @@ export default function DebtsPage() {
                     {debt.emi_amount && (
                       <p className="text-xs text-muted-foreground">EMI: {formatINR(Number(debt.emi_amount))}/month</p>
                     )}
+                    {debt.is_active && (
+                      <>
+                        {payDebtId === debt.id ? (
+                          <div className="flex gap-2">
+                            <Input
+                              type="number"
+                              placeholder="Payment amount"
+                              value={payAmount}
+                              onChange={(e) => setPayAmount(e.target.value)}
+                              min="1"
+                              className="flex-1"
+                            />
+                            <Button size="sm" onClick={handlePayEMI}>Pay</Button>
+                            <Button size="sm" variant="ghost" onClick={() => { setPayDebtId(null); setPayAmount(""); }}>✕</Button>
+                          </div>
+                        ) : (
+                          <Button size="sm" variant="outline" className="w-full" onClick={() => { setPayDebtId(debt.id); setPayAmount(String(debt.emi_amount || "")); }}>
+                            <Banknote className="h-4 w-4 mr-1" /> Record Payment
+                          </Button>
+                        )}
+                      </>
+                    )}
                   </CardContent>
                 </Card>
               </motion.div>
@@ -210,6 +311,38 @@ export default function DebtsPage() {
           })}
         </div>
       )}
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editDebt} onOpenChange={(open) => !open && setEditDebt(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Edit Loan</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Loan Name</Label>
+              <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Principal Amount (₹)</Label>
+              <Input type="number" value={editPrincipal} onChange={(e) => setEditPrincipal(e.target.value)} min="1" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Interest Rate (%)</Label>
+                <Input type="number" value={editRate} onChange={(e) => setEditRate(e.target.value)} min="0" step="0.1" />
+              </div>
+              <div className="space-y-2">
+                <Label>Tenure (months)</Label>
+                <Input type="number" value={editTenure} onChange={(e) => setEditTenure(e.target.value)} min="1" />
+              </div>
+            </div>
+            <Button className="w-full" onClick={handleUpdate} disabled={saving}>
+              {saving ? "Saving..." : "Update Loan"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+
+

@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, ArrowLeft, Target, Trash2, PartyPopper } from "lucide-react";
+import { Plus, ArrowLeft, Target, Trash2, PartyPopper, Pencil } from "lucide-react";
 import { motion } from "framer-motion";
 import { format } from "date-fns";
 import {
@@ -45,6 +45,12 @@ export default function GoalsPage() {
   const [deadline, setDeadline] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // Edit state
+  const [editGoal, setEditGoal] = useState<Goal | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editTarget, setEditTarget] = useState("");
+  const [editDeadline, setEditDeadline] = useState("");
+
   useEffect(() => {
     if (user) fetchGoals();
   }, [user]);
@@ -78,6 +84,36 @@ export default function GoalsPage() {
     setSaving(false);
   };
 
+  const openEdit = (goal: Goal) => {
+    setEditGoal(goal);
+    setEditTitle(goal.title);
+    setEditTarget(String(goal.target_amount));
+    setEditDeadline(goal.deadline || "");
+  };
+
+  const handleUpdate = async () => {
+    if (!editGoal) return;
+    setSaving(true);
+    const newTarget = parseFloat(editTarget);
+    const isCompleted = Number(editGoal.saved_amount) >= newTarget;
+
+    const { error } = await supabase.from("goals").update({
+      title: editTitle,
+      target_amount: newTarget,
+      deadline: editDeadline || null,
+      is_completed: isCompleted,
+    }).eq("id", editGoal.id);
+
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Goal updated!" });
+      setEditGoal(null);
+      fetchGoals();
+    }
+    setSaving(false);
+  };
+
   const handleAddSavings = async (goalId: string) => {
     const goal = goals.find(g => g.id === goalId);
     if (!goal || !addAmount) return;
@@ -103,6 +139,7 @@ export default function GoalsPage() {
 
   const handleDelete = async (id: string) => {
     await supabase.from("goals").delete().eq("id", id);
+    toast({ title: "Goal deleted" });
     fetchGoals();
   };
 
@@ -173,9 +210,14 @@ export default function GoalsPage() {
                           )}
                         </div>
                       </div>
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDelete(goal.id)}>
-                        <Trash2 className="h-4 w-4 text-muted-foreground" />
-                      </Button>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(goal)}>
+                          <Pencil className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDelete(goal.id)}>
+                          <Trash2 className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                      </div>
                     </div>
                     <div className="flex justify-between text-xs">
                       <span>Saved: {formatINR(Number(goal.saved_amount))}</span>
@@ -213,6 +255,30 @@ export default function GoalsPage() {
           })}
         </div>
       )}
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editGoal} onOpenChange={(open) => !open && setEditGoal(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Edit Goal</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Goal Title</Label>
+              <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Target Amount (₹)</Label>
+              <Input type="number" value={editTarget} onChange={(e) => setEditTarget(e.target.value)} min="1" />
+            </div>
+            <div className="space-y-2">
+              <Label>Deadline (optional)</Label>
+              <Input type="date" value={editDeadline} onChange={(e) => setEditDeadline(e.target.value)} />
+            </div>
+            <Button className="w-full" onClick={handleUpdate} disabled={saving}>
+              {saving ? "Saving..." : "Update Goal"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
