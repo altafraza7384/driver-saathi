@@ -17,10 +17,10 @@ function getGreetingKey(): string {
 }
 
 const quickActions = [
-  { labelKey: "home.addIncome", icon: Plus, path: "/transactions/add?type=income", color: "bg-success text-success-foreground" },
-  { labelKey: "home.addExpense", icon: Minus, path: "/transactions/add?type=expense", color: "bg-destructive text-destructive-foreground" },
+  { labelKey: "home.addTransaction", icon: Plus, path: "/transactions/add", color: "bg-primary text-primary-foreground" },
   { labelKey: "home.carCheck", icon: Car, path: "/car-checks", color: "bg-warning text-warning-foreground" },
-  { labelKey: "home.notes", icon: StickyNote, path: "/notes", color: "bg-primary text-primary-foreground" },
+  { labelKey: "home.reminders", icon: Bell, path: "/reminders", color: "bg-destructive text-destructive-foreground" },
+  { labelKey: "home.notes", icon: StickyNote, path: "/notes", color: "bg-success text-success-foreground" },
 ];
 
 export default function HomePage() {
