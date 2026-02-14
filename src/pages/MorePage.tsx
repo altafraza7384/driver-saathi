@@ -1,7 +1,7 @@
 import { useI18n } from "@/lib/i18n";
 import { 
   CreditCard, Target, Car, Bell, StickyNote, Shield, 
-  Settings, ChevronRight, Sun, Moon, Info
+  Settings, ChevronRight, Sun, Moon, Info, HardDrive
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "next-themes";
@@ -22,6 +22,7 @@ const menuItems = [
   { label: "Reminders", icon: Bell, path: "/reminders" },
   { label: "Notes", icon: StickyNote, path: "/notes" },
   { label: "Emergency SOS", icon: Shield, path: "/sos" },
+  { label: "Data Backup", icon: HardDrive, path: "/data-backup" },
   { label: "Settings", icon: Settings, path: "/settings" },
 ];
 

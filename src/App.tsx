@@ -20,6 +20,7 @@ import RemindersPage from "./pages/RemindersPage";
 import NotesPage from "./pages/NotesPage";
 import SOSPage from "./pages/SOSPage";
 import SettingsPage from "./pages/SettingsPage";
+import DataBackupPage from "./pages/DataBackupPage";
 import AuthPage from "./pages/AuthPage";
 import NotFound from "./pages/NotFound";
 
@@ -68,6 +69,7 @@ const App = () => (
                   <Route path="/notes" element={<NotesPage />} />
                   <Route path="/sos" element={<SOSPage />} />
                   <Route path="/settings" element={<SettingsPage />} />
+                  <Route path="/data-backup" element={<DataBackupPage />} />
                 </Route>
                 <Route path="*" element={<NotFound />} />
               </Routes>
