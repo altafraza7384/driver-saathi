@@ -6,9 +6,25 @@ import { useI18n } from "@/lib/i18n";
 import { formatINR } from "@/lib/currency";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Minus, ArrowUpDown, Filter } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
+import { Plus, Minus, Trash2, Pencil } from "lucide-react";
 import { motion } from "framer-motion";
 import { format } from "date-fns";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type Transaction = {
   id: string;
@@ -28,9 +44,18 @@ export default function TransactionsPage() {
   const { t } = useI18n();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [filter, setFilter] = useState<"all" | "income" | "expense">("all");
   const [loading, setLoading] = useState(true);
+
+  // Edit state
+  const [editTx, setEditTx] = useState<Transaction | null>(null);
+  const [editAmount, setEditAmount] = useState("");
+  const [editCategory, setEditCategory] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editDate, setEditDate] = useState("");
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -53,6 +78,40 @@ export default function TransactionsPage() {
     setLoading(false);
   };
 
+  const handleDelete = async (id: string) => {
+    await supabase.from("transactions").delete().eq("id", id);
+    toast({ title: "Transaction deleted" });
+    fetchTransactions();
+  };
+
+  const openEdit = (tx: Transaction) => {
+    setEditTx(tx);
+    setEditAmount(String(tx.amount));
+    setEditCategory(tx.category);
+    setEditDescription(tx.description || "");
+    setEditDate(tx.transaction_date);
+  };
+
+  const handleUpdate = async () => {
+    if (!editTx) return;
+    setSaving(true);
+    const { error } = await supabase.from("transactions").update({
+      amount: parseFloat(editAmount),
+      category: editCategory,
+      description: editDescription || null,
+      transaction_date: editDate,
+    }).eq("id", editTx.id);
+
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Transaction updated" });
+      setEditTx(null);
+      fetchTransactions();
+    }
+    setSaving(false);
+  };
+
   const totals = transactions.reduce(
     (acc, tx) => {
       if (tx.type === "income") acc.income += Number(tx.amount);
@@ -61,6 +120,8 @@ export default function TransactionsPage() {
     },
     { income: 0, expense: 0 }
   );
+
+  const categoryOptions = editTx?.type === "income" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
 
   return (
     <div className="space-y-4 p-4 pt-6">
@@ -120,29 +181,72 @@ export default function TransactionsPage() {
             <motion.div key={tx.id} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}>
               <Card className="border-0 shadow-sm">
                 <CardContent className="flex items-center justify-between p-3">
-                  <div className="flex items-center gap-3">
-                    <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
                       tx.type === "income" ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"
                     }`}>
                       {tx.type === "income" ? <Plus className="h-4 w-4" /> : <Minus className="h-4 w-4" />}
                     </div>
-                    <div>
-                      <p className="text-sm font-medium">{tx.category}{tx.platform ? ` • ${tx.platform}` : ""}</p>
-                      <p className="text-xs text-muted-foreground">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{tx.category}{tx.platform ? ` • ${tx.platform}` : ""}</p>
+                      <p className="text-xs text-muted-foreground truncate">
                         {format(new Date(tx.transaction_date), "dd MMM yyyy")}
                         {tx.description ? ` • ${tx.description}` : ""}
                       </p>
                     </div>
                   </div>
-                  <span className={`text-sm font-bold ${tx.type === "income" ? "text-success" : "text-destructive"}`}>
-                    {tx.type === "income" ? "+" : "-"}{formatINR(Number(tx.amount))}
-                  </span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className={`text-sm font-bold ${tx.type === "income" ? "text-success" : "text-destructive"}`}>
+                      {tx.type === "income" ? "+" : "-"}{formatINR(Number(tx.amount))}
+                    </span>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(tx)}>
+                      <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(tx.id)}>
+                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             </motion.div>
           ))
         )}
       </div>
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editTx} onOpenChange={(open) => !open && setEditTx(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Edit Transaction</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Amount (₹)</Label>
+              <Input type="number" value={editAmount} onChange={(e) => setEditAmount(e.target.value)} min="1" />
+            </div>
+            <div className="space-y-2">
+              <Label>Category</Label>
+              <Select value={editCategory} onValueChange={setEditCategory}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {categoryOptions.map((c) => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Input value={editDescription} onChange={(e) => setEditDescription(e.target.value)} placeholder="Optional" />
+            </div>
+            <div className="space-y-2">
+              <Label>Date</Label>
+              <Input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
+            </div>
+            <Button className="w-full" onClick={handleUpdate} disabled={saving}>
+              {saving ? "Saving..." : "Update Transaction"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
