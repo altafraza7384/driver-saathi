@@ -115,4 +115,7 @@
   .pb-safe {
     padding-bottom: calc(env(safe-area-inset-bottom) + 4rem);
   }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 }
