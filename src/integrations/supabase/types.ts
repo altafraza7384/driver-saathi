@@ -14,6 +14,24 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_config: {
+        Row: {
+          created_at: string | null
+          key: string
+          value: string
+        }
+        Insert: {
+          created_at?: string | null
+          key: string
+          value: string
+        }
+        Update: {
+          created_at?: string | null
+          key?: string
+          value?: string
+        }
+        Relationships: []
+      }
       car_checks: {
         Row: {
           check_date: string
@@ -382,6 +400,33 @@ export type Database = {
         }
         Relationships: []
       }
+      push_subscriptions: {
+        Row: {
+          auth: string
+          created_at: string | null
+          endpoint: string
+          id: string
+          p256dh: string
+          user_id: string
+        }
+        Insert: {
+          auth: string
+          created_at?: string | null
+          endpoint: string
+          id?: string
+          p256dh: string
+          user_id: string
+        }
+        Update: {
+          auth?: string
+          created_at?: string | null
+          endpoint?: string
+          id?: string
+          p256dh?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       reminders: {
         Row: {
           category: string
@@ -417,6 +462,33 @@ export type Database = {
           reminder_date?: string
           title?: string
           updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      sent_notifications: {
+        Row: {
+          id: string
+          notify_at: string
+          sent_at: string | null
+          source_id: string
+          source_table: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          notify_at: string
+          sent_at?: string | null
+          source_id: string
+          source_table: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          notify_at?: string
+          sent_at?: string | null
+          source_id?: string
+          source_table?: string
           user_id?: string
         }
         Relationships: []
