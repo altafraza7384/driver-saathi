@@ -499,7 +499,9 @@ async function executeToolCall(
       }
       case "get_notes": {
         let query = supabaseAdmin.from("notes").select("*").eq("user_id", userId);
-        if (args.search) query = query.ilike("title", `%${args.search}%`);
+        if (args.search) {
+          query = query.or(`title.ilike.%${args.search}%,content.ilike.%${args.search}%`);
+        }
         const { data: notes } = await query.order("created_at", { ascending: false }).limit(10);
         if (!notes?.length) return `📝 No notes found.`;
         return `📝 Your Notes (${notes.length}):\n` + notes.map((n, i) => `${i + 1}. **${n.title}** — ${n.content?.slice(0, 60) || ""}`).join("\n");

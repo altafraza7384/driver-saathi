@@ -96,6 +96,7 @@ export default function TransactionsPage() {
     await supabase.from("transactions").delete().eq("id", id);
     toast({ title: "Transaction deleted" });
     fetchTransactions();
+    fetchWeeklyData();
   };
 
   const openEdit = (tx: Transaction) => {
@@ -122,6 +123,7 @@ export default function TransactionsPage() {
       toast({ title: "Transaction updated" });
       setEditTx(null);
       fetchTransactions();
+      fetchWeeklyData();
     }
     setSaving(false);
   };
