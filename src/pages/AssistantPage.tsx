@@ -4,7 +4,7 @@ import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Send, Bot, User, Trash2, Mic, MicOff, Square } from "lucide-react";
+import { Send, Bot, User, Trash2, Mic, Square, Volume2, VolumeX } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,6 +13,38 @@ type Msg = { role: "user" | "assistant"; content: string };
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 
+// Speak text aloud using browser TTS
+function speakText(text: string) {
+  if (!("speechSynthesis" in window)) return;
+  // Cancel any ongoing speech
+  window.speechSynthesis.cancel();
+  
+  // Clean text: remove emojis, markdown symbols for cleaner speech
+  const cleanText = text
+    .replace(/[\u{1F600}-\u{1F9FF}|\u{2600}-\u{26FF}|\u{2700}-\u{27BF}|\u{1F300}-\u{1F5FF}|\u{1F680}-\u{1F6FF}|\u{1F1E0}-\u{1F1FF}|\u{2702}-\u{27B0}|\u{FE0F}|\u{200D}]/gu, "")
+    .replace(/[*#_~`]/g, "")
+    .replace(/\n+/g, ". ")
+    .trim();
+  
+  if (!cleanText) return;
+  
+  const utterance = new SpeechSynthesisUtterance(cleanText);
+  
+  // Detect language: if mostly Devanagari/Hindi chars, use Hindi voice
+  const hindiChars = (cleanText.match(/[\u0900-\u097F]/g) || []).length;
+  const isHindi = hindiChars > cleanText.length * 0.2;
+  utterance.lang = isHindi ? "hi-IN" : "en-IN";
+  utterance.rate = 1.05;
+  utterance.pitch = 1;
+  
+  // Try to find a good voice
+  const voices = window.speechSynthesis.getVoices();
+  const preferred = voices.find(v => v.lang === utterance.lang) || voices.find(v => v.lang.startsWith(isHindi ? "hi" : "en"));
+  if (preferred) utterance.voice = preferred;
+  
+  window.speechSynthesis.speak(utterance);
+}
+
 export default function AssistantPage() {
   const { t } = useI18n();
   const { session } = useAuth();
@@ -20,6 +52,7 @@ export default function AssistantPage() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [speakEnabled, setSpeakEnabled] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
 
@@ -118,8 +151,12 @@ export default function AssistantPage() {
       toast.error("Failed to get response");
     } finally {
       setIsLoading(false);
+      // Speak the final assistant message
+      if (speakEnabled && assistantSoFar) {
+        speakText(assistantSoFar);
+      }
     }
-  }, [input, isLoading, messages, session]);
+  }, [input, isLoading, messages, session, speakEnabled]);
 
   const toggleVoice = useCallback(() => {
     if (isListening) {
@@ -181,11 +218,24 @@ export default function AssistantPage() {
     <div className="flex h-[calc(100vh-7rem)] flex-col p-4 pt-6">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">{t("nav.assistant")}</h1>
-        {messages.length > 0 && (
-          <Button variant="ghost" size="icon" onClick={() => setMessages([])}>
-            <Trash2 className="h-4 w-4" />
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => {
+              setSpeakEnabled(!speakEnabled);
+              if (speakEnabled) window.speechSynthesis.cancel();
+            }}
+            title={speakEnabled ? "Mute voice replies" : "Enable voice replies"}
+          >
+            {speakEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
           </Button>
-        )}
+          {messages.length > 0 && (
+            <Button variant="ghost" size="icon" onClick={() => { setMessages([]); window.speechSynthesis.cancel(); }}>
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-3 pb-4">
