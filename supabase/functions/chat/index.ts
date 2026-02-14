@@ -17,7 +17,7 @@ const tools = [
         properties: {
           type: { type: "string", enum: ["income", "expense"], description: "Whether it's income or expense" },
           amount: { type: "number", description: "The amount in INR" },
-          category: { type: "string", description: "Category like 'ride_fare', 'fuel', 'food', 'maintenance', 'toll', 'insurance', 'emi', 'other'" },
+          category: { type: "string", description: "Category like 'Ride Earnings', 'Tips', 'Incentives', 'Bonus', 'Fuel', 'Maintenance', 'Food', 'Tolls', 'Insurance', 'EMI', 'Phone', 'Other'" },
           platform: { type: "string", description: "Platform like 'Ola', 'Uber', 'Rapido', or null if not applicable" },
           description: { type: "string", description: "Brief description of the transaction" },
         },
@@ -46,7 +46,7 @@ const tools = [
     type: "function",
     function: {
       name: "add_reminder",
-      description: "Create a reminder for the user. Use when user wants to be reminded of something.",
+      description: "Create a reminder for the user. Use when user wants to be reminded of something. Support notification scheduling.",
       parameters: {
         type: "object",
         properties: {
@@ -54,6 +54,7 @@ const tools = [
           description: { type: "string", description: "Reminder details" },
           reminder_date: { type: "string", description: "Date in YYYY-MM-DD format" },
           category: { type: "string", description: "Category like 'general', 'vehicle', 'finance', 'health'" },
+          notify_at: { type: "string", description: "Notification date-time in ISO format (YYYY-MM-DDTHH:MM:SS). Set to the reminder_date at 09:00 if not specified by user." },
         },
         required: ["title", "reminder_date"],
         additionalProperties: false,
@@ -68,11 +69,12 @@ const tools = [
       parameters: {
         type: "object",
         properties: {
-          check_type: { type: "string", description: "Type like 'oil_change', 'tyre_check', 'service', 'wash', 'battery', 'brake', 'other'" },
+          check_type: { type: "string", description: "Type like 'Oil Change', 'Tyre Check', 'Service', 'Wash', 'Battery', 'Brake', 'PUC', 'Insurance', 'Other'" },
           description: { type: "string", description: "Details about the check" },
           cost: { type: "number", description: "Cost in INR if mentioned" },
           odometer_reading: { type: "number", description: "Odometer reading in km if mentioned" },
           next_due_date: { type: "string", description: "Next due date in YYYY-MM-DD format if mentioned" },
+          notify_at: { type: "string", description: "Notification date-time in ISO format for the next due date reminder" },
         },
         required: ["check_type"],
         additionalProperties: false,
@@ -82,16 +84,19 @@ const tools = [
   {
     type: "function",
     function: {
-      name: "add_health_log",
-      description: "Log health data for the user. Use when user mentions sleep, water intake, steps, or breaks.",
+      name: "update_health_log",
+      description: "Log or update today's health data for the user. Use when user mentions sleep, water intake, steps, breaks, or any health metric. This will update today's existing log or create a new one.",
       parameters: {
         type: "object",
         properties: {
           sleep_hours: { type: "number", description: "Hours of sleep" },
-          water_glasses: { type: "integer", description: "Number of water glasses" },
-          steps: { type: "integer", description: "Step count" },
-          breaks_taken: { type: "integer", description: "Number of breaks taken" },
+          water_glasses: { type: "integer", description: "Number of water glasses to SET (not add)" },
+          steps: { type: "integer", description: "Step count to SET" },
+          breaks_taken: { type: "integer", description: "Number of breaks to SET (not add)" },
           notes: { type: "string", description: "Any health notes" },
+          add_water: { type: "integer", description: "Number of water glasses to ADD to current count" },
+          add_breaks: { type: "integer", description: "Number of breaks to ADD to current count" },
+          add_steps: { type: "integer", description: "Number of steps to ADD to current count" },
         },
         required: [],
         additionalProperties: false,
@@ -109,8 +114,25 @@ const tools = [
           title: { type: "string", description: "Goal title" },
           target_amount: { type: "number", description: "Target amount in INR" },
           deadline: { type: "string", description: "Deadline in YYYY-MM-DD format if mentioned" },
+          notify_at: { type: "string", description: "Notification date-time in ISO format for goal deadline reminder" },
         },
         required: ["title", "target_amount"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "add_goal_savings",
+      description: "Add savings to an existing goal. Use when user says they saved money towards a goal.",
+      parameters: {
+        type: "object",
+        properties: {
+          goal_title: { type: "string", description: "The goal title to add savings to (fuzzy match)" },
+          amount: { type: "number", description: "Amount to add to savings in INR" },
+        },
+        required: ["goal_title", "amount"],
         additionalProperties: false,
       },
     },
@@ -128,25 +150,52 @@ const tools = [
           interest_rate: { type: "number", description: "Annual interest rate percentage" },
           tenure_months: { type: "integer", description: "Loan tenure in months" },
           emi_amount: { type: "number", description: "Monthly EMI amount if known" },
+          notify_at: { type: "string", description: "Notification date-time in ISO format for EMI due date reminder" },
         },
         required: ["name", "principal"],
         additionalProperties: false,
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "add_debt_payment",
+      description: "Record an EMI or debt payment. Use when user says they paid an EMI or made a loan payment.",
+      parameters: {
+        type: "object",
+        properties: {
+          debt_name: { type: "string", description: "Name of the debt/loan (fuzzy match)" },
+          amount: { type: "number", description: "Payment amount in INR" },
+          note: { type: "string", description: "Payment note" },
+        },
+        required: ["debt_name", "amount"],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
-const systemPrompt = `You are a helpful AI assistant for Indian ride-hailing and gig drivers. You help them with:
-- Tracking income and expenses
-- Managing vehicle maintenance
-- Health and wellness tips for long drives
-- Financial advice and debt management
-- Emergency situations
-- General driving tips for Indian roads
+const systemPrompt = `You are a helpful AI driving assistant for Indian ride-hailing and gig drivers. You help them manage everything hands-free while driving.
 
-IMPORTANT: When a user tells you about their earnings, expenses, notes, reminders, car maintenance, health data, savings goals, or debts, you MUST use the appropriate tool to save the data. After saving, confirm what was saved.
+CAPABILITIES - You can:
+- Track income & expenses (Ola, Uber, Rapido etc)
+- Log vehicle maintenance & schedule next service
+- Track health (sleep, water, breaks, steps) - UPDATE today's log, don't create duplicates
+- Set reminders with notification dates
+- Manage savings goals & add savings
+- Track debts/loans & record EMI payments
+- Provide driving tips, financial advice, and emergency help
 
-Always be friendly, concise, and practical. Use ₹ for currency. Support Hindi and English naturally.
+RULES:
+1. When user tells you data, ALWAYS use the appropriate tool to save it
+2. For health: use "add_water", "add_breaks", "add_steps" fields to INCREMENT values. Use direct fields to SET values.
+3. For reminders/debts/goals/car checks: always set notify_at so user gets notified
+4. After saving, confirm briefly what was saved with emoji
+5. Be concise - drivers are driving! Short responses.
+6. Use ₹ for currency. Support Hindi and English naturally.
+7. If user says "drank water" or "took a break" without a number, assume 1 glass or 1 break.
+
 Today's date is ${new Date().toISOString().split("T")[0]}.`;
 
 async function executeToolCall(
@@ -155,6 +204,8 @@ async function executeToolCall(
   userId: string,
   supabaseAdmin: ReturnType<typeof createClient>
 ): Promise<string> {
+  const today = new Date().toISOString().split("T")[0];
+  
   try {
     switch (toolName) {
       case "add_transaction": {
@@ -167,7 +218,7 @@ async function executeToolCall(
           description: (args.description as string) || null,
         });
         if (error) throw error;
-        return `✅ ${args.type === "income" ? "Income" : "Expense"} of ₹${args.amount} (${args.category}) saved successfully.`;
+        return `✅ ${args.type === "income" ? "Income" : "Expense"} of ₹${args.amount} (${args.category}) saved.`;
       }
       case "add_note": {
         const { error } = await supabaseAdmin.from("notes").insert({
@@ -176,18 +227,20 @@ async function executeToolCall(
           content: args.content,
         });
         if (error) throw error;
-        return `✅ Note "${args.title}" saved successfully.`;
+        return `✅ Note "${args.title}" saved.`;
       }
       case "add_reminder": {
+        const notifyAt = args.notify_at || (args.reminder_date ? `${args.reminder_date}T09:00:00` : null);
         const { error } = await supabaseAdmin.from("reminders").insert({
           user_id: userId,
           title: args.title,
           description: (args.description as string) || null,
           reminder_date: args.reminder_date,
           category: (args.category as string) || "general",
+          notify_at: notifyAt,
         });
         if (error) throw error;
-        return `✅ Reminder "${args.title}" set for ${args.reminder_date}.`;
+        return `✅ Reminder "${args.title}" set for ${args.reminder_date} with notification.`;
       }
       case "add_car_check": {
         const { error } = await supabaseAdmin.from("car_checks").insert({
@@ -197,21 +250,52 @@ async function executeToolCall(
           cost: (args.cost as number) || null,
           odometer_reading: (args.odometer_reading as number) || null,
           next_due_date: (args.next_due_date as string) || null,
+          notify_at: (args.notify_at as string) || null,
         });
         if (error) throw error;
-        return `✅ Car check "${args.check_type}" logged successfully.`;
+        return `✅ Car check "${args.check_type}" logged.${args.next_due_date ? ` Next due: ${args.next_due_date}` : ""}`;
       }
-      case "add_health_log": {
-        const { error } = await supabaseAdmin.from("health_logs").insert({
+      case "update_health_log": {
+        // Check for existing today's log
+        const { data: existing } = await supabaseAdmin
+          .from("health_logs")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("log_date", today)
+          .maybeSingle();
+
+        const currentSleep = existing?.sleep_hours || 0;
+        const currentWater = existing?.water_glasses || 0;
+        const currentSteps = existing?.steps || 0;
+        const currentBreaks = existing?.breaks_taken || 0;
+
+        const payload = {
           user_id: userId,
-          sleep_hours: (args.sleep_hours as number) || null,
-          water_glasses: (args.water_glasses as number) || null,
-          steps: (args.steps as number) || null,
-          breaks_taken: (args.breaks_taken as number) || null,
-          notes: (args.notes as string) || null,
-        });
-        if (error) throw error;
-        return `✅ Health log saved successfully.`;
+          log_date: today,
+          sleep_hours: args.sleep_hours != null ? args.sleep_hours as number : currentSleep,
+          water_glasses: args.water_glasses != null ? args.water_glasses as number 
+            : args.add_water ? currentWater + (args.add_water as number) : currentWater,
+          steps: args.steps != null ? args.steps as number
+            : args.add_steps ? currentSteps + (args.add_steps as number) : currentSteps,
+          breaks_taken: args.breaks_taken != null ? args.breaks_taken as number
+            : args.add_breaks ? currentBreaks + (args.add_breaks as number) : currentBreaks,
+          notes: (args.notes as string) || existing?.notes || null,
+        };
+
+        if (existing) {
+          const { error } = await supabaseAdmin.from("health_logs").update(payload).eq("id", existing.id);
+          if (error) throw error;
+        } else {
+          const { error } = await supabaseAdmin.from("health_logs").insert(payload);
+          if (error) throw error;
+        }
+
+        const parts = [];
+        if (args.sleep_hours != null) parts.push(`Sleep: ${payload.sleep_hours}hrs`);
+        if (args.water_glasses != null || args.add_water) parts.push(`Water: ${payload.water_glasses} glasses`);
+        if (args.steps != null || args.add_steps) parts.push(`Steps: ${payload.steps}`);
+        if (args.breaks_taken != null || args.add_breaks) parts.push(`Breaks: ${payload.breaks_taken}`);
+        return `✅ Health updated — ${parts.join(", ") || "saved"}`;
       }
       case "add_goal": {
         const { error } = await supabaseAdmin.from("goals").insert({
@@ -219,9 +303,33 @@ async function executeToolCall(
           title: args.title,
           target_amount: args.target_amount,
           deadline: (args.deadline as string) || null,
+          notify_at: (args.notify_at as string) || null,
         });
         if (error) throw error;
         return `✅ Goal "${args.title}" (₹${args.target_amount}) created.`;
+      }
+      case "add_goal_savings": {
+        // Fuzzy match goal by title
+        const { data: goals } = await supabaseAdmin
+          .from("goals")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("is_completed", false);
+
+        const goalTitle = (args.goal_title as string).toLowerCase();
+        const goal = goals?.find(g => g.title.toLowerCase().includes(goalTitle) || goalTitle.includes(g.title.toLowerCase()));
+        if (!goal) return `❌ No active goal found matching "${args.goal_title}". Create one first.`;
+
+        const newSaved = Number(goal.saved_amount) + (args.amount as number);
+        const isCompleted = newSaved >= Number(goal.target_amount);
+        const { error } = await supabaseAdmin.from("goals").update({
+          saved_amount: newSaved,
+          is_completed: isCompleted,
+        }).eq("id", goal.id);
+        if (error) throw error;
+        return isCompleted 
+          ? `🎉 Goal "${goal.title}" COMPLETED! Saved ₹${newSaved}/₹${goal.target_amount}`
+          : `✅ ₹${args.amount} added to "${goal.title}". Progress: ₹${newSaved}/₹${goal.target_amount}`;
       }
       case "add_debt": {
         const { error } = await supabaseAdmin.from("debts").insert({
@@ -231,9 +339,41 @@ async function executeToolCall(
           interest_rate: (args.interest_rate as number) || 0,
           tenure_months: (args.tenure_months as number) || 12,
           emi_amount: (args.emi_amount as number) || null,
+          notify_at: (args.notify_at as string) || null,
         });
         if (error) throw error;
         return `✅ Debt "${args.name}" (₹${args.principal}) recorded.`;
+      }
+      case "add_debt_payment": {
+        // Fuzzy match debt by name
+        const { data: debts } = await supabaseAdmin
+          .from("debts")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("is_active", true);
+
+        const debtName = (args.debt_name as string).toLowerCase();
+        const debt = debts?.find(d => d.name.toLowerCase().includes(debtName) || debtName.includes(d.name.toLowerCase()));
+        if (!debt) return `❌ No active debt found matching "${args.debt_name}".`;
+
+        const { error: payErr } = await supabaseAdmin.from("debt_payments").insert({
+          user_id: userId,
+          debt_id: debt.id,
+          amount: args.amount,
+          note: (args.note as string) || null,
+        });
+        if (payErr) throw payErr;
+
+        const newPaid = Number(debt.total_paid) + (args.amount as number);
+        const isFullyPaid = newPaid >= Number(debt.principal);
+        await supabaseAdmin.from("debts").update({
+          total_paid: newPaid,
+          is_active: !isFullyPaid,
+        }).eq("id", debt.id);
+
+        return isFullyPaid
+          ? `🎉 "${debt.name}" FULLY PAID! Total paid: ₹${newPaid}`
+          : `✅ ₹${args.amount} EMI paid for "${debt.name}". Remaining: ₹${Number(debt.principal) - newPaid}`;
       }
       default:
         return `Unknown tool: ${toolName}`;
@@ -252,7 +392,6 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
-    // Extract user ID from auth header
     const authHeader = req.headers.get("authorization") || "";
     const token = authHeader.replace("Bearer ", "");
     
@@ -260,7 +399,6 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get user from token
     let userId = "";
     if (token && token !== Deno.env.get("SUPABASE_ANON_KEY")) {
       const { data: { user } } = await supabaseAdmin.auth.getUser(token);
@@ -303,7 +441,6 @@ serve(async (req) => {
     const firstResult = await firstResponse.json();
     const choice = firstResult.choices?.[0];
 
-    // Check if the AI wants to call tools
     if (choice?.message?.tool_calls && choice.message.tool_calls.length > 0 && userId) {
       const toolResults: { role: string; tool_call_id: string; content: string }[] = [];
 
@@ -319,7 +456,6 @@ serve(async (req) => {
         });
       }
 
-      // Second call: stream the final response with tool results
       const secondResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -341,7 +477,6 @@ serve(async (req) => {
       if (!secondResponse.ok) {
         const t = await secondResponse.text();
         console.error("AI second call error:", secondResponse.status, t);
-        // Fallback: return tool results directly
         const summary = toolResults.map((r) => r.content).join("\n");
         return new Response(JSON.stringify({ choices: [{ message: { role: "assistant", content: summary } }] }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -353,7 +488,6 @@ serve(async (req) => {
       });
     }
 
-    // No tool calls: stream directly
     const streamResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -370,7 +504,6 @@ serve(async (req) => {
     if (!streamResponse.ok) {
       const t = await streamResponse.text();
       console.error("AI stream error:", streamResponse.status, t);
-      // Fallback to non-streamed result
       const content = choice?.message?.content || "Sorry, I couldn't process that.";
       return new Response(JSON.stringify({ choices: [{ message: { role: "assistant", content } }] }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

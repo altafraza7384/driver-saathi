@@ -193,19 +193,31 @@ export default function AssistantPage() {
           <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
             <Bot className="h-12 w-12 mb-3 opacity-50" />
             <p className="text-sm font-medium">Hi! I'm your driving assistant 🚗</p>
-            <p className="text-xs mt-1">Ask me anything or use voice to add data!</p>
-            <div className="mt-4 grid grid-cols-1 gap-2 text-xs">
+            <p className="text-xs mt-1">Tap mic & speak — I'll save everything hands-free!</p>
+            <div className="mt-4 grid grid-cols-1 gap-2 text-xs w-full max-w-sm">
               <button onClick={() => send("I earned ₹1500 from Uber today")} className="rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent transition-colors">
-                🗣️ "I earned ₹1500 from Uber today"
+                💰 "I earned ₹1500 from Uber today"
               </button>
-              <button onClick={() => send("Add a note: get car serviced this week")} className="rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent transition-colors">
-                📝 "Add a note: get car serviced this week"
+              <button onClick={() => send("Spent ₹500 on fuel")} className="rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent transition-colors">
+                ⛽ "Spent ₹500 on fuel"
               </button>
-              <button onClick={() => send("I slept 6 hours and drank 8 glasses of water")} className="rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent transition-colors">
-                💪 "I slept 6 hours, drank 8 glasses of water"
+              <button onClick={() => send("I drank a glass of water")} className="rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent transition-colors">
+                💧 "I drank a glass of water"
               </button>
-              <button onClick={() => send("Set a reminder for insurance renewal on 2025-03-15")} className="rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent transition-colors">
-                🔔 "Remind me: insurance renewal March 15"
+              <button onClick={() => send("I took a break")} className="rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent transition-colors">
+                ☕ "I took a break"
+              </button>
+              <button onClick={() => send("I slept 7 hours last night")} className="rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent transition-colors">
+                😴 "I slept 7 hours last night"
+              </button>
+              <button onClick={() => send("Remind me car insurance renewal on March 15")} className="rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent transition-colors">
+                🔔 "Remind me insurance renewal March 15"
+              </button>
+              <button onClick={() => send("Paid ₹5000 EMI for car loan")} className="rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent transition-colors">
+                💳 "Paid ₹5000 EMI for car loan"
+              </button>
+              <button onClick={() => send("Got car oil changed for ₹800, next due in 3 months")} className="rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent transition-colors">
+                🔧 "Oil changed for ₹800, next in 3 months"
               </button>
             </div>
           </div>
