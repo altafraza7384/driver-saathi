@@ -24,6 +24,7 @@ export type Database = {
           id: string
           is_completed: boolean
           next_due_date: string | null
+          notify_at: string | null
           odometer_reading: number | null
           updated_at: string
           user_id: string
@@ -37,6 +38,7 @@ export type Database = {
           id?: string
           is_completed?: boolean
           next_due_date?: string | null
+          notify_at?: string | null
           odometer_reading?: number | null
           updated_at?: string
           user_id: string
@@ -50,6 +52,7 @@ export type Database = {
           id?: string
           is_completed?: boolean
           next_due_date?: string | null
+          notify_at?: string | null
           odometer_reading?: number | null
           updated_at?: string
           user_id?: string
@@ -126,6 +129,7 @@ export type Database = {
           interest_rate: number
           is_active: boolean
           name: string
+          notify_at: string | null
           principal: number
           start_date: string
           tenure_months: number
@@ -140,6 +144,7 @@ export type Database = {
           interest_rate?: number
           is_active?: boolean
           name: string
+          notify_at?: string | null
           principal: number
           start_date?: string
           tenure_months?: number
@@ -154,6 +159,7 @@ export type Database = {
           interest_rate?: number
           is_active?: boolean
           name?: string
+          notify_at?: string | null
           principal?: number
           start_date?: string
           tenure_months?: number
@@ -199,6 +205,7 @@ export type Database = {
           deadline: string | null
           id: string
           is_completed: boolean
+          notify_at: string | null
           saved_amount: number
           target_amount: number
           title: string
@@ -210,6 +217,7 @@ export type Database = {
           deadline?: string | null
           id?: string
           is_completed?: boolean
+          notify_at?: string | null
           saved_amount?: number
           target_amount: number
           title: string
@@ -221,6 +229,7 @@ export type Database = {
           deadline?: string | null
           id?: string
           is_completed?: boolean
+          notify_at?: string | null
           saved_amount?: number
           target_amount?: number
           title?: string
@@ -380,6 +389,7 @@ export type Database = {
           description: string | null
           id: string
           is_completed: boolean
+          notify_at: string | null
           reminder_date: string
           title: string
           updated_at: string
@@ -391,6 +401,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_completed?: boolean
+          notify_at?: string | null
           reminder_date: string
           title: string
           updated_at?: string
@@ -402,6 +413,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_completed?: boolean
+          notify_at?: string | null
           reminder_date?: string
           title?: string
           updated_at?: string

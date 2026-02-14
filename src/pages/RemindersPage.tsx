@@ -19,7 +19,7 @@ export default function RemindersPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ title: "", description: "", reminder_date: "", category: "general" });
+  const [form, setForm] = useState({ title: "", description: "", reminder_date: "", category: "general", notify_date: "", notify_time: "" });
 
   const { data: reminders = [], isLoading } = useQuery({
     queryKey: ["reminders"],
@@ -33,16 +33,18 @@ export default function RemindersPage() {
 
   const addMutation = useMutation({
     mutationFn: async () => {
+      const notifyAt = form.notify_date && form.notify_time ? `${form.notify_date}T${form.notify_time}:00` : form.notify_date ? `${form.notify_date}T09:00:00` : null;
       const { error } = await supabase.from("reminders").insert({
         user_id: user!.id, title: form.title, description: form.description || null,
         reminder_date: form.reminder_date, category: form.category,
-      });
+        notify_at: notifyAt,
+      } as any);
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["reminders"] });
       setOpen(false);
-      setForm({ title: "", description: "", reminder_date: "", category: "general" });
+      setForm({ title: "", description: "", reminder_date: "", category: "general", notify_date: "", notify_time: "" });
       toast.success("Reminder added!");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -90,6 +92,10 @@ export default function RemindersPage() {
                     <SelectContent>{CATEGORIES.map((c) => <SelectItem key={c} value={c} className="capitalize">{c}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label>Notify Date</Label><Input type="date" value={form.notify_date} onChange={(e) => setForm({ ...form, notify_date: e.target.value })} /></div>
+                <div><Label>Notify Time</Label><Input type="time" value={form.notify_time} onChange={(e) => setForm({ ...form, notify_time: e.target.value })} /></div>
               </div>
               <Button className="w-full" onClick={() => addMutation.mutate()} disabled={!form.title || !form.reminder_date || addMutation.isPending}>
                 {addMutation.isPending ? "Saving..." : "Save"}
