@@ -76,11 +76,12 @@ export function NotificationBell() {
   // Reminders with notify_at
   reminders.forEach((r: any) => {
     const notifyAt = r.notify_at ? parseISO(r.notify_at) : parseISO(r.reminder_date);
-    if (isBefore(notifyAt, twoDaysLater)) {
+    if (isBefore(notifyAt, twoDaysLater) && !isBefore(notifyAt, addDays(now, -1))) {
+      const dueDate = format(parseISO(r.reminder_date), "dd MMM yyyy");
       notifications.push({
         id: `rem-${r.id}`,
         title: r.title,
-        description: `${formatDueLabel(notifyAt)} • ${r.category}${r.notify_at ? ` • ${format(notifyAt, "hh:mm a")}` : ""}`,
+        description: `${formatDueLabel(notifyAt)} • Due: ${dueDate} • ${r.category}${r.notify_at ? ` • ${format(notifyAt, "hh:mm a")}` : ""}`,
         type: "reminder",
         date: r.reminder_date,
       });
@@ -92,10 +93,11 @@ export function NotificationBell() {
     if (debt.notify_at) {
       const notifyAt = parseISO(debt.notify_at);
       if (isBefore(notifyAt, twoDaysLater) && !isBefore(notifyAt, addDays(now, -1))) {
+        const emiDueDate = format(notifyAt, "dd MMM yyyy");
         notifications.push({
           id: `emi-${debt.id}`,
           title: `${debt.name} EMI Due`,
-          description: `${formatDueLabel(notifyAt)} • ₹${Number(debt.emi_amount || 0).toLocaleString("en-IN")} • ${format(notifyAt, "hh:mm a")}`,
+          description: `Due: ${emiDueDate} • ₹${Number(debt.emi_amount || 0).toLocaleString("en-IN")} • ${format(notifyAt, "hh:mm a")}`,
           type: "emi",
           date: format(notifyAt, "yyyy-MM-dd"),
         });
@@ -107,10 +109,11 @@ export function NotificationBell() {
     const today = now.getDate();
     const tomorrow = addDays(now, 1).getDate();
     if (startDay === today || startDay === tomorrow) {
+      const dueLabel = startDay === today ? format(now, "dd MMM yyyy") : format(addDays(now, 1), "dd MMM yyyy");
       notifications.push({
         id: `emi-day-${debt.id}`,
         title: `${debt.name} EMI Due`,
-        description: `EMI of ₹${Number(debt.emi_amount || 0).toLocaleString("en-IN")} is due ${startDay === today ? "today" : "tomorrow"}`,
+        description: `Due: ${dueLabel} • EMI ₹${Number(debt.emi_amount || 0).toLocaleString("en-IN")} is due ${startDay === today ? "today" : "tomorrow"}`,
         type: "emi",
         date: format(now, "yyyy-MM-dd"),
       });
@@ -122,10 +125,11 @@ export function NotificationBell() {
     const notifyAt = cc.notify_at ? parseISO(cc.notify_at) : cc.next_due_date ? parseISO(cc.next_due_date) : null;
     if (!notifyAt) return;
     if (isBefore(notifyAt, twoDaysLater) && !isBefore(notifyAt, addDays(now, -1))) {
+      const carDueDate = cc.next_due_date ? format(parseISO(cc.next_due_date), "dd MMM yyyy") : format(notifyAt, "dd MMM yyyy");
       notifications.push({
         id: `car-${cc.id}`,
         title: cc.check_type,
-        description: `${formatDueLabel(notifyAt)} - Car maintenance${cc.notify_at ? ` • ${format(notifyAt, "hh:mm a")}` : ""}`,
+        description: `Due: ${carDueDate} • Car maintenance${cc.notify_at ? ` • ${format(notifyAt, "hh:mm a")}` : ""}`,
         type: "car_check",
         date: cc.next_due_date || format(notifyAt, "yyyy-MM-dd"),
       });
@@ -137,10 +141,11 @@ export function NotificationBell() {
     if (!g.notify_at) return;
     const notifyAt = parseISO(g.notify_at);
     if (isBefore(notifyAt, twoDaysLater) && !isBefore(notifyAt, addDays(now, -1))) {
+      const goalDueDate = g.deadline ? format(parseISO(g.deadline), "dd MMM yyyy") : format(notifyAt, "dd MMM yyyy");
       notifications.push({
         id: `goal-${g.id}`,
         title: g.title,
-        description: `${formatDueLabel(notifyAt)} - Goal deadline • ${format(notifyAt, "hh:mm a")}`,
+        description: `Due: ${goalDueDate} • Goal deadline • ${format(notifyAt, "hh:mm a")}`,
         type: "goal",
         date: format(notifyAt, "yyyy-MM-dd"),
       });
