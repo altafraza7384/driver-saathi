@@ -135,10 +135,10 @@ export default function AssistantPage() {
     }
 
     const recognition = new SpeechRecognition();
-    recognition.lang = "en-IN";
+    recognition.lang = "hi-IN"; // Hindi + Hinglish recognition (also picks up English naturally)
     recognition.interimResults = true;
     recognition.continuous = false;
-    recognition.maxAlternatives = 1;
+    recognition.maxAlternatives = 3; // Better accuracy for mixed languages
 
     let finalTranscript = "";
 
@@ -193,7 +193,7 @@ export default function AssistantPage() {
           <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
             <Bot className="h-12 w-12 mb-3 opacity-50" />
             <p className="text-sm font-medium">Hi! I'm your driving assistant 🚗</p>
-            <p className="text-xs mt-1">Tap mic & speak — I'll save everything hands-free!</p>
+            <p className="text-xs mt-1">Mic dabao aur bolo — Hindi, Hinglish, English sab samjhta hoon!</p>
             <div className="mt-4 grid grid-cols-1 gap-2 text-xs w-full max-w-sm">
               <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">💾 Save Data</p>
               <button onClick={() => send("I earned ₹1500 from Uber today")} className="rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent transition-colors">
