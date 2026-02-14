@@ -16,12 +16,13 @@ const PLATFORMS = ["Ola", "Uber", "Rapido", "BluSmart", "Namma Yatri", "Other"];
 
 export default function AddTransactionPage() {
   const [searchParams] = useSearchParams();
-  const type = searchParams.get("type") === "expense" ? "expense" : "income";
+  const initialType = searchParams.get("type") === "expense" ? "expense" : searchParams.get("type") === "income" ? "income" : "";
   const { user } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  const [type, setType] = useState<"income" | "expense">(initialType as "income" | "expense" || "income");
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("");
   const [platform, setPlatform] = useState("");
@@ -63,9 +64,25 @@ export default function AddTransactionPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className={type === "income" ? "text-success" : "text-destructive"}>
-            {type === "income" ? t("home.addIncome") : t("home.addExpense")}
-          </CardTitle>
+          <CardTitle>{t("home.addTransaction")}</CardTitle>
+          <div className="flex gap-2 mt-2">
+            <Button
+              type="button"
+              variant={type === "income" ? "default" : "outline"}
+              className={`flex-1 ${type === "income" ? "bg-success hover:bg-success/90 text-success-foreground" : ""}`}
+              onClick={() => { setType("income"); setCategory(""); }}
+            >
+              {t("home.addIncome")}
+            </Button>
+            <Button
+              type="button"
+              variant={type === "expense" ? "default" : "outline"}
+              className={`flex-1 ${type === "expense" ? "bg-destructive hover:bg-destructive/90 text-destructive-foreground" : ""}`}
+              onClick={() => { setType("expense"); setCategory(""); }}
+            >
+              {t("home.addExpense")}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
