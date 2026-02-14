@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { I18nProvider } from "@/lib/i18n";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import { ThemeProvider } from "next-themes";
 import { AppLayout } from "@/components/layout/AppLayout";
 import HomePage from "./pages/HomePage";
 import TransactionsPage from "./pages/TransactionsPage";
@@ -44,35 +45,37 @@ function ProtectedRoutes() {
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <I18nProvider>
-      <AuthProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <Routes>
-              <Route path="/auth" element={<AuthPage />} />
-              <Route element={<ProtectedRoutes />}>
-                <Route path="/" element={<HomePage />} />
-                <Route path="/transactions" element={<TransactionsPage />} />
-                <Route path="/transactions/add" element={<AddTransactionPage />} />
-                <Route path="/debts" element={<DebtsPage />} />
-                <Route path="/goals" element={<GoalsPage />} />
-                <Route path="/health" element={<HealthPage />} />
-                <Route path="/assistant" element={<AssistantPage />} />
-                <Route path="/more" element={<MorePage />} />
-                <Route path="/car-checks" element={<CarChecksPage />} />
-                <Route path="/reminders" element={<RemindersPage />} />
-                <Route path="/notes" element={<NotesPage />} />
-                <Route path="/sos" element={<SOSPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
-              </Route>
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
-        </TooltipProvider>
-      </AuthProvider>
-    </I18nProvider>
+    <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
+      <I18nProvider>
+        <AuthProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <Routes>
+                <Route path="/auth" element={<AuthPage />} />
+                <Route element={<ProtectedRoutes />}>
+                  <Route path="/" element={<HomePage />} />
+                  <Route path="/transactions" element={<TransactionsPage />} />
+                  <Route path="/transactions/add" element={<AddTransactionPage />} />
+                  <Route path="/debts" element={<DebtsPage />} />
+                  <Route path="/goals" element={<GoalsPage />} />
+                  <Route path="/health" element={<HealthPage />} />
+                  <Route path="/assistant" element={<AssistantPage />} />
+                  <Route path="/more" element={<MorePage />} />
+                  <Route path="/car-checks" element={<CarChecksPage />} />
+                  <Route path="/reminders" element={<RemindersPage />} />
+                  <Route path="/notes" element={<NotesPage />} />
+                  <Route path="/sos" element={<SOSPage />} />
+                  <Route path="/settings" element={<SettingsPage />} />
+                </Route>
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </BrowserRouter>
+          </TooltipProvider>
+        </AuthProvider>
+      </I18nProvider>
+    </ThemeProvider>
   </QueryClientProvider>
 );
 
