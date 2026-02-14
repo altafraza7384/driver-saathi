@@ -1,8 +1,9 @@
-import { Plus, Minus, Car, StickyNote, Bell, ChevronRight } from "lucide-react";
+import { Plus, Minus, Car, StickyNote, Bell, ChevronRight, Target, CreditCard } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { useI18n } from "@/lib/i18n";
 import { formatINR } from "@/lib/currency";
 import { useAuth } from "@/hooks/useAuth";
@@ -54,6 +55,26 @@ export default function HomePage() {
       const { data, error } = await supabase.from("reminders").select("*").eq("is_completed", false).limit(5);
       if (error) throw error;
       return data;
+    },
+    enabled: !!user,
+  });
+
+  const { data: debts = [] } = useQuery({
+    queryKey: ["debts_active"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("debts").select("*").eq("is_active", true);
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!user,
+  });
+
+  const { data: goals = [] } = useQuery({
+    queryKey: ["goals_active"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("goals").select("*").eq("is_completed", false);
+      if (error) throw error;
+      return data ?? [];
     },
     enabled: !!user,
   });
@@ -111,6 +132,77 @@ export default function HomePage() {
           ))}
         </div>
       </motion.section>
+
+      {/* Debt Progress */}
+      {debts.length > 0 && (
+        <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }}>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-base font-semibold">Debt Progress</h2>
+            <Button variant="ghost" size="sm" className="text-xs text-primary" onClick={() => navigate("/debts")}>
+              View All <ChevronRight className="ml-1 h-3 w-3" />
+            </Button>
+          </div>
+          <div className="space-y-2">
+            {debts.slice(0, 3).map((debt) => {
+              const paidPercent = debt.principal > 0 ? Math.min((Number(debt.total_paid) / Number(debt.principal)) * 100, 100) : 0;
+              const remaining = Math.max(Number(debt.principal) - Number(debt.total_paid), 0);
+              return (
+                <Card key={debt.id} className="border-0 shadow-sm">
+                  <CardContent className="p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <CreditCard className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">{debt.name}</span>
+                      </div>
+                      <span className="text-xs text-muted-foreground">{Math.round(paidPercent)}%</span>
+                    </div>
+                    <Progress value={paidPercent} className="h-2" />
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>Paid: {formatINR(debt.total_paid)}</span>
+                      <span>Remaining: {formatINR(remaining)}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </motion.section>
+      )}
+
+      {/* Goal Progress */}
+      {goals.length > 0 && (
+        <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.24 }}>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-base font-semibold">Goal Progress</h2>
+            <Button variant="ghost" size="sm" className="text-xs text-primary" onClick={() => navigate("/goals")}>
+              View All <ChevronRight className="ml-1 h-3 w-3" />
+            </Button>
+          </div>
+          <div className="space-y-2">
+            {goals.slice(0, 3).map((goal) => {
+              const savedPercent = Number(goal.target_amount) > 0 ? Math.min((Number(goal.saved_amount) / Number(goal.target_amount)) * 100, 100) : 0;
+              return (
+                <Card key={goal.id} className="border-0 shadow-sm">
+                  <CardContent className="p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Target className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">{goal.title}</span>
+                      </div>
+                      <span className="text-xs text-muted-foreground">{Math.round(savedPercent)}%</span>
+                    </div>
+                    <Progress value={savedPercent} className="h-2" />
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>Saved: {formatINR(goal.saved_amount)}</span>
+                      <span>Target: {formatINR(goal.target_amount)}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </motion.section>
+      )}
 
       {/* Pending Reminders */}
       {reminders.length > 0 && (
