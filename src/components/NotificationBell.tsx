@@ -19,8 +19,17 @@ interface Notification {
 export function NotificationBell() {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
-  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
-  const [allCleared, setAllCleared] = useState(false);
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem("dismissed_notifications");
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch { return new Set(); }
+  });
+  const [allCleared, setAllCleared] = useState(() => {
+    try {
+      return localStorage.getItem("all_notifications_cleared") === "true";
+    } catch { return false; }
+  });
   const now = new Date();
   const twoDaysLater = addDays(now, 2);
 
@@ -209,11 +218,16 @@ export function NotificationBell() {
   const count = visibleNotifications.length;
 
   const dismissOne = useCallback((id: string) => {
-    setDismissedIds((prev) => new Set(prev).add(id));
+    setDismissedIds((prev) => {
+      const next = new Set(prev).add(id);
+      localStorage.setItem("dismissed_notifications", JSON.stringify([...next]));
+      return next;
+    });
   }, []);
 
   const clearAll = useCallback(() => {
     setAllCleared(true);
+    localStorage.setItem("all_notifications_cleared", "true");
   }, []);
 
   const typeColor = (type: Notification["type"]) => {
