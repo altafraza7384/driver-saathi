@@ -50,6 +50,8 @@ export default function DebtsPage() {
   const [principal, setPrincipal] = useState("");
   const [rate, setRate] = useState("");
   const [tenure, setTenure] = useState("");
+  const [notifyDate, setNotifyDate] = useState("");
+  const [notifyTime, setNotifyTime] = useState("");
   const [saving, setSaving] = useState(false);
 
   // Edit state
@@ -83,6 +85,7 @@ export default function DebtsPage() {
     const m = parseInt(tenure) || 12;
     const emi = calculateEMI(p, r, m);
 
+    const notifyAt = notifyDate && notifyTime ? `${notifyDate}T${notifyTime}:00` : notifyDate ? `${notifyDate}T09:00:00` : null;
     const { error } = await supabase.from("debts").insert({
       user_id: user.id,
       name,
@@ -90,14 +93,15 @@ export default function DebtsPage() {
       interest_rate: r,
       tenure_months: m,
       emi_amount: Math.round(emi * 100) / 100,
-    });
+      notify_at: notifyAt,
+    } as any);
 
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
       toast({ title: "Loan added!" });
       setShowAdd(false);
-      setName(""); setPrincipal(""); setRate(""); setTenure("");
+      setName(""); setPrincipal(""); setRate(""); setTenure(""); setNotifyDate(""); setNotifyTime("");
       fetchDebts();
     }
     setSaving(false);
@@ -205,6 +209,16 @@ export default function DebtsPage() {
                 <div className="space-y-2">
                   <Label>Tenure (months)</Label>
                   <Input type="number" placeholder="36" value={tenure} onChange={(e) => setTenure(e.target.value)} min="1" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Notify Date</Label>
+                  <Input type="date" value={notifyDate} onChange={(e) => setNotifyDate(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Notify Time</Label>
+                  <Input type="time" value={notifyTime} onChange={(e) => setNotifyTime(e.target.value)} />
                 </div>
               </div>
               {principal && tenure && (

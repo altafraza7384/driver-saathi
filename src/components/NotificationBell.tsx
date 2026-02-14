@@ -5,21 +5,21 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { format, addDays, isSameDay, isToday, isTomorrow, parseISO } from "date-fns";
+import { format, isToday, isTomorrow, parseISO, isBefore, addDays } from "date-fns";
 
 interface Notification {
   id: string;
   title: string;
   description: string;
-  type: "reminder" | "emi" | "car_check";
+  type: "reminder" | "emi" | "car_check" | "goal";
   date: string;
 }
 
 export function NotificationBell() {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
-  const today = new Date();
-  const tomorrow = addDays(today, 1);
+  const now = new Date();
+  const twoDaysLater = addDays(now, 2);
 
   const { data: reminders = [] } = useQuery({
     queryKey: ["notifications_reminders"],
@@ -27,9 +27,7 @@ export function NotificationBell() {
       const { data } = await supabase
         .from("reminders")
         .select("*")
-        .eq("is_completed", false)
-        .gte("reminder_date", format(today, "yyyy-MM-dd"))
-        .lte("reminder_date", format(addDays(today, 2), "yyyy-MM-dd"));
+        .eq("is_completed", false);
       return data ?? [];
     },
     enabled: !!user,
@@ -52,68 +50,101 @@ export function NotificationBell() {
     queryFn: async () => {
       const { data } = await supabase
         .from("car_checks")
-        .select("*")
-        .eq("is_completed", false)
-        .not("next_due_date", "is", null)
-        .gte("next_due_date", format(today, "yyyy-MM-dd"))
-        .lte("next_due_date", format(addDays(today, 2), "yyyy-MM-dd"));
+        .select("*");
       return data ?? [];
     },
     enabled: !!user,
   });
 
-  // Build notifications
-  const notifications: Notification[] = [];
-
-  // Reminders due today/tomorrow
-  reminders.forEach((r) => {
-    const d = parseISO(r.reminder_date);
-    const label = isToday(d) ? "Due today" : isTomorrow(d) ? "Due tomorrow" : `Due ${format(d, "MMM dd")}`;
-    notifications.push({
-      id: `rem-${r.id}`,
-      title: r.title,
-      description: `${label} • ${r.category}`,
-      type: "reminder",
-      date: r.reminder_date,
-    });
+  const { data: goals = [] } = useQuery({
+    queryKey: ["notifications_goals"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("goals")
+        .select("*")
+        .eq("is_completed", false);
+      return data ?? [];
+    },
+    enabled: !!user,
   });
 
-  // EMI due dates - check if start_date day matches today or tomorrow
-  debts.forEach((debt) => {
-    const startDay = parseISO(debt.start_date).getDate();
-    const todayDate = today.getDate();
-    const tomorrowDate = tomorrow.getDate();
-    if (startDay === todayDate) {
+  const notifications: Notification[] = [];
+
+  const formatDueLabel = (d: Date) =>
+    isToday(d) ? "Due today" : isTomorrow(d) ? "Due tomorrow" : `Due ${format(d, "MMM dd")}`;
+
+  // Reminders with notify_at
+  reminders.forEach((r: any) => {
+    const notifyAt = r.notify_at ? parseISO(r.notify_at) : parseISO(r.reminder_date);
+    if (isBefore(notifyAt, twoDaysLater)) {
       notifications.push({
-        id: `emi-today-${debt.id}`,
-        title: `${debt.name} EMI Due`,
-        description: `EMI of ₹${Number(debt.emi_amount || 0).toLocaleString("en-IN")} is due today`,
-        type: "emi",
-        date: format(today, "yyyy-MM-dd"),
-      });
-    } else if (startDay === tomorrowDate) {
-      notifications.push({
-        id: `emi-tmrw-${debt.id}`,
-        title: `${debt.name} EMI Due Tomorrow`,
-        description: `EMI of ₹${Number(debt.emi_amount || 0).toLocaleString("en-IN")} is due tomorrow`,
-        type: "emi",
-        date: format(tomorrow, "yyyy-MM-dd"),
+        id: `rem-${r.id}`,
+        title: r.title,
+        description: `${formatDueLabel(notifyAt)} • ${r.category}${r.notify_at ? ` • ${format(notifyAt, "hh:mm a")}` : ""}`,
+        type: "reminder",
+        date: r.reminder_date,
       });
     }
   });
 
-  // Car checks due
-  carChecks.forEach((cc) => {
-    if (!cc.next_due_date) return;
-    const d = parseISO(cc.next_due_date);
-    const label = isToday(d) ? "Due today" : isTomorrow(d) ? "Due tomorrow" : `Due ${format(d, "MMM dd")}`;
-    notifications.push({
-      id: `car-${cc.id}`,
-      title: `${cc.check_type}`,
-      description: `${label} - Car maintenance`,
-      type: "car_check",
-      date: cc.next_due_date,
-    });
+  // Debts with notify_at or EMI day match
+  debts.forEach((debt: any) => {
+    if (debt.notify_at) {
+      const notifyAt = parseISO(debt.notify_at);
+      if (isBefore(notifyAt, twoDaysLater) && !isBefore(notifyAt, addDays(now, -1))) {
+        notifications.push({
+          id: `emi-${debt.id}`,
+          title: `${debt.name} EMI Due`,
+          description: `${formatDueLabel(notifyAt)} • ₹${Number(debt.emi_amount || 0).toLocaleString("en-IN")} • ${format(notifyAt, "hh:mm a")}`,
+          type: "emi",
+          date: format(notifyAt, "yyyy-MM-dd"),
+        });
+        return;
+      }
+    }
+    // Fallback: day-of-month match
+    const startDay = parseISO(debt.start_date).getDate();
+    const today = now.getDate();
+    const tomorrow = addDays(now, 1).getDate();
+    if (startDay === today || startDay === tomorrow) {
+      notifications.push({
+        id: `emi-day-${debt.id}`,
+        title: `${debt.name} EMI Due`,
+        description: `EMI of ₹${Number(debt.emi_amount || 0).toLocaleString("en-IN")} is due ${startDay === today ? "today" : "tomorrow"}`,
+        type: "emi",
+        date: format(now, "yyyy-MM-dd"),
+      });
+    }
+  });
+
+  // Car checks with notify_at
+  carChecks.forEach((cc: any) => {
+    const notifyAt = cc.notify_at ? parseISO(cc.notify_at) : cc.next_due_date ? parseISO(cc.next_due_date) : null;
+    if (!notifyAt) return;
+    if (isBefore(notifyAt, twoDaysLater) && !isBefore(notifyAt, addDays(now, -1))) {
+      notifications.push({
+        id: `car-${cc.id}`,
+        title: cc.check_type,
+        description: `${formatDueLabel(notifyAt)} - Car maintenance${cc.notify_at ? ` • ${format(notifyAt, "hh:mm a")}` : ""}`,
+        type: "car_check",
+        date: cc.next_due_date || format(notifyAt, "yyyy-MM-dd"),
+      });
+    }
+  });
+
+  // Goals with notify_at
+  goals.forEach((g: any) => {
+    if (!g.notify_at) return;
+    const notifyAt = parseISO(g.notify_at);
+    if (isBefore(notifyAt, twoDaysLater) && !isBefore(notifyAt, addDays(now, -1))) {
+      notifications.push({
+        id: `goal-${g.id}`,
+        title: g.title,
+        description: `${formatDueLabel(notifyAt)} - Goal deadline • ${format(notifyAt, "hh:mm a")}`,
+        type: "goal",
+        date: format(notifyAt, "yyyy-MM-dd"),
+      });
+    }
   });
 
   const count = notifications.length;
@@ -123,6 +154,7 @@ export function NotificationBell() {
       case "emi": return "bg-destructive/10 text-destructive";
       case "reminder": return "bg-warning/10 text-warning";
       case "car_check": return "bg-primary/10 text-primary";
+      case "goal": return "bg-success/10 text-success";
     }
   };
 
@@ -131,6 +163,7 @@ export function NotificationBell() {
       case "emi": return "EMI";
       case "reminder": return "Reminder";
       case "car_check": return "Car Check";
+      case "goal": return "Goal";
     }
   };
 

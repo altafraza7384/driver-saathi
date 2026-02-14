@@ -43,6 +43,8 @@ export default function GoalsPage() {
   const [title, setTitle] = useState("");
   const [target, setTarget] = useState("");
   const [deadline, setDeadline] = useState("");
+  const [notifyDate, setNotifyDate] = useState("");
+  const [notifyTime, setNotifyTime] = useState("");
   const [saving, setSaving] = useState(false);
 
   // Edit state
@@ -66,19 +68,21 @@ export default function GoalsPage() {
     if (!user) return;
     setSaving(true);
 
+    const notifyAt = notifyDate && notifyTime ? `${notifyDate}T${notifyTime}:00` : notifyDate ? `${notifyDate}T09:00:00` : null;
     const { error } = await supabase.from("goals").insert({
       user_id: user.id,
       title,
       target_amount: parseFloat(target),
       deadline: deadline || null,
-    });
+      notify_at: notifyAt,
+    } as any);
 
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
       toast({ title: "Goal created! 🎯" });
       setShowAdd(false);
-      setTitle(""); setTarget(""); setDeadline("");
+      setTitle(""); setTarget(""); setDeadline(""); setNotifyDate(""); setNotifyTime("");
       fetchGoals();
     }
     setSaving(false);
@@ -169,6 +173,16 @@ export default function GoalsPage() {
               <div className="space-y-2">
                 <Label>Deadline (optional)</Label>
                 <Input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Notify Date</Label>
+                  <Input type="date" value={notifyDate} onChange={(e) => setNotifyDate(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Notify Time</Label>
+                  <Input type="time" value={notifyTime} onChange={(e) => setNotifyTime(e.target.value)} />
+                </div>
               </div>
               <Button type="submit" className="w-full" disabled={saving}>
                 {saving ? "Creating..." : "Create Goal"}

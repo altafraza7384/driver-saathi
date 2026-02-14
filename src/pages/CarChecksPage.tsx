@@ -22,7 +22,7 @@ export default function CarChecksPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ check_type: "", description: "", odometer_reading: "", cost: "", check_date: new Date().toISOString().split("T")[0], next_due_date: "" });
+  const [form, setForm] = useState({ check_type: "", description: "", odometer_reading: "", cost: "", check_date: new Date().toISOString().split("T")[0], next_due_date: "", notify_date: "", notify_time: "" });
 
   const { data: checks = [], isLoading } = useQuery({
     queryKey: ["car_checks"],
@@ -36,6 +36,7 @@ export default function CarChecksPage() {
 
   const addMutation = useMutation({
     mutationFn: async () => {
+      const notifyAt = form.notify_date && form.notify_time ? `${form.notify_date}T${form.notify_time}:00` : form.notify_date ? `${form.notify_date}T09:00:00` : null;
       const { error } = await supabase.from("car_checks").insert({
         user_id: user!.id,
         check_type: form.check_type,
@@ -45,13 +46,14 @@ export default function CarChecksPage() {
         check_date: form.check_date,
         next_due_date: form.next_due_date || null,
         is_completed: true,
-      });
+        notify_at: notifyAt,
+      } as any);
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["car_checks"] });
       setOpen(false);
-      setForm({ check_type: "", description: "", odometer_reading: "", cost: "", check_date: new Date().toISOString().split("T")[0], next_due_date: "" });
+      setForm({ check_type: "", description: "", odometer_reading: "", cost: "", check_date: new Date().toISOString().split("T")[0], next_due_date: "", notify_date: "", notify_time: "" });
       toast.success("Car check added!");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -94,6 +96,10 @@ export default function CarChecksPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div><Label>Date</Label><Input type="date" value={form.check_date} onChange={(e) => setForm({ ...form, check_date: e.target.value })} /></div>
                 <div><Label>Next Due</Label><Input type="date" value={form.next_due_date} onChange={(e) => setForm({ ...form, next_due_date: e.target.value })} /></div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label>Notify Date</Label><Input type="date" value={form.notify_date} onChange={(e) => setForm({ ...form, notify_date: e.target.value })} /></div>
+                <div><Label>Notify Time</Label><Input type="time" value={form.notify_time} onChange={(e) => setForm({ ...form, notify_time: e.target.value })} /></div>
               </div>
               <Button className="w-full" onClick={() => addMutation.mutate()} disabled={!form.check_type || addMutation.isPending}>
                 {addMutation.isPending ? "Saving..." : "Save"}
