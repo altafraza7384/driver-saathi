@@ -9,9 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Minus, Trash2, Pencil } from "lucide-react";
+import { Plus, Minus, Trash2, Pencil, TrendingUp, TrendingDown } from "lucide-react";
 import { motion } from "framer-motion";
-import { format } from "date-fns";
+import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO } from "date-fns";
 import {
   Dialog,
   DialogContent,
@@ -57,10 +57,24 @@ export default function TransactionsPage() {
   const [editDate, setEditDate] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const [weeklyTx, setWeeklyTx] = useState<Transaction[]>([]);
+
   useEffect(() => {
     if (!user) return;
     fetchTransactions();
+    fetchWeeklyData();
   }, [user, filter]);
+
+  const fetchWeeklyData = async () => {
+    const weekStart = format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd");
+    const weekEnd = format(endOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd");
+    const { data } = await supabase
+      .from("transactions")
+      .select("*")
+      .gte("transaction_date", weekStart)
+      .lte("transaction_date", weekEnd);
+    setWeeklyTx((data as Transaction[]) || []);
+  };
 
   const fetchTransactions = async () => {
     let query = supabase
@@ -152,6 +166,72 @@ export default function TransactionsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Weekly Report */}
+      <Card>
+        <CardContent className="p-4 space-y-3">
+          <h2 className="text-sm font-semibold">This Week's Report</h2>
+          {(() => {
+            const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+            const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
+            const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
+            const weekIncome = weeklyTx.filter(t => t.type === "income").reduce((s, t) => s + Number(t.amount), 0);
+            const weekExpense = weeklyTx.filter(t => t.type === "expense").reduce((s, t) => s + Number(t.amount), 0);
+            const maxDayAmount = Math.max(
+              ...days.map(day => {
+                const dayTx = weeklyTx.filter(t => isSameDay(parseISO(t.transaction_date), day));
+                return dayTx.reduce((s, t) => s + Number(t.amount), 0);
+              }),
+              1
+            );
+
+            return (
+              <>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Income</p>
+                    <p className="text-sm font-bold text-success flex items-center justify-center gap-1">
+                      <TrendingUp className="h-3 w-3" />{formatINR(weekIncome)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Expense</p>
+                    <p className="text-sm font-bold text-destructive flex items-center justify-center gap-1">
+                      <TrendingDown className="h-3 w-3" />{formatINR(weekExpense)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Net</p>
+                    <p className={`text-sm font-bold ${weekIncome - weekExpense >= 0 ? "text-success" : "text-destructive"}`}>
+                      {formatINR(weekIncome - weekExpense)}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-end gap-1 h-16">
+                  {days.map(day => {
+                    const dayIncome = weeklyTx.filter(t => t.type === "income" && isSameDay(parseISO(t.transaction_date), day)).reduce((s, t) => s + Number(t.amount), 0);
+                    const dayExpense = weeklyTx.filter(t => t.type === "expense" && isSameDay(parseISO(t.transaction_date), day)).reduce((s, t) => s + Number(t.amount), 0);
+                    const incomeH = maxDayAmount > 0 ? (dayIncome / maxDayAmount) * 100 : 0;
+                    const expenseH = maxDayAmount > 0 ? (dayExpense / maxDayAmount) * 100 : 0;
+                    const isToday = isSameDay(day, new Date());
+                    return (
+                      <div key={day.toISOString()} className="flex-1 flex flex-col items-center gap-0.5">
+                        <div className="flex gap-0.5 items-end w-full justify-center h-12">
+                          <div className="w-2 rounded-t bg-success/70" style={{ height: `${Math.max(incomeH, 4)}%` }} />
+                          <div className="w-2 rounded-t bg-destructive/70" style={{ height: `${Math.max(expenseH, 4)}%` }} />
+                        </div>
+                        <span className={`text-[9px] ${isToday ? "font-bold text-primary" : "text-muted-foreground"}`}>
+                          {format(day, "EEE").charAt(0)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            );
+          })()}
+        </CardContent>
+      </Card>
 
       {/* Filter Tabs */}
       <div className="flex gap-2">
