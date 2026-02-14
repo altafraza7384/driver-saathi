@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Bell } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format, isToday, isTomorrow, parseISO, isBefore, addDays } from "date-fns";
+import { X, CheckCheck } from "lucide-react";
 
 interface Notification {
   id: string;
@@ -18,6 +19,8 @@ interface Notification {
 export function NotificationBell() {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+  const [allCleared, setAllCleared] = useState(false);
   const now = new Date();
   const twoDaysLater = addDays(now, 2);
 
@@ -199,7 +202,19 @@ export function NotificationBell() {
     });
   }
 
-  const count = notifications.length;
+  const visibleNotifications = allCleared
+    ? []
+    : notifications.filter((n) => !dismissedIds.has(n.id));
+
+  const count = visibleNotifications.length;
+
+  const dismissOne = useCallback((id: string) => {
+    setDismissedIds((prev) => new Set(prev).add(id));
+  }, []);
+
+  const clearAll = useCallback(() => {
+    setAllCleared(true);
+  }, []);
 
   const typeColor = (type: Notification["type"]) => {
     switch (type) {
@@ -234,17 +249,22 @@ export function NotificationBell() {
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-80 p-0" align="end">
-        <div className="border-b p-3">
+        <div className="border-b p-3 flex items-center justify-between">
           <h3 className="text-sm font-semibold">Notifications</h3>
+          {visibleNotifications.length > 0 && (
+            <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground gap-1" onClick={clearAll}>
+              <CheckCheck className="h-3.5 w-3.5" /> Clear All
+            </Button>
+          )}
         </div>
         <div className="max-h-72 overflow-y-auto">
-          {notifications.length === 0 ? (
+          {visibleNotifications.length === 0 ? (
             <div className="p-4 text-center text-sm text-muted-foreground">
               No upcoming notifications
             </div>
           ) : (
-            notifications.map((n) => (
-              <div key={n.id} className="flex items-start gap-3 border-b p-3 last:border-0">
+            visibleNotifications.map((n) => (
+              <div key={n.id} className="flex items-start gap-3 border-b p-3 last:border-0 group">
                 <div className={`mt-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${typeColor(n.type)}`}>
                   {typeLabel(n.type)}
                 </div>
@@ -252,6 +272,13 @@ export function NotificationBell() {
                   <p className="text-sm font-medium truncate">{n.title}</p>
                   <p className="text-xs text-muted-foreground">{n.description}</p>
                 </div>
+                <button
+                  onClick={() => dismissOne(n.id)}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity mt-0.5 p-0.5 rounded hover:bg-muted"
+                  aria-label="Dismiss notification"
+                >
+                  <X className="h-3.5 w-3.5 text-muted-foreground" />
+                </button>
               </div>
             ))
           )}
