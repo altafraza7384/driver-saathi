@@ -93,8 +93,8 @@ export default function HomePage() {
       </motion.div>
 
       {/* Advertisement Banner */}
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }} className="flex justify-center">
-        <div className="w-full max-w-[350px] h-[50px] rounded-lg bg-muted/50 border border-border flex items-center justify-center overflow-hidden">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }}>
+        <div className="w-full h-[50px] rounded-lg bg-muted/50 border border-border flex items-center justify-center overflow-hidden">
           <span className="text-xs text-muted-foreground">Advertisement</span>
         </div>
       </motion.div>
