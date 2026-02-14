@@ -6,11 +6,11 @@ import { useI18n } from "@/lib/i18n";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Moon, Droplets, Coffee, Footprints, Save } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
+import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO } from "date-fns";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -74,16 +74,18 @@ export default function HealthPage() {
   });
 
   // Weekly data
+  const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+  const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
+
   const { data: weeklyLogs = [] } = useQuery({
     queryKey: ["health_logs_week"],
     queryFn: async () => {
-      const weekAgo = new Date();
-      weekAgo.setDate(weekAgo.getDate() - 7);
       const { data, error } = await supabase
         .from("health_logs")
         .select("*")
-        .gte("log_date", weekAgo.toISOString().split("T")[0])
-        .order("log_date", { ascending: false });
+        .gte("log_date", format(weekStart, "yyyy-MM-dd"))
+        .lte("log_date", format(weekEnd, "yyyy-MM-dd"))
+        .order("log_date", { ascending: true });
       if (error) throw error;
       return data;
     },
@@ -129,32 +131,72 @@ export default function HealthPage() {
         <Save className="h-4 w-4" /> {saveMutation.isPending ? "Saving..." : "Save Today's Log"}
       </Button>
 
-      {/* Weekly Summary */}
-      {weeklyLogs.length > 0 && (
-        <Card>
-          <CardContent className="p-4">
-            <h3 className="mb-3 text-sm font-semibold">Weekly Summary</h3>
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <p className="text-muted-foreground">Avg Sleep</p>
-                <p className="text-lg font-bold">{avgSleep.toFixed(1)} hrs</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Avg Water</p>
-                <p className="text-lg font-bold">{avgWater.toFixed(1)} glasses</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Days Logged</p>
-                <p className="text-lg font-bold">{weeklyLogs.length}/7</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Total Steps</p>
-                <p className="text-lg font-bold">{weeklyLogs.reduce((s, l) => s + (l.steps || 0), 0).toLocaleString()}</p>
-              </div>
+      {/* Weekly Report */}
+      <Card>
+        <CardContent className="p-4 space-y-3">
+          <h3 className="text-sm font-semibold">Weekly Report</h3>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <p className="text-muted-foreground">Avg Sleep</p>
+              <p className="text-lg font-bold">{avgSleep.toFixed(1)} hrs</p>
             </div>
-          </CardContent>
-        </Card>
-      )}
+            <div>
+              <p className="text-muted-foreground">Avg Water</p>
+              <p className="text-lg font-bold">{avgWater.toFixed(1)} glasses</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Days Logged</p>
+              <p className="text-lg font-bold">{weeklyLogs.length}/7</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Total Steps</p>
+              <p className="text-lg font-bold">{weeklyLogs.reduce((s, l) => s + (l.steps || 0), 0).toLocaleString()}</p>
+            </div>
+          </div>
+
+          {/* Daily bar chart */}
+          {(() => {
+            const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
+            const maxSleep = Math.max(...days.map(day => {
+              const dayLog = weeklyLogs.find(l => isSameDay(parseISO(l.log_date), day));
+              return Number(dayLog?.sleep_hours || 0);
+            }), 1);
+            const maxWaterDay = Math.max(...days.map(day => {
+              const dayLog = weeklyLogs.find(l => isSameDay(parseISO(l.log_date), day));
+              return Number(dayLog?.water_glasses || 0);
+            }), 1);
+
+            return (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">Sleep & Water (daily)</p>
+                <div className="flex items-end gap-1 h-16">
+                  {days.map(day => {
+                    const dayLog = weeklyLogs.find(l => isSameDay(parseISO(l.log_date), day));
+                    const sleepH = dayLog ? (Number(dayLog.sleep_hours) / maxSleep) * 100 : 0;
+                    const waterH = dayLog ? (Number(dayLog.water_glasses) / maxWaterDay) * 100 : 0;
+                    const isToday = isSameDay(day, new Date());
+                    return (
+                      <div key={day.toISOString()} className="flex-1 flex flex-col items-center gap-0.5">
+                        <div className="flex gap-0.5 items-end w-full justify-center h-12">
+                          <div className="w-2 rounded-t bg-blue-500/70" style={{ height: `${Math.max(sleepH, 4)}%` }} />
+                          <div className="w-2 rounded-t bg-cyan-500/70" style={{ height: `${Math.max(waterH, 4)}%` }} />
+                        </div>
+                        <span className={`text-[9px] ${isToday ? "font-bold text-primary" : "text-muted-foreground"}`}>
+                          {format(day, "EEE").charAt(0)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex gap-4 justify-center text-[10px] text-muted-foreground">
+                  <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded bg-blue-500/70" /> Sleep</span>
+                  <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded bg-cyan-500/70" /> Water</span>
+                </div>
+              </div>
+            );
+          })()}
+        </CardContent>
+      </Card>
     </div>
   );
 }
