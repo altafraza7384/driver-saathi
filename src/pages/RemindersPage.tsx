@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Plus, Bell, Check, Trash2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 
-const CATEGORIES = ["insurance", "puc", "license", "emi", "maintenance", "general"];
+const DEFAULT_CATEGORIES = ["insurance", "puc", "license", "emi", "maintenance", "general"];
 
 export default function RemindersPage() {
   const { user } = useAuth();
@@ -22,6 +22,8 @@ export default function RemindersPage() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ title: "", description: "", reminder_date: "", category: "general", notify_date: "", notify_time: "" });
+  const [customCategory, setCustomCategory] = useState("");
+  const [showCustomCategory, setShowCustomCategory] = useState(false);
 
   const { data: reminders = [], isLoading } = useQuery({
     queryKey: ["reminders"],
@@ -35,7 +37,7 @@ export default function RemindersPage() {
       const { error } = await supabase.from("reminders").insert({ user_id: user!.id, title: form.title, description: form.description || null, reminder_date: form.reminder_date, category: form.category, notify_at: notifyAt } as any);
       if (error) throw error;
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["reminders"] }); setOpen(false); setForm({ title: "", description: "", reminder_date: "", category: "general", notify_date: "", notify_time: "" }); toast.success("✅"); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["reminders"] }); setOpen(false); setForm({ title: "", description: "", reminder_date: "", category: "general", notify_date: "", notify_time: "" }); setCustomCategory(""); setShowCustomCategory(false); toast.success("✅"); },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -66,7 +68,19 @@ export default function RemindersPage() {
               <div><Label>{t("common.description")}</Label><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div><Label>{t("common.date")}</Label><Input type="date" value={form.reminder_date} onChange={(e) => setForm({ ...form, reminder_date: e.target.value })} /></div>
-                <div><Label>{t("common.category")}</Label><Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{CATEGORIES.map((c) => <SelectItem key={c} value={c} className="capitalize">{c}</SelectItem>)}</SelectContent></Select></div>
+                <div><Label>{t("common.category")}</Label>
+                  <Select value={showCustomCategory ? "__custom__" : form.category} onValueChange={(v) => {
+                    if (v === "__custom__") { setShowCustomCategory(true); setForm({ ...form, category: "" }); }
+                    else { setShowCustomCategory(false); setCustomCategory(""); setForm({ ...form, category: v }); }
+                  }}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {DEFAULT_CATEGORIES.map((c) => <SelectItem key={c} value={c} className="capitalize">{c}</SelectItem>)}
+                      <SelectItem value="__custom__">+ Custom</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {showCustomCategory && <Input className="mt-1" placeholder="Enter custom category" value={customCategory} onChange={(e) => { setCustomCategory(e.target.value); setForm({ ...form, category: e.target.value }); }} />}
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div><Label>{t("reminder.notifyDate")}</Label><Input type="date" value={form.notify_date} onChange={(e) => setForm({ ...form, notify_date: e.target.value })} /></div>
