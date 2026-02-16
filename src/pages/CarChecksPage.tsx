@@ -14,7 +14,7 @@ import { Plus, Car, Wrench, Fuel, Check, Trash2, ArrowLeft } from "lucide-react"
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 
-const CHECK_TYPES = ["Oil Change", "Tire Rotation", "Brake Check", "Battery", "Air Filter", "Coolant", "PUC", "Insurance", "Fitness Certificate", "General Service"];
+const DEFAULT_CHECK_TYPES = ["Oil Change", "Tire Rotation", "Brake Check", "Battery", "Air Filter", "Coolant", "PUC", "Insurance", "Fitness Certificate", "General Service"];
 
 export default function CarChecksPage() {
   const { user } = useAuth();
@@ -23,6 +23,8 @@ export default function CarChecksPage() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ check_type: "", description: "", odometer_reading: "", cost: "", check_date: new Date().toISOString().split("T")[0], next_due_date: "", notify_date: "", notify_time: "" });
+  const [customType, setCustomType] = useState("");
+  const [showCustomType, setShowCustomType] = useState(false);
 
   const { data: checks = [], isLoading } = useQuery({
     queryKey: ["car_checks"],
@@ -54,6 +56,7 @@ export default function CarChecksPage() {
       queryClient.invalidateQueries({ queryKey: ["car_checks"] });
       setOpen(false);
       setForm({ check_type: "", description: "", odometer_reading: "", cost: "", check_date: new Date().toISOString().split("T")[0], next_due_date: "", notify_date: "", notify_time: "" });
+      setCustomType(""); setShowCustomType(false);
       toast.success("Car check added!");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -83,10 +86,17 @@ export default function CarChecksPage() {
             <div className="space-y-3">
               <div>
                 <Label>Type</Label>
-                <Select value={form.check_type} onValueChange={(v) => setForm({ ...form, check_type: v })}>
+                <Select value={showCustomType ? "__custom__" : form.check_type} onValueChange={(v) => {
+                  if (v === "__custom__") { setShowCustomType(true); setForm({ ...form, check_type: "" }); }
+                  else { setShowCustomType(false); setCustomType(""); setForm({ ...form, check_type: v }); }
+                }}>
                   <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
-                  <SelectContent>{CHECK_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                  <SelectContent>
+                    {DEFAULT_CHECK_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                    <SelectItem value="__custom__">+ Custom</SelectItem>
+                  </SelectContent>
                 </Select>
+                {showCustomType && <Input className="mt-1" placeholder="Enter custom type" value={customType} onChange={(e) => { setCustomType(e.target.value); setForm({ ...form, check_type: e.target.value }); }} />}
               </div>
               <div><Label>Description</Label><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
               <div className="grid grid-cols-2 gap-3">
