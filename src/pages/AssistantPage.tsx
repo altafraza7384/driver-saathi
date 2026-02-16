@@ -430,34 +430,6 @@ export default function AssistantPage() {
             <Bot className="h-12 w-12 mb-3 opacity-50" />
             <p className="font-medium">Hi! I'm your driving assistant 🚗</p>
             <p className="text-muted-foreground mt-1">Mic dabao ya Driving Mode on karo — Hindi, Hinglish, English sab samjhta hoon!</p>
-            <div className="mt-4 grid grid-cols-1 gap-2 w-full max-w-sm">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">💾 Save Data (voice ya type karo)</p>
-              {[
-                { emoji: "💰", text: "Uber se 1500 kamaye aaj" },
-                { emoji: "⛽", text: "500 rupay petrol mein lagaye" },
-                { emoji: "💧", text: "Paani piya" },
-                { emoji: "🔧", text: "Oil change karwaya 800 mein" },
-                { emoji: "📝", text: "Note: Passenger ne phone chhoda" },
-                { emoji: "🔔", text: "Yaad dilana insurance renewal 15 March" },
-              ].map(({ emoji, text }) => (
-                <button key={text} onClick={() => send(text)} className="rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent transition-colors">
-                  {emoji} "{text}"
-                </button>
-              ))}
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-2">📊 Poocho apna data</p>
-              {[
-                { emoji: "📊", text: "Aaj kitna kamaya?" },
-                { emoji: "📝", text: "Mere notes dikhao" },
-                { emoji: "🔔", text: "Kya kya yaad dilana hai?" },
-                { emoji: "🔧", text: "Gaadi ki service history dikhao" },
-                { emoji: "🏥", text: "Aaj ki health stats?" },
-                { emoji: "🎯", text: "Savings goals dikhao" },
-              ].map(({ emoji, text }) => (
-                <button key={text} onClick={() => send(text)} className="rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-accent transition-colors">
-                  {emoji} "{text}"
-                </button>
-              ))}
-            </div>
           </div>
         )}
         <AnimatePresence>
