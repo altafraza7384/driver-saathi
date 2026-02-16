@@ -57,24 +57,43 @@ export default function SOSPage() {
 
   const triggerSOS = () => {
     setSosTriggered(true);
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const { latitude, longitude } = pos.coords;
-          const mapsUrl = `https://maps.google.com/maps?q=${latitude},${longitude}`;
-          toast.success(`SOS Triggered! Location: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
-          // In a real app, this would send SMS/notification to emergency contacts
-          if (contacts.length > 0) {
-            toast.info(`Alert sent to ${contacts.length} emergency contact(s)`);
-          }
-        },
-        () => toast.error("Could not get location. Please enable GPS."),
-        { enableHighAccuracy: true }
-      );
-    } else {
+    if (!navigator.geolocation) {
       toast.error("Geolocation not supported");
+      setSosTriggered(false);
+      return;
     }
-    setTimeout(() => setSosTriggered(false), 3000);
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        const mapsUrl = `https://maps.google.com/maps?q=${latitude},${longitude}`;
+        const message = `🚨 SOS EMERGENCY! I need help! My live location: ${mapsUrl}`;
+
+        toast.success(`Location captured: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
+
+        if (contacts.length > 0) {
+          // Build comma-separated phone numbers for SMS
+          const phones = contacts.map((c) => c.phone.replace(/\s+/g, "")).join(",");
+          const smsUrl = `sms:${phones}?body=${encodeURIComponent(message)}`;
+          window.open(smsUrl, "_self");
+          toast.info(`Opening SMS to ${contacts.length} contact(s)`);
+        } else {
+          // No contacts — offer to share via any app
+          if (navigator.share) {
+            navigator.share({ title: "🚨 SOS Emergency", text: message, url: mapsUrl }).catch(() => {});
+          } else {
+            navigator.clipboard.writeText(message);
+            toast.info("Location copied! Add emergency contacts to auto-send.");
+          }
+        }
+        setTimeout(() => setSosTriggered(false), 3000);
+      },
+      () => {
+        toast.error("Could not get location. Please enable GPS.");
+        setSosTriggered(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
   };
 
   return (
