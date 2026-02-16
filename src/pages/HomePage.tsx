@@ -50,7 +50,6 @@ export default function HomePage() {
     enabled: !!user,
   });
 
-
   const { data: debts = [] } = useQuery({
     queryKey: ["debts_active"],
     queryFn: async () => {
@@ -77,7 +76,6 @@ export default function HomePage() {
 
   return (
     <div className="space-y-5 p-4 pt-6">
-      {/* Header */}
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
         <div>
           <p className="text-sm text-muted-foreground">{t("home.greeting")} {t(getGreetingKey())} 👋</p>
@@ -86,28 +84,25 @@ export default function HomePage() {
         <NotificationBell />
       </motion.div>
 
-      {/* Today's Earnings Card */}
       <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
         <Card className="overflow-hidden border-0 bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg">
           <CardContent className="p-5">
             <p className="text-sm font-medium opacity-90">{t("home.todayEarnings")}</p>
             <p className="mt-1 text-3xl font-extrabold tracking-tight">{formatINR(todayIncome - todayExpense)}</p>
             <div className="mt-3 flex gap-4 text-sm opacity-80">
-              <span>Income: {formatINR(todayIncome)}</span>
-              <span>Expense: {formatINR(todayExpense)}</span>
+              <span>{t("home.income")}: {formatINR(todayIncome)}</span>
+              <span>{t("home.expense")}: {formatINR(todayExpense)}</span>
             </div>
           </CardContent>
         </Card>
       </motion.div>
 
-      {/* Advertisement Banner */}
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }}>
         <div className="w-full h-[50px] rounded-lg bg-muted/50 border border-border flex items-center justify-center overflow-hidden">
-          <span className="text-xs text-muted-foreground">Advertisement</span>
+          <span className="text-xs text-muted-foreground">{t("home.advertisement")}</span>
         </div>
       </motion.div>
 
-      {/* Quick Actions */}
       <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
         <h2 className="mb-3 text-base font-semibold">{t("home.quickActions")}</h2>
         <div className="grid grid-cols-4 gap-3">
@@ -120,13 +115,12 @@ export default function HomePage() {
         </div>
       </motion.section>
 
-      {/* Debt Progress */}
       {debts.length > 0 && (
         <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }}>
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-base font-semibold">Debt Progress</h2>
+            <h2 className="text-base font-semibold">{t("home.debtProgress")}</h2>
             <Button variant="ghost" size="sm" className="text-xs text-primary" onClick={() => navigate("/debts")}>
-              View All <ChevronRight className="ml-1 h-3 w-3" />
+              {t("home.viewAll")} <ChevronRight className="ml-1 h-3 w-3" />
             </Button>
           </div>
           <div className="space-y-2">
@@ -145,8 +139,8 @@ export default function HomePage() {
                     </div>
                     <Progress value={paidPercent} className="h-2" />
                     <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>Paid: {formatINR(debt.total_paid)}</span>
-                      <span>Remaining: {formatINR(remaining)}</span>
+                      <span>{t("home.paid")}: {formatINR(debt.total_paid)}</span>
+                      <span>{t("home.remaining")}: {formatINR(remaining)}</span>
                     </div>
                   </CardContent>
                 </Card>
@@ -156,13 +150,12 @@ export default function HomePage() {
         </motion.section>
       )}
 
-      {/* Goal Progress */}
       {goals.length > 0 && (
         <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.24 }}>
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-base font-semibold">Goal Progress</h2>
+            <h2 className="text-base font-semibold">{t("home.goalProgress")}</h2>
             <Button variant="ghost" size="sm" className="text-xs text-primary" onClick={() => navigate("/goals")}>
-              View All <ChevronRight className="ml-1 h-3 w-3" />
+              {t("home.viewAll")} <ChevronRight className="ml-1 h-3 w-3" />
             </Button>
           </div>
           <div className="space-y-2">
@@ -180,8 +173,8 @@ export default function HomePage() {
                     </div>
                     <Progress value={savedPercent} className="h-2" />
                     <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>Saved: {formatINR(goal.saved_amount)}</span>
-                      <span>Target: {formatINR(goal.target_amount)}</span>
+                      <span>{t("home.saved")}: {formatINR(goal.saved_amount)}</span>
+                      <span>{t("home.target")}: {formatINR(goal.target_amount)}</span>
                     </div>
                   </CardContent>
                 </Card>
@@ -191,8 +184,6 @@ export default function HomePage() {
         </motion.section>
       )}
 
-
-      {/* Recent Transactions */}
       <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-base font-semibold">{t("home.recentTransactions")}</h2>
