@@ -39,6 +39,7 @@ function calculateEMI(principal: number, rate: number, months: number): number {
 }
 
 export default function DebtsPage() {
+  const { t } = useI18n();
   const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();

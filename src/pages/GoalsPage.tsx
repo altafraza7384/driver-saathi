@@ -31,6 +31,7 @@ type Goal = {
 };
 
 export default function GoalsPage() {
+  const { user } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
   const { toast } = useToast();
