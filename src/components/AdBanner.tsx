@@ -9,7 +9,7 @@ interface AdBannerProps {
 
 export function AdBanner({
   adSlot = "1006670616",
-  adFormat = "auto",
+  adFormat = "horizontal",
   fullWidthResponsive = true,
   className = "",
 }: AdBannerProps) {
@@ -28,10 +28,14 @@ export function AdBanner({
   }, []);
 
   return (
-    <div ref={adRef} className={`w-full overflow-hidden rounded-lg ${className}`}>
+    <div
+      ref={adRef}
+      className={`w-full overflow-hidden ${className}`}
+      style={{ minHeight: 50, maxHeight: 90 }}
+    >
       <ins
         className="adsbygoogle"
-        style={{ display: "block" }}
+        style={{ display: "block", width: "100%", height: "auto", maxHeight: 90 }}
         data-ad-client="ca-pub-1994214977986364"
         data-ad-slot={adSlot}
         data-ad-format={adFormat}
