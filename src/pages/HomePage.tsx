@@ -1,4 +1,5 @@
 import { Plus, Minus, Car, StickyNote, Bell, ChevronRight, Target, CreditCard } from "lucide-react";
+import { AdBanner } from "@/components/AdBanner";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
@@ -98,9 +99,7 @@ export default function HomePage() {
       </motion.div>
 
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }}>
-        <div className="w-full h-[50px] rounded-lg bg-muted/50 border border-border flex items-center justify-center overflow-hidden">
-          <span className="text-xs text-muted-foreground">{t("home.advertisement")}</span>
-        </div>
+        <AdBanner />
       </motion.div>
 
       <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
