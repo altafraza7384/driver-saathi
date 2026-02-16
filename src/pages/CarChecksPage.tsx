@@ -70,16 +70,16 @@ export default function CarChecksPage() {
   return (
     <div className="space-y-5 p-4 pt-6">
       <button onClick={() => navigate("/more")} className="flex items-center gap-1 text-sm text-muted-foreground mb-2">
-        <ArrowLeft className="h-4 w-4" /> Back
+        <ArrowLeft className="h-4 w-4" /> {t("common.back")}
       </button>
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Car Checks</h1>
+        <h1 className="text-2xl font-bold">{t("car.title")}</h1>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button size="sm" className="gap-1"><Plus className="h-4 w-4" /> Add</Button>
           </DialogTrigger>
           <DialogContent>
-            <DialogHeader><DialogTitle>Add Car Check</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle>{t("car.addCheck")}</DialogTitle></DialogHeader>
             <div className="space-y-3">
               <div>
                 <Label>Type</Label>
@@ -112,7 +112,7 @@ export default function CarChecksPage() {
       {isLoading ? (
         <div className="flex justify-center py-10"><div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>
       ) : checks.length === 0 ? (
-        <Card><CardContent className="p-6 text-center text-muted-foreground">No car checks yet. Add your first maintenance record!</CardContent></Card>
+        <Card><CardContent className="p-6 text-center text-muted-foreground">{t("car.noChecks")}</CardContent></Card>
       ) : (
         <div className="space-y-2">
           {checks.map((c) => (

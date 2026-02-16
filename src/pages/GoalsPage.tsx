@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useI18n } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { formatINR } from "@/lib/currency";
@@ -30,7 +31,7 @@ type Goal = {
 };
 
 export default function GoalsPage() {
-  const { user } = useAuth();
+  const { t } = useI18n();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [goals, setGoals] = useState<Goal[]>([]);
