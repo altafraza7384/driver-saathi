@@ -19,15 +19,24 @@ interface Notification {
 export function NotificationBell() {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
+  const todayKey = format(new Date(), "yyyy-MM-dd");
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => {
     try {
       const stored = localStorage.getItem("dismissed_notifications");
-      return stored ? new Set(JSON.parse(stored)) : new Set();
+      if (!stored) return new Set();
+      const parsed = JSON.parse(stored);
+      // Reset if from a different day
+      if (parsed.date !== todayKey) return new Set();
+      return new Set(parsed.ids);
     } catch { return new Set(); }
   });
   const [allCleared, setAllCleared] = useState(() => {
     try {
-      return localStorage.getItem("all_notifications_cleared") === "true";
+      const stored = localStorage.getItem("all_notifications_cleared");
+      if (!stored) return false;
+      const parsed = JSON.parse(stored);
+      // Reset daily so new notifications appear
+      return parsed.date === todayKey;
     } catch { return false; }
   });
   const now = new Date();
@@ -220,15 +229,15 @@ export function NotificationBell() {
   const dismissOne = useCallback((id: string) => {
     setDismissedIds((prev) => {
       const next = new Set(prev).add(id);
-      localStorage.setItem("dismissed_notifications", JSON.stringify([...next]));
+      localStorage.setItem("dismissed_notifications", JSON.stringify({ date: todayKey, ids: [...next] }));
       return next;
     });
-  }, []);
+  }, [todayKey]);
 
   const clearAll = useCallback(() => {
     setAllCleared(true);
-    localStorage.setItem("all_notifications_cleared", "true");
-  }, []);
+    localStorage.setItem("all_notifications_cleared", JSON.stringify({ date: todayKey }));
+  }, [todayKey]);
 
   const typeColor = (type: Notification["type"]) => {
     switch (type) {
