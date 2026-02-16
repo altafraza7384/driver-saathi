@@ -8,7 +8,7 @@ interface AdBannerProps {
 }
 
 export function AdBanner({
-  adSlot = "auto",
+  adSlot = "1006670616",
   adFormat = "auto",
   fullWidthResponsive = true,
   className = "",
