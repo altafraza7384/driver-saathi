@@ -8,107 +8,77 @@ import { useTheme } from "next-themes";
 import { Switch } from "@/components/ui/switch";
 import { useState } from "react";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-
-const menuItems = [
-  { label: "Debt & EMI", icon: CreditCard, path: "/debts" },
-  { label: "Goals & Savings", icon: Target, path: "/goals" },
-  { label: "Car Checks", icon: Car, path: "/car-checks" },
-  { label: "Reminders", icon: Bell, path: "/reminders" },
-  { label: "Notes", icon: StickyNote, path: "/notes" },
-  { label: "Emergency SOS", icon: Shield, path: "/sos" },
-  { label: "Data Backup", icon: HardDrive, path: "/data-backup" },
-  { label: "Settings", icon: Settings, path: "/settings" },
-];
 
 export default function MorePage() {
   const { t } = useI18n();
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
   const [aboutOpen, setAboutOpen] = useState(false);
-
   const isDark = theme === "dark";
+
+  const menuItems = [
+    { labelKey: "more.debtEmi", icon: CreditCard, path: "/debts" },
+    { labelKey: "more.goalsSavings", icon: Target, path: "/goals" },
+    { labelKey: "more.carChecks", icon: Car, path: "/car-checks" },
+    { labelKey: "more.reminders", icon: Bell, path: "/reminders" },
+    { labelKey: "more.notes", icon: StickyNote, path: "/notes" },
+    { labelKey: "more.emergencySos", icon: Shield, path: "/sos" },
+    { labelKey: "more.dataBackup", icon: HardDrive, path: "/data-backup" },
+    { labelKey: "more.settings", icon: Settings, path: "/settings" },
+  ];
 
   return (
     <div className="space-y-5 p-4 pt-6">
       <h1 className="text-2xl font-bold">{t("nav.more")}</h1>
-
       <div className="space-y-1">
         {menuItems.map((item) => (
-          <button
-            key={item.path}
-            onClick={() => navigate(item.path)}
-            className="flex w-full items-center justify-between rounded-lg p-3 text-left transition-colors hover:bg-muted"
-          >
+          <button key={item.path} onClick={() => navigate(item.path)}
+            className="flex w-full items-center justify-between rounded-lg p-3 text-left transition-colors hover:bg-muted">
             <div className="flex items-center gap-3">
               <item.icon className="h-5 w-5 text-muted-foreground" />
-              <span className="text-sm font-medium">{item.label}</span>
+              <span className="text-sm font-medium">{t(item.labelKey)}</span>
             </div>
             <ChevronRight className="h-4 w-4 text-muted-foreground" />
           </button>
         ))}
-
-        {/* Theme Toggle */}
         <div className="flex w-full items-center justify-between rounded-lg p-3">
           <div className="flex items-center gap-3">
-            {isDark ? (
-              <Moon className="h-5 w-5 text-muted-foreground" />
-            ) : (
-              <Sun className="h-5 w-5 text-muted-foreground" />
-            )}
-            <span className="text-sm font-medium">Dark Mode</span>
+            {isDark ? <Moon className="h-5 w-5 text-muted-foreground" /> : <Sun className="h-5 w-5 text-muted-foreground" />}
+            <span className="text-sm font-medium">{t("more.darkMode")}</span>
           </div>
-          <Switch
-            checked={isDark}
-            onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")}
-          />
+          <Switch checked={isDark} onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")} />
         </div>
-
-        {/* About */}
-        <button
-          onClick={() => setAboutOpen(true)}
-          className="flex w-full items-center justify-between rounded-lg p-3 text-left transition-colors hover:bg-muted"
-        >
+        <button onClick={() => setAboutOpen(true)}
+          className="flex w-full items-center justify-between rounded-lg p-3 text-left transition-colors hover:bg-muted">
           <div className="flex items-center gap-3">
             <Info className="h-5 w-5 text-muted-foreground" />
-            <span className="text-sm font-medium">About</span>
+            <span className="text-sm font-medium">{t("more.about")}</span>
           </div>
           <ChevronRight className="h-4 w-4 text-muted-foreground" />
         </button>
       </div>
-
-      {/* About Dialog */}
       <Dialog open={aboutOpen} onOpenChange={setAboutOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>About</DialogTitle>
-            <DialogDescription>App information, privacy policy and terms of use.</DialogDescription>
+            <DialogTitle>{t("more.about")}</DialogTitle>
+            <DialogDescription>{t("more.aboutDesc")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 text-sm">
             <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">App Version</span>
+              <span className="text-muted-foreground">{t("more.appVersion")}</span>
               <span className="font-medium">1.0.0</span>
             </div>
             <div className="border-t pt-3 space-y-2">
-              <h4 className="font-semibold">Privacy Policy</h4>
-              <p className="text-muted-foreground text-xs leading-relaxed">
-                We respect your privacy. Your data is stored securely and is only accessible by you. We do not share your personal or financial information with third parties. All data transmission is encrypted.
-              </p>
+              <h4 className="font-semibold">{t("more.privacyPolicy")}</h4>
+              <p className="text-muted-foreground text-xs leading-relaxed">{t("more.privacyText")}</p>
             </div>
             <div className="border-t pt-3 space-y-2">
-              <h4 className="font-semibold">Terms of Use</h4>
-              <p className="text-muted-foreground text-xs leading-relaxed">
-                By using this app, you agree to use it responsibly. This app is designed to help drivers manage their finances and daily activities. We are not liable for financial decisions made based on app data.
-              </p>
+              <h4 className="font-semibold">{t("more.termsOfUse")}</h4>
+              <p className="text-muted-foreground text-xs leading-relaxed">{t("more.termsText")}</p>
             </div>
-            <p className="text-center text-xs text-muted-foreground pt-2">
-              © 2026 Driver Buddy. All rights reserved.
-            </p>
+            <p className="text-center text-xs text-muted-foreground pt-2">{t("more.copyright")}</p>
           </div>
         </DialogContent>
       </Dialog>

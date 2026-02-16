@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useI18n } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { formatINR } from "@/lib/currency";
@@ -38,6 +39,7 @@ function calculateEMI(principal: number, rate: number, months: number): number {
 }
 
 export default function DebtsPage() {
+  const { t } = useI18n();
   const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
