@@ -14,8 +14,12 @@
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",
+    "@capacitor-community/speech-recognition": "^7.0.1",
+    "@capacitor-community/text-to-speech": "^8.0.0",
     "@capacitor/cli": "^8.1.0",
     "@capacitor/core": "^8.1.0",
+    "@capacitor/local-notifications": "^8.0.1",
+    "@capacitor/push-notifications": "^8.0.1",
     "@fontsource/montserrat": "^5.2.8",
     "@fontsource/roboto": "^5.2.9",
     "@hookform/resolvers": "^3.10.0",
