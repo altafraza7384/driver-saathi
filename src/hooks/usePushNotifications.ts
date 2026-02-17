@@ -1,6 +1,8 @@
 import { useEffect, useCallback, useRef } from "react";
+import { Capacitor } from "@capacitor/core";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { registerNativePush } from "@/lib/native-push";
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -20,10 +22,21 @@ export function usePushNotifications() {
   const subscribedRef = useRef(false);
 
   const subscribe = useCallback(async () => {
+    if (!user || !session || subscribedRef.current) return;
+
+    // Native: use FCM via Capacitor
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await registerNativePush(user.id);
+        subscribedRef.current = true;
+      } catch (err) {
+        console.error("Native push registration failed:", err);
+      }
+      return;
+    }
+
+    // Web: use VAPID web push
     if (
-      !user ||
-      !session ||
-      subscribedRef.current ||
       !("serviceWorker" in navigator) ||
       !("PushManager" in window) ||
       !("Notification" in window)
@@ -32,11 +45,9 @@ export function usePushNotifications() {
     }
 
     try {
-      // Register service worker
       const registration = await navigator.serviceWorker.register("/sw.js");
       await navigator.serviceWorker.ready;
 
-      // Check if already subscribed
       const reg = registration as any;
       const existing = await reg.pushManager.getSubscription();
       if (existing) {
@@ -44,14 +55,12 @@ export function usePushNotifications() {
         return;
       }
 
-      // Request notification permission
       const permission = await Notification.requestPermission();
       if (permission !== "granted") {
         console.log("Notification permission denied");
         return;
       }
 
-      // Get VAPID public key from edge function
       const resp = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-notifications`,
         {
@@ -71,7 +80,6 @@ export function usePushNotifications() {
       const { publicKey } = await resp.json();
       if (!publicKey) return;
 
-      // Subscribe to push
       const subscription = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(publicKey),
@@ -83,7 +91,6 @@ export function usePushNotifications() {
         return;
       }
 
-      // Save to database
       const { error } = await supabase.from("push_subscriptions").upsert(
         {
           user_id: user.id,
@@ -106,7 +113,6 @@ export function usePushNotifications() {
   }, [user, session]);
 
   useEffect(() => {
-    // Delay subscription slightly to not block initial render
     const timer = setTimeout(() => {
       subscribe();
     }, 3000);
