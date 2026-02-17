@@ -1,9 +1,15 @@
+import { useEffect } from "react";
 import { Outlet } from "react-router-dom";
 import { BottomNav } from "./BottomNav";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
+import { initAdMob, showBannerAd } from "@/lib/admob";
 
 export function AppLayout() {
   usePushNotifications();
+
+  useEffect(() => {
+    initAdMob().then(() => showBannerAd());
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">

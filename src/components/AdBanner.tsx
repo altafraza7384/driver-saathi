@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { isNative } from "@/lib/admob";
 
 interface AdBannerProps {
   adSlot?: string;
@@ -17,7 +18,8 @@ export function AdBanner({
   const pushed = useRef(false);
 
   useEffect(() => {
-    if (pushed.current) return;
+    // On native, AdMob banner is shown natively (not in webview)
+    if (isNative() || pushed.current) return;
     try {
       const adsbygoogle = (window as any).adsbygoogle || [];
       adsbygoogle.push({});
@@ -26,6 +28,11 @@ export function AdBanner({
       // AdSense not loaded
     }
   }, []);
+
+  // On native, return an empty spacer so native banner doesn't overlap content
+  if (isNative()) {
+    return <div className={`w-full ${className}`} style={{ minHeight: 50 }} />;
+  }
 
   return (
     <div
