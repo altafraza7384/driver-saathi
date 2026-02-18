@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -390,26 +390,26 @@ async function executeToolCall(
           .eq("log_date", today)
           .maybeSingle();
 
-        const currentSleep = existing?.sleep_hours || 0;
-        const currentWater = existing?.water_glasses || 0;
-        const currentSteps = existing?.steps || 0;
-        const currentBreaks = existing?.breaks_taken || 0;
+        const currentSleep = Number(existing?.sleep_hours ?? 0);
+        const currentWater = Number(existing?.water_glasses ?? 0);
+        const currentSteps = Number(existing?.steps ?? 0);
+        const currentBreaks = Number(existing?.breaks_taken ?? 0);
 
-        const payload = {
+        const payload: Record<string, unknown> = {
           user_id: userId,
           log_date: today,
-          sleep_hours: args.sleep_hours != null ? args.sleep_hours as number : currentSleep,
-          water_glasses: args.water_glasses != null ? args.water_glasses as number 
-            : args.add_water ? currentWater + (args.add_water as number) : currentWater,
-          steps: args.steps != null ? args.steps as number
-            : args.add_steps ? currentSteps + (args.add_steps as number) : currentSteps,
-          breaks_taken: args.breaks_taken != null ? args.breaks_taken as number
-            : args.add_breaks ? currentBreaks + (args.add_breaks as number) : currentBreaks,
+          sleep_hours: args.sleep_hours != null ? Number(args.sleep_hours) : currentSleep,
+          water_glasses: args.water_glasses != null ? Number(args.water_glasses)
+            : args.add_water ? currentWater + Number(args.add_water) : currentWater,
+          steps: args.steps != null ? Number(args.steps)
+            : args.add_steps ? currentSteps + Number(args.add_steps) : currentSteps,
+          breaks_taken: args.breaks_taken != null ? Number(args.breaks_taken)
+            : args.add_breaks ? currentBreaks + Number(args.add_breaks) : currentBreaks,
           notes: (args.notes as string) || existing?.notes || null,
         };
 
         if (existing) {
-          const { error } = await supabaseAdmin.from("health_logs").update(payload).eq("id", existing.id);
+          const { error } = await supabaseAdmin.from("health_logs").update(payload as Record<string, unknown>).eq("id", existing.id as string);
           if (error) throw error;
         } else {
           const { error } = await supabaseAdmin.from("health_logs").insert(payload);
@@ -443,7 +443,7 @@ async function executeToolCall(
           .eq("is_completed", false);
 
         const goalTitle = (args.goal_title as string).toLowerCase();
-        const goal = goals?.find(g => g.title.toLowerCase().includes(goalTitle) || goalTitle.includes(g.title.toLowerCase()));
+        const goal = (goals as Array<{ id: string; title: string; saved_amount: number; target_amount: number }>)?.find(g => g.title.toLowerCase().includes(goalTitle) || goalTitle.includes(g.title.toLowerCase()));
         if (!goal) return `❌ No active goal found matching "${args.goal_title}". Create one first.`;
 
         const newSaved = Number(goal.saved_amount) + (args.amount as number);
@@ -451,7 +451,7 @@ async function executeToolCall(
         const { error } = await supabaseAdmin.from("goals").update({
           saved_amount: newSaved,
           is_completed: isCompleted,
-        }).eq("id", goal.id);
+        }).eq("id", goal.id as string);
         if (error) throw error;
         return isCompleted 
           ? `🎉 Goal "${goal.title}" COMPLETED! Saved ₹${newSaved}/₹${goal.target_amount}`
@@ -479,7 +479,7 @@ async function executeToolCall(
           .eq("is_active", true);
 
         const debtName = (args.debt_name as string).toLowerCase();
-        const debt = debts?.find(d => d.name.toLowerCase().includes(debtName) || debtName.includes(d.name.toLowerCase()));
+        const debt = (debts as Array<{ id: string; name: string; total_paid: number; principal: number }>)?.find(d => d.name.toLowerCase().includes(debtName) || debtName.includes(d.name.toLowerCase()));
         if (!debt) return `❌ No active debt found matching "${args.debt_name}".`;
 
         const { error: payErr } = await supabaseAdmin.from("debt_payments").insert({
@@ -495,7 +495,7 @@ async function executeToolCall(
         await supabaseAdmin.from("debts").update({
           total_paid: newPaid,
           is_active: !isFullyPaid,
-        }).eq("id", debt.id);
+        }).eq("id", debt.id as string);
 
         return isFullyPaid
           ? `🎉 "${debt.name}" FULLY PAID! Total paid: ₹${newPaid}`
@@ -526,7 +526,7 @@ async function executeToolCall(
         }
         const { data: notes } = await query.order("created_at", { ascending: false }).limit(10);
         if (!notes?.length) return `📝 No notes found.`;
-        return `📝 Your Notes (${notes.length}):\n` + notes.map((n, i) => `${i + 1}. **${n.title}** — ${n.content?.slice(0, 60) || ""}`).join("\n");
+        return `📝 Your Notes (${notes.length}):\n` + (notes as Array<{ title: string; content: string }>).map((n, i) => `${i + 1}. **${n.title}** — ${(n.content || "").slice(0, 60)}`).join("\n");
       }
       case "get_reminders": {
         let query = supabaseAdmin.from("reminders").select("*").eq("user_id", userId);
@@ -590,7 +590,8 @@ serve(async (req) => {
     
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const supabaseAdmin: SupabaseClient<any> = createClient(supabaseUrl, supabaseServiceKey);
 
     let userId = "";
     if (token && token !== Deno.env.get("SUPABASE_ANON_KEY")) {
