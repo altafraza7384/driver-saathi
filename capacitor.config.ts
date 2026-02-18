@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'app.lovable.87f2ba68ef694fc7b0be20f77e06132f',
+  appId: 'com.driversaathi.app',
   appName: 'Driver Saathi',
   webDir: 'dist',
   server: {
