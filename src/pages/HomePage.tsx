@@ -1,4 +1,4 @@
-import { Plus, Minus, Car, StickyNote, Bell, ChevronRight, Target, CreditCard } from "lucide-react";
+import { Plus, Minus, Car, StickyNote, Bell, ChevronRight, Target, CreditCard, Heart } from "lucide-react";
 import { AdBanner } from "@/components/AdBanner";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -24,6 +24,7 @@ const quickActions = [
   { labelKey: "home.carCheck", icon: Car, path: "/car-checks", color: "bg-warning text-warning-foreground" },
   { labelKey: "home.reminders", icon: Bell, path: "/reminders", color: "bg-destructive text-destructive-foreground" },
   { labelKey: "home.notes", icon: StickyNote, path: "/notes", color: "bg-success text-success-foreground" },
+  { labelKey: "nav.health", icon: Heart, path: "/health", color: "bg-secondary text-secondary-foreground" },
 ];
 
 export default function HomePage() {
@@ -108,7 +109,7 @@ export default function HomePage() {
 
       <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
         <h2 className="mb-3 text-base font-semibold">{t("home.quickActions")}</h2>
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-5 gap-2">
           {quickActions.map((action) => (
             <button key={action.labelKey} onClick={() => navigate(action.path)} className="flex flex-col items-center gap-1.5">
               <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${action.color} shadow-sm`}><action.icon className="h-5 w-5" /></div>

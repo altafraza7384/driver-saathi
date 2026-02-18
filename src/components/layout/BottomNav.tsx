@@ -1,4 +1,4 @@
-import { Home, ArrowLeftRight, Heart, Bot, Menu } from "lucide-react";
+import { Home, ArrowLeftRight, Bot, Menu } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils";
 const navItems = [
   { path: "/", icon: Home, labelKey: "nav.home" },
   { path: "/transactions", icon: ArrowLeftRight, labelKey: "nav.transactions" },
-  { path: "/health", icon: Heart, labelKey: "nav.health" },
   { path: "/assistant", icon: Bot, labelKey: "nav.assistant" },
   { path: "/more", icon: Menu, labelKey: "nav.more" },
 ];
