@@ -17,6 +17,11 @@ dist-ssr
 .env.local
 .env.*.local
 
+# Sensitive credential files
+google-services.json
+public/google-services.json
+*.json.secret
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
