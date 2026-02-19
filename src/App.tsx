@@ -21,6 +21,7 @@ import NotesPage from "./pages/NotesPage";
 import SOSPage from "./pages/SOSPage";
 import SettingsPage from "./pages/SettingsPage";
 import DataBackupPage from "./pages/DataBackupPage";
+import FinanceAIPage from "./pages/FinanceAIPage";
 import AuthPage from "./pages/AuthPage";
 import NotFound from "./pages/NotFound";
 
@@ -70,6 +71,7 @@ const App = () => (
                   <Route path="/sos" element={<SOSPage />} />
                   <Route path="/settings" element={<SettingsPage />} />
                   <Route path="/data-backup" element={<DataBackupPage />} />
+                  <Route path="/finance-ai" element={<FinanceAIPage />} />
                 </Route>
                 <Route path="*" element={<NotFound />} />
               </Routes>

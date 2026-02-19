@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { AlertTriangle, Phone, Plus, Trash2, MapPin, ArrowLeft } from "lucide-react";
+import { AlertTriangle, Phone, Plus, Trash2, MapPin, ArrowLeft, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -38,6 +38,31 @@ export default function SOSPage() {
     mutationFn: async (id: string) => { const { error } = await supabase.from("emergency_contacts").delete().eq("id", id); if (error) throw error; },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["emergency_contacts"] }),
   });
+
+  const shareWhatsApp = () => {
+    if (!navigator.geolocation) { toast.error("Geolocation not supported"); return; }
+    toast.info("Getting location...");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        const mapsUrl = `https://maps.google.com/maps?q=${latitude},${longitude}`;
+        const message = `🚨 SOS EMERGENCY! I need help! My live location: ${mapsUrl}`;
+        if (contacts.length > 0) {
+          const firstContact = contacts[0];
+          const phone = firstContact.phone.replace(/\D/g, "");
+          const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+          window.open(waUrl, "_blank");
+          toast.success(`Opening WhatsApp for ${firstContact.name}`);
+        } else {
+          const waUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+          window.open(waUrl, "_blank");
+          toast.success("Opening WhatsApp to share location");
+        }
+      },
+      () => { toast.error("Could not get location. Please enable GPS."); },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
 
   const triggerSOS = () => {
     setSosTriggered(true);
@@ -69,11 +94,20 @@ export default function SOSPage() {
       <button onClick={() => navigate("/more")} className="flex items-center gap-1 text-sm text-muted-foreground mb-2"><ArrowLeft className="h-4 w-4" /> {t("common.back")}</button>
       <h1 className="text-2xl font-bold">{t("sos.title")}</h1>
 
-      <motion.div className="flex justify-center py-6" animate={sosTriggered ? { scale: [1, 1.05, 1] } : {}} transition={{ repeat: sosTriggered ? Infinity : 0, duration: 0.5 }}>
+      <motion.div className="flex justify-center py-4" animate={sosTriggered ? { scale: [1, 1.05, 1] } : {}} transition={{ repeat: sosTriggered ? Infinity : 0, duration: 0.5 }}>
         <button onClick={triggerSOS} className="flex h-40 w-40 flex-col items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-2xl transition-transform active:scale-95">
           <AlertTriangle className="h-12 w-12" /><span className="mt-2 text-lg font-extrabold">SOS</span><span className="text-xs opacity-80">{t("sos.tapForHelp")}</span>
         </button>
       </motion.div>
+
+      {/* WhatsApp Share Button */}
+      <button
+        onClick={shareWhatsApp}
+        className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#25D366] p-3 text-white font-extrabold shadow-md active:scale-95 transition-transform"
+      >
+        <MessageCircle className="h-5 w-5" />
+        Share Location on WhatsApp
+      </button>
 
       {sosTriggered && (
         <Card className="border-destructive/30 bg-destructive/5"><CardContent className="flex items-center gap-3 p-4"><MapPin className="h-5 w-5 text-destructive" /><p className="text-sm font-medium text-destructive">{t("sos.gettingLocation")}</p></CardContent></Card>
