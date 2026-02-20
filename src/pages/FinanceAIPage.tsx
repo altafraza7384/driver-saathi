@@ -180,17 +180,6 @@ export default function FinanceAIPage() {
               <p className="font-extrabold text-foreground text-base">Your Personal Finance AI</p>
               <p className="text-sm mt-1 max-w-xs">Ask me anything about your finances — investments, debt management, savings goals, and more!</p>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              {SUGGESTED_PROMPTS.map((p) => (
-                <button
-                  key={p}
-                  onClick={() => send(p.replace(/^[^\w]+/, "").trim())}
-                  className="text-left rounded-xl border p-3 text-xs font-bold hover:bg-muted transition-colors active:scale-95"
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
           </div>
         )}
         <AnimatePresence>
