@@ -521,8 +521,9 @@ async function executeToolCall(
       }
       case "get_notes": {
         let query = supabaseAdmin.from("notes").select("*").eq("user_id", userId);
-        if (args.search) {
-          query = query.or(`title.ilike.%${args.search}%,content.ilike.%${args.search}%`);
+       if (args.search) {
+          const escaped = String(args.search).slice(0, 100).replace(/[%_\\]/g, '\\$&');
+          query = query.or(`title.ilike.%${escaped}%,content.ilike.%${escaped}%`);
         }
         const { data: notes } = await query.order("created_at", { ascending: false }).limit(10);
         if (!notes?.length) return `📝 No notes found.`;
@@ -593,11 +594,21 @@ serve(async (req) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const supabaseAdmin: SupabaseClient<any> = createClient(supabaseUrl, supabaseServiceKey);
 
-    let userId = "";
-    if (token && token !== Deno.env.get("SUPABASE_ANON_KEY")) {
-      const { data: { user } } = await supabaseAdmin.auth.getUser(token);
-      if (user) userId = user.id;
+    if (!token || token === Deno.env.get("SUPABASE_ANON_KEY")) {
+      return new Response(
+        JSON.stringify({ error: "Authentication required" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
+
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: "Invalid authentication" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    const userId = user.id;
 
     // First call: with tools enabled (non-streaming to handle tool calls)
     const firstResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
