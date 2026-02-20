@@ -24,7 +24,7 @@ const quickActions = [
   { labelKey: "home.carCheck", icon: Car, path: "/car-checks", color: "bg-warning text-warning-foreground" },
   { labelKey: "home.notes", icon: StickyNote, path: "/notes", color: "bg-success text-success-foreground" },
   { labelKey: "nav.health", icon: Heart, path: "/health", color: "bg-destructive text-destructive-foreground" },
-  { labelKey: "nav.sos", icon: AlertTriangle, path: "/sos", color: "bg-secondary text-secondary-foreground" },
+  { labelKey: "nav.sos", icon: AlertTriangle, path: "/sos", color: "bg-primary text-primary-foreground" },
 ];
 
 export default function HomePage() {
