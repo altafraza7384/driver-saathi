@@ -103,7 +103,7 @@ export default function SOSPage() {
       {/* WhatsApp Share Button */}
       <button
         onClick={shareWhatsApp}
-        className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#25D366] p-3 text-white font-extrabold shadow-md active:scale-95 transition-transform"
+        className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary text-primary-foreground p-3 font-extrabold shadow-md active:scale-95 transition-transform"
       >
         <MessageCircle className="h-5 w-5" />
         Share Location on WhatsApp
