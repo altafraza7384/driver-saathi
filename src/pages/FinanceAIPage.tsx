@@ -36,6 +36,7 @@ export default function FinanceAIPage() {
   const send = useCallback(async (text?: string) => {
     const msgText = text || input.trim();
     if (!msgText || isLoading) return;
+    if (!session?.access_token) { toast.error("Please sign in to use Finance AI"); return; }
     const userMsg: Msg = { role: "user", content: msgText };
     if (!text) setInput("");
     setMessages((prev) => [...prev, userMsg]);
@@ -49,7 +50,7 @@ export default function FinanceAIPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          Authorization: `Bearer ${session?.access_token}`,
         },
         body: JSON.stringify({ messages: allMessages }),
       });
