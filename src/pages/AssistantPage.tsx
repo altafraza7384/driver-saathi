@@ -1,13 +1,15 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, lazy, Suspense } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Send, Bot, User, Trash2, Mic, Square, Volume2, VolumeX, Headphones } from "lucide-react";
+import { Send, Bot, User, Trash2, Mic, Square, Volume2, VolumeX, Headphones, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
+
+const FinanceAIPage = lazy(() => import("./FinanceAIPage"));
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -47,6 +49,7 @@ function speakText(text: string): Promise<void> {
 export default function AssistantPage() {
   const { t } = useI18n();
   const { session } = useAuth();
+  const [activeTab, setActiveTab] = useState<"assistant" | "finance">("assistant");
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -319,6 +322,36 @@ export default function AssistantPage() {
     };
   }, []);
 
+  // If finance tab is active, render FinanceAIPage
+  if (activeTab === "finance") {
+    return (
+      <div className="flex h-[calc(100vh-7rem)] flex-col p-4 pt-6">
+        {/* Toggle Header */}
+        <div className="flex items-center justify-center mb-4">
+          <div className="flex items-center gap-0 rounded-xl bg-muted p-1 w-full max-w-xs">
+            <button
+              onClick={() => setActiveTab("assistant")}
+              className="flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-extrabold transition-all text-muted-foreground"
+            >
+              <Bot className="h-4 w-4" /> Assistant
+            </button>
+            <button
+              onClick={() => setActiveTab("finance")}
+              className="flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-extrabold transition-all bg-primary text-primary-foreground shadow-md"
+            >
+              <TrendingUp className="h-4 w-4" /> Finance AI
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 -mx-4 -mb-4 overflow-hidden">
+          <Suspense fallback={<div className="flex items-center justify-center h-full"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>}>
+            <FinanceAIPage />
+          </Suspense>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-[calc(100vh-7rem)] flex-col p-4 pt-6">
       {/* Driving Mode Full Screen Overlay */}
@@ -391,36 +424,54 @@ export default function AssistantPage() {
         )}
       </AnimatePresence>
 
-      {/* Normal chat header */}
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">{t("nav.assistant")}</h1>
-        <div className="flex items-center gap-1">
-          <Button
-            variant={drivingMode ? "default" : "outline"}
-            size="sm"
-            className="gap-1"
-            onClick={toggleDrivingMode}
-            title="Driving Mode — hands-free voice control"
-          >
-            <Headphones className="h-4 w-4" />
-            <span className="hidden sm:inline">Drive</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => {
-              setSpeakEnabled(!speakEnabled);
-              if (speakEnabled) window.speechSynthesis.cancel();
-            }}
-            title={speakEnabled ? "Mute voice replies" : "Enable voice replies"}
-          >
-            {speakEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
-          </Button>
-          {messages.length > 0 && (
-            <Button variant="ghost" size="icon" onClick={() => { setMessages([]); window.speechSynthesis.cancel(); }}>
-              <Trash2 className="h-4 w-4" />
+      {/* Toggle + chat header */}
+      <div className="flex flex-col gap-3 mb-4">
+        <div className="flex items-center justify-center">
+          <div className="flex items-center gap-0 rounded-xl bg-muted p-1 w-full max-w-xs">
+            <button
+              onClick={() => setActiveTab("assistant")}
+              className="flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-extrabold transition-all bg-primary text-primary-foreground shadow-md"
+            >
+              <Bot className="h-4 w-4" /> Assistant
+            </button>
+            <button
+              onClick={() => setActiveTab("finance")}
+              className="flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-extrabold transition-all text-muted-foreground"
+            >
+              <TrendingUp className="h-4 w-4" /> Finance AI
+            </button>
+          </div>
+        </div>
+        <div className="flex items-center justify-between">
+          <h1 className="text-lg font-bold">{t("nav.assistant")}</h1>
+          <div className="flex items-center gap-1">
+            <Button
+              variant={drivingMode ? "default" : "outline"}
+              size="sm"
+              className="gap-1"
+              onClick={toggleDrivingMode}
+              title="Driving Mode — hands-free voice control"
+            >
+              <Headphones className="h-4 w-4" />
+              <span className="hidden sm:inline">Drive</span>
             </Button>
-          )}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                setSpeakEnabled(!speakEnabled);
+                if (speakEnabled) window.speechSynthesis.cancel();
+              }}
+              title={speakEnabled ? "Mute voice replies" : "Enable voice replies"}
+            >
+              {speakEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+            </Button>
+            {messages.length > 0 && (
+              <Button variant="ghost" size="icon" onClick={() => { setMessages([]); window.speechSynthesis.cancel(); }}>
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 

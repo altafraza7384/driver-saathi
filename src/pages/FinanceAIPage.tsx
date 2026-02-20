@@ -3,10 +3,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Send, Bot, User, Trash2, TrendingUp, ArrowLeft, Mic, Square } from "lucide-react";
+import { Send, Bot, User, Trash2, TrendingUp, Mic, Square } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
-import { useNavigate } from "react-router-dom";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -23,7 +22,6 @@ const SUGGESTED_PROMPTS = [
 
 export default function FinanceAIPage() {
   const { session } = useAuth();
-  const navigate = useNavigate();
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -152,12 +150,8 @@ export default function FinanceAIPage() {
   useEffect(() => () => { recognitionRef.current?.stop(); }, []);
 
   return (
-    <div className="flex h-[calc(100vh-7rem)] flex-col p-4 pt-6">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-4">
-        <button onClick={() => navigate("/")} className="flex items-center gap-1 text-sm text-muted-foreground">
-          <ArrowLeft className="h-4 w-4" />
-        </button>
+    <div className="flex h-full flex-col p-4 pt-2">
+      <div className="flex items-center gap-3 mb-3">
         <div className="flex items-center gap-2 flex-1">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
             <TrendingUp className="h-5 w-5 text-primary" />

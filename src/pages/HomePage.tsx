@@ -1,4 +1,4 @@
-import { Plus, Minus, Car, StickyNote, ChevronRight, Target, CreditCard, Heart, TrendingUp } from "lucide-react";
+import { Plus, Minus, Car, StickyNote, ChevronRight, Target, CreditCard, Heart, AlertTriangle } from "lucide-react";
 import { AdBanner } from "@/components/AdBanner";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -24,7 +24,7 @@ const quickActions = [
   { labelKey: "home.carCheck", icon: Car, path: "/car-checks", color: "bg-warning text-warning-foreground" },
   { labelKey: "home.notes", icon: StickyNote, path: "/notes", color: "bg-success text-success-foreground" },
   { labelKey: "nav.health", icon: Heart, path: "/health", color: "bg-destructive text-destructive-foreground" },
-  { labelKey: "home.financeAI", icon: TrendingUp, path: "/finance-ai", color: "bg-secondary text-secondary-foreground" },
+  { labelKey: "nav.sos", icon: AlertTriangle, path: "/sos", color: "bg-secondary text-secondary-foreground" },
 ];
 
 export default function HomePage() {
@@ -109,13 +109,13 @@ export default function HomePage() {
 
       <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
         <h2 className="mb-3 text-base font-bold">{t("home.quickActions")}</h2>
-        <div className="grid grid-cols-5 gap-2 w-full">
+        <div className="grid grid-cols-5 gap-3 w-full">
           {quickActions.map((action) => (
-            <button key={action.labelKey} onClick={() => navigate(action.path)} className="flex flex-col items-center gap-2 w-full">
-              <div className={`flex w-full aspect-square max-h-14 items-center justify-center rounded-xl ${action.color} shadow-md`}>
-                <action.icon className="h-6 w-6 sm:h-7 sm:w-7" />
+            <button key={action.labelKey} onClick={() => navigate(action.path)} className="flex flex-col items-center gap-2 w-full active:scale-95 transition-transform">
+              <div className={`flex w-full aspect-square items-center justify-center rounded-2xl ${action.color} shadow-md`}>
+                <action.icon className="h-7 w-7 sm:h-8 sm:w-8" />
               </div>
-              <span className="text-center text-[10px] sm:text-xs font-extrabold leading-tight text-muted-foreground w-full truncate">{t(action.labelKey)}</span>
+              <span className="text-center text-[11px] sm:text-xs font-extrabold leading-tight text-muted-foreground w-full truncate">{t(action.labelKey)}</span>
             </button>
           ))}
         </div>
