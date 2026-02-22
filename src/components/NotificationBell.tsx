@@ -12,7 +12,7 @@ interface Notification {
   id: string;
   title: string;
   description: string;
-  type: "reminder" | "emi" | "car_check" | "goal" | "health";
+  type: "reminder" | "emi" | "car_check" | "goal" | "health" | "car_document";
   date: string;
 }
 
@@ -72,6 +72,15 @@ export function NotificationBell() {
       const { data } = await supabase
         .from("car_checks")
         .select("*");
+      return data ?? [];
+    },
+    enabled: !!user,
+  });
+
+  const { data: carDocuments = [] } = useQuery({
+    queryKey: ["notifications_car_documents"],
+    queryFn: async () => {
+      const { data } = await supabase.from("car_documents").select("*");
       return data ?? [];
     },
     enabled: !!user,
@@ -187,6 +196,22 @@ export function NotificationBell() {
     }
   });
 
+  // Car document expiry alerts
+  carDocuments.forEach((doc: any) => {
+    const expiryDate = parseISO(doc.expiry_date);
+    const daysLeft = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysLeft <= 30) {
+      const label = daysLeft < 0 ? "EXPIRED" : daysLeft === 0 ? "Expires today" : `Expires in ${daysLeft} days`;
+      notifications.push({
+        id: `doc-${doc.id}`,
+        title: `📄 ${doc.document_name}`,
+        description: `${label} • Expiry: ${format(expiryDate, "dd MMM yyyy")}`,
+        type: "car_document",
+        date: doc.expiry_date,
+      });
+    }
+  });
+
   // Daily health reminders
   const waterCount = healthLog?.water_glasses || 0;
   const breaksCount = healthLog?.breaks_taken || 0;
@@ -244,6 +269,7 @@ export function NotificationBell() {
       case "emi": return "bg-destructive/10 text-destructive";
       case "reminder": return "bg-warning/10 text-warning";
       case "car_check": return "bg-primary/10 text-primary";
+      case "car_document": return "bg-warning/10 text-warning";
       case "goal": return "bg-success/10 text-success";
       case "health": return "bg-accent text-accent-foreground";
     }
@@ -254,6 +280,7 @@ export function NotificationBell() {
       case "emi": return "EMI";
       case "reminder": return "Reminder";
       case "car_check": return "Car Check";
+      case "car_document": return "Document";
       case "goal": return "Goal";
       case "health": return "Health";
     }

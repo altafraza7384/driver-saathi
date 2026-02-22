@@ -54,6 +54,7 @@ export default function DebtsPage() {
   const [tenure, setTenure] = useState("");
   const [notifyDate, setNotifyDate] = useState("");
   const [notifyTime, setNotifyTime] = useState("");
+  const [customEmi, setCustomEmi] = useState("");
   const [saving, setSaving] = useState(false);
 
   // Edit state
@@ -85,7 +86,8 @@ export default function DebtsPage() {
     const p = parseFloat(principal);
     const r = parseFloat(rate) || 0;
     const m = parseInt(tenure) || 12;
-    const emi = calculateEMI(p, r, m);
+    const calculatedEmi = calculateEMI(p, r, m);
+    const finalEmi = customEmi ? parseFloat(customEmi) : calculatedEmi;
 
     const notifyAt = notifyDate && notifyTime ? `${notifyDate}T${notifyTime}:00` : notifyDate ? `${notifyDate}T09:00:00` : null;
     const { error } = await supabase.from("debts").insert({
@@ -94,7 +96,7 @@ export default function DebtsPage() {
       principal: p,
       interest_rate: r,
       tenure_months: m,
-      emi_amount: Math.round(emi * 100) / 100,
+      emi_amount: Math.round(finalEmi * 100) / 100,
       notify_at: notifyAt,
     } as any);
 
@@ -103,7 +105,7 @@ export default function DebtsPage() {
     } else {
       toast({ title: "Loan added!" });
       setShowAdd(false);
-      setName(""); setPrincipal(""); setRate(""); setTenure(""); setNotifyDate(""); setNotifyTime("");
+      setName(""); setPrincipal(""); setRate(""); setTenure(""); setNotifyDate(""); setNotifyTime(""); setCustomEmi("");
       fetchDebts();
     }
     setSaving(false);
@@ -225,11 +227,20 @@ export default function DebtsPage() {
               </div>
               {principal && tenure && (
                 <Card className="border-primary/20 bg-primary/5">
-                  <CardContent className="p-3 text-center">
-                    <p className="text-xs text-muted-foreground">Estimated Monthly EMI</p>
-                    <p className="text-xl font-bold text-primary">
-                      {formatINR(calculateEMI(parseFloat(principal) || 0, parseFloat(rate) || 0, parseInt(tenure) || 12))}
+                  <CardContent className="p-3 space-y-2">
+                    <p className="text-xs text-muted-foreground text-center">Estimated Monthly EMI</p>
+                    <p className="text-xl font-bold text-primary text-center">
+                      {formatINR(customEmi ? parseFloat(customEmi) : calculateEMI(parseFloat(principal) || 0, parseFloat(rate) || 0, parseInt(tenure) || 12))}
                     </p>
+                    <Input
+                      type="number"
+                      placeholder="Edit EMI amount"
+                      value={customEmi}
+                      onChange={(e) => setCustomEmi(e.target.value)}
+                      className="text-center"
+                      min="1"
+                    />
+                    <p className="text-[10px] text-muted-foreground text-center">Leave blank to use calculated EMI</p>
                   </CardContent>
                 </Card>
               )}
