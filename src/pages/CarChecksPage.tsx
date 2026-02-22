@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Wrench, Trash2, ArrowLeft, FileText, Pencil, Shield, ExternalLink, AlertTriangle } from "lucide-react";
+import { Plus, Wrench, Trash2, ArrowLeft, FileText, Pencil, Shield, ExternalLink, AlertTriangle, X } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { format, parseISO, differenceInDays } from "date-fns";
@@ -38,6 +38,8 @@ export default function CarChecksPage() {
   const [customType, setCustomType] = useState("");
   const [showCustomType, setShowCustomType] = useState(false);
   const [docForm, setDocForm] = useState({ document_name: "", expiry_date: "", notify_date: "", notify_time: "" });
+  const [webviewUrl, setWebviewUrl] = useState<string | null>(null);
+  const [webviewTitle, setWebviewTitle] = useState("");
 
   // Car checks query
   const { data: checks = [], isLoading } = useQuery({
@@ -360,7 +362,7 @@ export default function CarChecksPage() {
             <p className="text-xs text-muted-foreground mb-3">Compare & buy car insurance from top providers</p>
             <div className="space-y-2">
               {INSURANCE_PROVIDERS.map((provider) => (
-                <Card key={provider.name} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => window.open(provider.url, "_blank")}>
+                <Card key={provider.name} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => { setWebviewUrl(provider.url); setWebviewTitle(provider.name); }}>
                   <CardContent className="flex items-center justify-between p-3">
                     <div className="flex items-center gap-3">
                       <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${provider.color}`}>
@@ -378,6 +380,32 @@ export default function CarChecksPage() {
             </div>
           </div>
         </>
+      )}
+
+      {/* In-App Insurance Webview */}
+      {webviewUrl && (
+        <div className="fixed inset-0 z-50 bg-background flex flex-col">
+          <div className="flex items-center justify-between px-4 py-3 border-b bg-card">
+            <div className="flex items-center gap-2">
+              <Shield className="h-5 w-5 text-primary" />
+              <span className="font-semibold text-sm">{webviewTitle}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => window.open(webviewUrl, "_blank")}>
+                <ExternalLink className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setWebviewUrl(null); setWebviewTitle(""); }}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+          <iframe
+            src={webviewUrl}
+            className="flex-1 w-full border-0"
+            title={webviewTitle}
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+          />
+        </div>
       )}
     </div>
   );
