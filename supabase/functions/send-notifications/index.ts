@@ -52,6 +52,23 @@ serve(async (req) => {
     }
 
     // POST = send due notifications (called by cron)
+    // Verify authorization - only service role or valid cron calls allowed
+    const authHeader = req.headers.get("Authorization");
+    const apiKey = req.headers.get("apikey");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    // Accept if apikey header matches service role key, or Bearer token matches service role key
+    const isAuthorized =
+      apiKey === serviceRoleKey ||
+      (authHeader && authHeader.replace("Bearer ", "") === serviceRoleKey);
+
+    if (!isAuthorized) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const keys = await getVapidKeys();
     webpush.setVapidDetails(
       "mailto:noreply@driverbuddy.app",
