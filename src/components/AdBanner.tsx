@@ -21,7 +21,7 @@ export function AdBanner({
     // On native, AdMob banner is shown natively (not in webview)
     if (isNative() || pushed.current) return;
     try {
-      const adsbygoogle = (window as any).adsbygoogle || [];
+      const adsbygoogle = (window as Window & { adsbygoogle: unknown[] }).adsbygoogle || [];
       adsbygoogle.push({});
       pushed.current = true;
     } catch (e) {

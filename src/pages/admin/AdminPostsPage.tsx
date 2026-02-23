@@ -14,12 +14,26 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 
+interface Category { id: string; name: string; }
+interface Post {
+  id: string;
+  title: string;
+  description?: string;
+  category_id: string;
+  post_type: string;
+  contact_phone?: string;
+  contact_link?: string;
+  media_url?: string;
+  created_at: string;
+  marketplace_categories?: { name: string };
+}
+
 export default function AdminPostsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [editPost, setEditPost] = useState<any>(null);
+  const [editPost, setEditPost] = useState<Post | null>(null);
   const [form, setForm] = useState({
     title: "", description: "", category_id: "", post_type: "text",
     contact_phone: "", contact_link: "", media_url: "",
@@ -75,10 +89,10 @@ export default function AdminPostsPage() {
       };
 
       if (editPost) {
-        const { error } = await supabase.from("marketplace_posts").update(payload as any).eq("id", editPost.id);
+        const { error } = await supabase.from("marketplace_posts").update(payload).eq("id", editPost.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("marketplace_posts").insert(payload as any);
+        const { error } = await supabase.from("marketplace_posts").insert(payload);
         if (error) throw error;
       }
     },
@@ -109,7 +123,7 @@ export default function AdminPostsPage() {
     setForm({ title: "", description: "", category_id: "", post_type: "text", contact_phone: "", contact_link: "", media_url: "" });
   };
 
-  const openEdit = (post: any) => {
+  const openEdit = (post: Post) => {
     setEditPost(post);
     setForm({
       title: post.title,
@@ -147,7 +161,7 @@ export default function AdminPostsPage() {
                 <Select value={form.category_id} onValueChange={(v) => setForm({ ...form, category_id: v })}>
                   <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
                   <SelectContent>
-                    {(categories as any[]).map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                    {(categories as Category[]).map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -196,11 +210,11 @@ export default function AdminPostsPage() {
 
       {isLoading ? (
         <div className="flex justify-center py-10"><div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>
-      ) : (posts as any[]).length === 0 ? (
+      ) : (posts as Post[]).length === 0 ? (
         <Card><CardContent className="p-6 text-center text-muted-foreground">No posts yet. Create your first marketplace ad!</CardContent></Card>
       ) : (
         <div className="space-y-2">
-          {(posts as any[]).map((post) => (
+          {(posts as Post[]).map((post) => (
             <Card key={post.id}>
               <CardContent className="flex items-center justify-between p-3">
                 <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -210,7 +224,7 @@ export default function AdminPostsPage() {
                   <div className="min-w-0">
                     <p className="text-sm font-medium truncate">{post.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      {(post as any).marketplace_categories?.name} • {format(parseISO(post.created_at), "dd MMM")}
+                      {post.marketplace_categories?.name} • {format(parseISO(post.created_at), "dd MMM")}
                     </p>
                   </div>
                 </div>

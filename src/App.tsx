@@ -28,6 +28,9 @@ import AdminLayout from "./pages/admin/AdminLayout";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminPostsPage from "./pages/admin/AdminPostsPage";
 import AdminCategoriesPage from "./pages/admin/AdminCategoriesPage";
+import { FCMService } from "@/services/fcm.service";
+import { useEffect } from "react";
+import { Capacitor } from "@capacitor/core";
 
 const queryClient = new QueryClient();
 
@@ -49,47 +52,57 @@ function ProtectedRoutes() {
   return <AppLayout />;
 }
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
-      <I18nProvider>
-        <AuthProvider>
-          <TooltipProvider>
-            <Toaster />
-            <Sonner />
-            <BrowserRouter>
-              <Routes>
-                <Route path="/auth" element={<AuthPage />} />
-                <Route element={<ProtectedRoutes />}>
-                  <Route path="/" element={<HomePage />} />
-                  <Route path="/transactions" element={<TransactionsPage />} />
-                  <Route path="/transactions/add" element={<AddTransactionPage />} />
-                  <Route path="/debts" element={<DebtsPage />} />
-                  <Route path="/goals" element={<GoalsPage />} />
-                  <Route path="/health" element={<HealthPage />} />
-                  <Route path="/assistant" element={<AssistantPage />} />
-                  <Route path="/more" element={<MorePage />} />
-                  <Route path="/car-checks" element={<CarChecksPage />} />
-                  <Route path="/reminders" element={<RemindersPage />} />
-                  <Route path="/notes" element={<NotesPage />} />
-                  <Route path="/sos" element={<SOSPage />} />
-                  <Route path="/settings" element={<SettingsPage />} />
-                  <Route path="/data-backup" element={<DataBackupPage />} />
-                  <Route path="/finance-ai" element={<FinanceAIPage />} />
-                </Route>
-                <Route element={<AdminLayout />}>
-                  <Route path="/admin" element={<AdminDashboard />} />
-                  <Route path="/admin/posts" element={<AdminPostsPage />} />
-                  <Route path="/admin/categories" element={<AdminCategoriesPage />} />
-                </Route>
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </BrowserRouter>
-          </TooltipProvider>
-        </AuthProvider>
-      </I18nProvider>
-    </ThemeProvider>
-  </QueryClientProvider>
-);
+const App = () => {
+  // Initialize FCM when app starts (only on native platforms)
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      console.log('🚀 Initializing FCM...');
+      FCMService.initialize();
+    }
+  }, []);
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
+        <I18nProvider>
+          <AuthProvider>
+            <TooltipProvider>
+              <Toaster />
+              <Sonner />
+              <BrowserRouter>
+                <Routes>
+                  <Route path="/auth" element={<AuthPage />} />
+                  <Route element={<ProtectedRoutes />}>
+                    <Route path="/" element={<HomePage />} />
+                    <Route path="/transactions" element={<TransactionsPage />} />
+                    <Route path="/transactions/add" element={<AddTransactionPage />} />
+                    <Route path="/debts" element={<DebtsPage />} />
+                    <Route path="/goals" element={<GoalsPage />} />
+                    <Route path="/health" element={<HealthPage />} />
+                    <Route path="/assistant" element={<AssistantPage />} />
+                    <Route path="/more" element={<MorePage />} />
+                    <Route path="/car-checks" element={<CarChecksPage />} />
+                    <Route path="/reminders" element={<RemindersPage />} />
+                    <Route path="/notes" element={<NotesPage />} />
+                    <Route path="/sos" element={<SOSPage />} />
+                    <Route path="/settings" element={<SettingsPage />} />
+                    <Route path="/data-backup" element={<DataBackupPage />} />
+                    <Route path="/finance-ai" element={<FinanceAIPage />} />
+                  </Route>
+                  <Route element={<AdminLayout />}>
+                    <Route path="/admin" element={<AdminDashboard />} />
+                    <Route path="/admin/posts" element={<AdminPostsPage />} />
+                    <Route path="/admin/categories" element={<AdminCategoriesPage />} />
+                  </Route>
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </BrowserRouter>
+            </TooltipProvider>
+          </AuthProvider>
+        </I18nProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
+  );
+};
 
 export default App;

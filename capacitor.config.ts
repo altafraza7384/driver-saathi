@@ -4,6 +4,14 @@ const config: CapacitorConfig = {
   appId: 'com.driversaathi.app',
   appName: 'Driver Saathi',
   webDir: 'dist',
+  plugins: {
+    PushNotifications: {
+      presentationOptions: ["badge", "sound", "alert"]
+    },
+    FirebaseMessaging: {
+      presentationOptions: ["badge", "sound", "alert"]
+    }
+  },
   server: {
     url: 'https://87f2ba68-ef69-4fc7-b0be-20f77e06132f.lovableproject.com?forceHideBadge=true',
     cleartext: true,

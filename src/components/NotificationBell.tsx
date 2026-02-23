@@ -118,7 +118,7 @@ export function NotificationBell() {
     isToday(d) ? "Due today" : isTomorrow(d) ? "Due tomorrow" : `Due ${format(d, "MMM dd")}`;
 
   // Reminders with notify_at
-  reminders.forEach((r: any) => {
+  reminders.forEach((r: { id: string; notify_at?: string; reminder_date: string; title: string; category: string }) => {
     const notifyAt = r.notify_at ? parseISO(r.notify_at) : parseISO(r.reminder_date);
     if (isBefore(notifyAt, twoDaysLater) && !isBefore(notifyAt, addDays(now, -1))) {
       const dueDate = format(parseISO(r.reminder_date), "dd MMM yyyy");
@@ -133,7 +133,7 @@ export function NotificationBell() {
   });
 
   // Debts with notify_at or EMI day match
-  debts.forEach((debt: any) => {
+  debts.forEach((debt: { id: string; name: string; notify_at?: string; start_date: string; emi_amount?: number }) => {
     if (debt.notify_at) {
       const notifyAt = parseISO(debt.notify_at);
       if (isBefore(notifyAt, twoDaysLater) && !isBefore(notifyAt, addDays(now, -1))) {
@@ -165,7 +165,7 @@ export function NotificationBell() {
   });
 
   // Car checks with notify_at
-  carChecks.forEach((cc: any) => {
+  carChecks.forEach((cc: { id: string; check_type: string; notify_at?: string; next_due_date?: string }) => {
     const notifyAt = cc.notify_at ? parseISO(cc.notify_at) : cc.next_due_date ? parseISO(cc.next_due_date) : null;
     if (!notifyAt) return;
     if (isBefore(notifyAt, twoDaysLater) && !isBefore(notifyAt, addDays(now, -1))) {
@@ -181,7 +181,7 @@ export function NotificationBell() {
   });
 
   // Goals with notify_at
-  goals.forEach((g: any) => {
+  goals.forEach((g: { id: string; title: string; notify_at?: string; deadline?: string }) => {
     if (!g.notify_at) return;
     const notifyAt = parseISO(g.notify_at);
     if (isBefore(notifyAt, twoDaysLater) && !isBefore(notifyAt, addDays(now, -1))) {
@@ -197,7 +197,7 @@ export function NotificationBell() {
   });
 
   // Car document expiry alerts
-  carDocuments.forEach((doc: any) => {
+  carDocuments.forEach((doc: { id: string; document_name: string; expiry_date: string }) => {
     const expiryDate = parseISO(doc.expiry_date);
     const daysLeft = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     if (daysLeft <= 30) {

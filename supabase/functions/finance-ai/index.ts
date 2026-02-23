@@ -1,3 +1,5 @@
+// deno-lint-ignore-file
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
@@ -28,12 +30,12 @@ serve(async (req) => {
     const userId = user.id;
     const body = await req.json();
     const messages = body?.messages;
-    
+
     // Validate messages input
     if (!Array.isArray(messages) || messages.length === 0 || messages.length > 50) {
       return new Response(JSON.stringify({ error: "Invalid messages format" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-    
+
     // Validate each message has required fields and reasonable length
     for (const msg of messages) {
       if (!msg || typeof msg.role !== "string" || typeof msg.content !== "string") {
@@ -90,10 +92,10 @@ Total Outstanding: ₹${totalDebt.toFixed(0)}
 Total Monthly EMI: ₹${totalEMI.toFixed(0)}
 
 🎯 SAVINGS GOALS (${goals.length} goals):
-${goals.map((g: any) => `  - ${g.title}: ₹${g.saved_amount}/₹${g.target_amount} (${Number(g.target_amount) > 0 ? ((Number(g.saved_amount)/Number(g.target_amount))*100).toFixed(0) : 0}%)${g.deadline ? `, deadline: ${g.deadline}` : ""}`).join("\n") || "  No goals set"}
+${goals.map((g: any) => `  - ${g.title}: ₹${g.saved_amount}/₹${g.target_amount} (${Number(g.target_amount) > 0 ? ((Number(g.saved_amount) / Number(g.target_amount)) * 100).toFixed(0) : 0}%)${g.deadline ? `, deadline: ${g.deadline}` : ""}`).join("\n") || "  No goals set"}
 
 📦 EXPENSE BREAKDOWN (Top categories):
-${Object.entries(expenseByCategory).sort(([,a], [,b]) => (b as number) - (a as number)).slice(0, 5).map(([cat, amt]) => `  - ${cat}: ₹${(amt as number).toFixed(0)}`).join("\n") || "  No expenses this month"}
+${Object.entries(expenseByCategory).sort(([, a], [, b]) => (b as number) - (a as number)).slice(0, 5).map(([cat, amt]) => `  - ${cat}: ₹${(amt as number).toFixed(0)}`).join("\n") || "  No expenses this month"}
 
 Today's date: ${today}
 

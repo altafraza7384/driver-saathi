@@ -11,11 +11,19 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { Switch } from "@/components/ui/switch";
 
+interface Category {
+  id: string;
+  name: string;
+  icon: string;
+  sort_order: number;
+  is_active: boolean;
+}
+
 export default function AdminCategoriesPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [editCat, setEditCat] = useState<any>(null);
+  const [editCat, setEditCat] = useState<Category | null>(null);
   const [form, setForm] = useState({ name: "", icon: "Store", sort_order: "0" });
 
   const { data: categories = [], isLoading } = useQuery({
@@ -31,10 +39,10 @@ export default function AdminCategoriesPage() {
     mutationFn: async () => {
       const payload = { name: form.name, icon: form.icon, sort_order: Number(form.sort_order) };
       if (editCat) {
-        const { error } = await supabase.from("marketplace_categories").update(payload as any).eq("id", editCat.id);
+        const { error } = await supabase.from("marketplace_categories").update(payload).eq("id", editCat.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("marketplace_categories").insert({ ...payload, is_active: true } as any);
+        const { error } = await supabase.from("marketplace_categories").insert({ ...payload, is_active: true });
         if (error) throw error;
       }
     },
@@ -48,7 +56,7 @@ export default function AdminCategoriesPage() {
 
   const toggleMutation = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
-      const { error } = await supabase.from("marketplace_categories").update({ is_active } as any).eq("id", id);
+      const { error } = await supabase.from("marketplace_categories").update({ is_active }).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin_all_categories"] }),
@@ -71,7 +79,7 @@ export default function AdminCategoriesPage() {
     setForm({ name: "", icon: "Store", sort_order: "0" });
   };
 
-  const openEdit = (cat: any) => {
+  const openEdit = (cat: Category) => {
     setEditCat(cat);
     setForm({ name: cat.name, icon: cat.icon, sort_order: String(cat.sort_order) });
     setOpen(true);
@@ -122,7 +130,7 @@ export default function AdminCategoriesPage() {
         <div className="flex justify-center py-10"><div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>
       ) : (
         <div className="space-y-2">
-          {(categories as any[]).map((cat) => (
+          {(categories as Category[]).map((cat) => (
             <Card key={cat.id}>
               <CardContent className="flex items-center justify-between p-3">
                 <div className="flex items-center gap-3">

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Driver Saathi</string>
+    <string name="title_activity_main">Driver Saathi</string>
+    <string name="package_name">com.driversaathi.app</string>
+    <string name="custom_url_scheme">com.driversaathi.app</string>
+</resources>
