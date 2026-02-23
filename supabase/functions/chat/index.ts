@@ -324,6 +324,33 @@ CRITICAL RULES:
 
 Today's date is ${new Date().toISOString().split("T")[0]}.`;
 
+// Input validation helpers
+function validateString(val: unknown, maxLen = 500): string | null {
+  if (val == null) return null;
+  const s = String(val).trim();
+  return s.length > 0 && s.length <= maxLen ? s : null;
+}
+
+function validateNumber(val: unknown, min = 0, max = 100000000): number | null {
+  if (val == null) return null;
+  const n = Number(val);
+  return !isNaN(n) && n >= min && n <= max ? n : null;
+}
+
+function validateDate(val: unknown): string | null {
+  if (val == null) return null;
+  const s = String(val);
+  if (!/^\d{4}-\d{2}-\d{2}/.test(s)) return null;
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : s;
+}
+
+function validateEnum(val: unknown, allowed: string[]): string | null {
+  if (val == null) return null;
+  const s = String(val);
+  return allowed.includes(s) ? s : null;
+}
+
 async function executeToolCall(
   toolName: string,
   args: Record<string, unknown>,
@@ -335,51 +362,63 @@ async function executeToolCall(
   try {
     switch (toolName) {
       case "add_transaction": {
+        const type = validateEnum(args.type, ["income", "expense"]);
+        const amount = validateNumber(args.amount, 0.01);
+        const category = validateString(args.category, 50);
+        if (!type || !amount || !category) return "❌ Invalid transaction data. Please provide valid type, amount, and category.";
         const { error } = await supabaseAdmin.from("transactions").insert({
           user_id: userId,
-          type: args.type,
-          amount: args.amount,
-          category: args.category as string,
-          platform: (args.platform as string) || null,
-          description: (args.description as string) || null,
+          type: type,
+          amount: amount,
+          category: category,
+          platform: validateString(args.platform, 50),
+          description: validateString(args.description, 500),
         });
         if (error) throw error;
-        return `✅ ${args.type === "income" ? "Income" : "Expense"} of ₹${args.amount} (${args.category}) saved.`;
+        return `✅ ${type === "income" ? "Income" : "Expense"} of ₹${amount} (${category}) saved.`;
       }
       case "add_note": {
+        const title = validateString(args.title, 200);
+        const content = validateString(args.content, 5000);
+        if (!title || !content) return "❌ Invalid note data. Please provide a title and content.";
         const { error } = await supabaseAdmin.from("notes").insert({
           user_id: userId,
-          title: args.title,
-          content: args.content,
+          title,
+          content,
         });
         if (error) throw error;
-        return `✅ Note "${args.title}" saved.`;
+        return `✅ Note "${title}" saved.`;
       }
       case "add_reminder": {
-        const notifyAt = args.notify_at || (args.reminder_date ? `${args.reminder_date}T09:00:00` : null);
+        const title = validateString(args.title, 200);
+        const reminderDate = validateDate(args.reminder_date);
+        if (!title || !reminderDate) return "❌ Invalid reminder data. Please provide a title and date.";
+        const notifyAt = validateDate(args.notify_at) || `${reminderDate}T09:00:00`;
         const { error } = await supabaseAdmin.from("reminders").insert({
           user_id: userId,
-          title: args.title,
-          description: (args.description as string) || null,
-          reminder_date: args.reminder_date,
-          category: (args.category as string) || "general",
+          title,
+          description: validateString(args.description, 500),
+          reminder_date: reminderDate,
+          category: validateEnum(args.category, ["general", "vehicle", "finance", "health"]) || "general",
           notify_at: notifyAt,
         });
         if (error) throw error;
-        return `✅ Reminder "${args.title}" set for ${args.reminder_date} with notification.`;
+        return `✅ Reminder "${title}" set for ${reminderDate} with notification.`;
       }
       case "add_car_check": {
+        const checkType = validateString(args.check_type, 100);
+        if (!checkType) return "❌ Invalid car check data. Please provide a check type.";
         const { error } = await supabaseAdmin.from("car_checks").insert({
           user_id: userId,
-          check_type: args.check_type,
-          description: (args.description as string) || null,
-          cost: (args.cost as number) || null,
-          odometer_reading: (args.odometer_reading as number) || null,
-          next_due_date: (args.next_due_date as string) || null,
-          notify_at: (args.notify_at as string) || null,
+          check_type: checkType,
+          description: validateString(args.description, 500),
+          cost: validateNumber(args.cost, 0, 10000000),
+          odometer_reading: validateNumber(args.odometer_reading, 0, 10000000),
+          next_due_date: validateDate(args.next_due_date),
+          notify_at: validateDate(args.notify_at),
         });
         if (error) throw error;
-        return `✅ Car check "${args.check_type}" logged.${args.next_due_date ? ` Next due: ${args.next_due_date}` : ""}`;
+        return `✅ Car check "${checkType}" logged.${args.next_due_date ? ` Next due: ${args.next_due_date}` : ""}`;
       }
       case "update_health_log": {
         // Check for existing today's log
@@ -424,29 +463,34 @@ async function executeToolCall(
         return `✅ Health updated — ${parts.join(", ") || "saved"}`;
       }
       case "add_goal": {
+        const title = validateString(args.title, 200);
+        const targetAmount = validateNumber(args.target_amount, 1);
+        if (!title || !targetAmount) return "❌ Invalid goal data. Please provide a title and target amount.";
         const { error } = await supabaseAdmin.from("goals").insert({
           user_id: userId,
-          title: args.title,
-          target_amount: args.target_amount,
-          deadline: (args.deadline as string) || null,
-          notify_at: (args.notify_at as string) || null,
+          title,
+          target_amount: targetAmount,
+          deadline: validateDate(args.deadline),
+          notify_at: validateDate(args.notify_at),
         });
         if (error) throw error;
-        return `✅ Goal "${args.title}" (₹${args.target_amount}) created.`;
+        return `✅ Goal "${title}" (₹${targetAmount}) created.`;
       }
       case "add_goal_savings": {
-        // Fuzzy match goal by title
+        const goalTitle = validateString(args.goal_title, 200);
+        const amount = validateNumber(args.amount, 0.01);
+        if (!goalTitle || !amount) return "❌ Invalid data. Please provide a goal name and amount.";
         const { data: goals } = await supabaseAdmin
           .from("goals")
           .select("*")
           .eq("user_id", userId)
           .eq("is_completed", false);
 
-        const goalTitle = (args.goal_title as string).toLowerCase();
-        const goal = (goals as Array<{ id: string; title: string; saved_amount: number; target_amount: number }>)?.find(g => g.title.toLowerCase().includes(goalTitle) || goalTitle.includes(g.title.toLowerCase()));
-        if (!goal) return `❌ No active goal found matching "${args.goal_title}". Create one first.`;
+        const goalTitleLower = goalTitle.toLowerCase();
+        const goal = (goals as Array<{ id: string; title: string; saved_amount: number; target_amount: number }>)?.find(g => g.title.toLowerCase().includes(goalTitleLower) || goalTitleLower.includes(g.title.toLowerCase()));
+        if (!goal) return `❌ No active goal found matching "${goalTitle}". Create one first.`;
 
-        const newSaved = Number(goal.saved_amount) + (args.amount as number);
+        const newSaved = Number(goal.saved_amount) + amount;
         const isCompleted = newSaved >= Number(goal.target_amount);
         const { error } = await supabaseAdmin.from("goals").update({
           saved_amount: newSaved,
@@ -455,42 +499,47 @@ async function executeToolCall(
         if (error) throw error;
         return isCompleted 
           ? `🎉 Goal "${goal.title}" COMPLETED! Saved ₹${newSaved}/₹${goal.target_amount}`
-          : `✅ ₹${args.amount} added to "${goal.title}". Progress: ₹${newSaved}/₹${goal.target_amount}`;
+          : `✅ ₹${amount} added to "${goal.title}". Progress: ₹${newSaved}/₹${goal.target_amount}`;
       }
       case "add_debt": {
+        const name = validateString(args.name, 200);
+        const principal = validateNumber(args.principal, 1);
+        if (!name || !principal) return "❌ Invalid debt data. Please provide a name and principal amount.";
         const { error } = await supabaseAdmin.from("debts").insert({
           user_id: userId,
-          name: args.name,
-          principal: args.principal,
-          interest_rate: (args.interest_rate as number) || 0,
-          tenure_months: (args.tenure_months as number) || 12,
-          emi_amount: (args.emi_amount as number) || null,
-          notify_at: (args.notify_at as string) || null,
+          name,
+          principal,
+          interest_rate: validateNumber(args.interest_rate, 0, 100) || 0,
+          tenure_months: validateNumber(args.tenure_months, 1, 600) || 12,
+          emi_amount: validateNumber(args.emi_amount, 0),
+          notify_at: validateDate(args.notify_at),
         });
         if (error) throw error;
-        return `✅ Debt "${args.name}" (₹${args.principal}) recorded.`;
+        return `✅ Debt "${name}" (₹${principal}) recorded.`;
       }
       case "add_debt_payment": {
-        // Fuzzy match debt by name
+        const debtNameStr = validateString(args.debt_name, 200);
+        const amount = validateNumber(args.amount, 0.01);
+        if (!debtNameStr || !amount) return "❌ Invalid payment data. Please provide a debt name and amount.";
         const { data: debts } = await supabaseAdmin
           .from("debts")
           .select("*")
           .eq("user_id", userId)
           .eq("is_active", true);
 
-        const debtName = (args.debt_name as string).toLowerCase();
-        const debt = (debts as Array<{ id: string; name: string; total_paid: number; principal: number }>)?.find(d => d.name.toLowerCase().includes(debtName) || debtName.includes(d.name.toLowerCase()));
-        if (!debt) return `❌ No active debt found matching "${args.debt_name}".`;
+        const debtNameLower = debtNameStr.toLowerCase();
+        const debt = (debts as Array<{ id: string; name: string; total_paid: number; principal: number }>)?.find(d => d.name.toLowerCase().includes(debtNameLower) || debtNameLower.includes(d.name.toLowerCase()));
+        if (!debt) return `❌ No active debt found matching "${debtNameStr}".`;
 
         const { error: payErr } = await supabaseAdmin.from("debt_payments").insert({
           user_id: userId,
           debt_id: debt.id,
-          amount: args.amount,
-          note: (args.note as string) || null,
+          amount,
+          note: validateString(args.note, 500),
         });
         if (payErr) throw payErr;
 
-        const newPaid = Number(debt.total_paid) + (args.amount as number);
+        const newPaid = Number(debt.total_paid) + amount;
         const isFullyPaid = newPaid >= Number(debt.principal);
         await supabaseAdmin.from("debts").update({
           total_paid: newPaid,

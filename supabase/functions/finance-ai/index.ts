@@ -26,7 +26,23 @@ serve(async (req) => {
     if (authError || !user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     const userId = user.id;
-    const { messages } = await req.json();
+    const body = await req.json();
+    const messages = body?.messages;
+    
+    // Validate messages input
+    if (!Array.isArray(messages) || messages.length === 0 || messages.length > 50) {
+      return new Response(JSON.stringify({ error: "Invalid messages format" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    
+    // Validate each message has required fields and reasonable length
+    for (const msg of messages) {
+      if (!msg || typeof msg.role !== "string" || typeof msg.content !== "string") {
+        return new Response(JSON.stringify({ error: "Invalid message format" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      if (msg.content.length > 10000) {
+        return new Response(JSON.stringify({ error: "Message too long" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
 
     // Fetch all financial data for personalized advice
     const today = new Date().toISOString().split("T")[0];
