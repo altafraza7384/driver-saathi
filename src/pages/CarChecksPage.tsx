@@ -10,27 +10,23 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Wrench, Trash2, ArrowLeft, FileText, Pencil, Shield, ExternalLink, AlertTriangle, X } from "lucide-react";
+import { Plus, Wrench, Trash2, ArrowLeft, FileText, Pencil, Shield, Store, AlertTriangle, Phone, ExternalLink, UserCheck, FileCheck, Cog, GraduationCap, Image, Video, Play } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { format, parseISO, differenceInDays } from "date-fns";
 
 const DEFAULT_CHECK_TYPES = ["Oil Change", "Tire Rotation", "Brake Check", "Battery", "Air Filter", "Coolant", "PUC", "Insurance", "Fitness Certificate", "General Service"];
 
-const INSURANCE_PROVIDERS = [
-  { name: "Acko", url: "https://www.acko.com/car-insurance", desc: "Instant digital car insurance", color: "bg-primary/10" },
-  { name: "Digit Insurance", url: "https://www.godigit.com/motor-insurance/car-insurance", desc: "Simple, fair & transparent", color: "bg-success/10" },
-  { name: "ICICI Lombard", url: "https://www.icicilombard.com/motor-insurance/car-insurance", desc: "Comprehensive coverage plans", color: "bg-warning/10" },
-  { name: "Bajaj Allianz", url: "https://www.bajajallianz.com/motor-insurance/car-insurance-online.html", desc: "Wide network of garages", color: "bg-destructive/10" },
-  { name: "PolicyBazaar", url: "https://www.policybazaar.com/motor-insurance/car-insurance/", desc: "Compare all providers", color: "bg-accent" },
-];
+const ICON_MAP: Record<string, any> = {
+  Shield, UserCheck, FileCheck, Wrench, Cog, GraduationCap, Store,
+};
 
 export default function CarChecksPage() {
   const { user } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<"checks" | "documents">("checks");
+  const [activeTab, setActiveTab] = useState<"checks" | "documents" | "marketplace">("checks");
   const [open, setOpen] = useState(false);
   const [docOpen, setDocOpen] = useState(false);
   const [editDoc, setEditDoc] = useState<any>(null);
@@ -38,8 +34,7 @@ export default function CarChecksPage() {
   const [customType, setCustomType] = useState("");
   const [showCustomType, setShowCustomType] = useState(false);
   const [docForm, setDocForm] = useState({ document_name: "", expiry_date: "", notify_date: "", notify_time: "" });
-  const [webviewUrl, setWebviewUrl] = useState<string | null>(null);
-  const [webviewTitle, setWebviewTitle] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   // Car checks query
   const { data: checks = [], isLoading } = useQuery({
@@ -57,6 +52,30 @@ export default function CarChecksPage() {
     queryKey: ["car_documents"],
     queryFn: async () => {
       const { data, error } = await supabase.from("car_documents").select("*").order("expiry_date", { ascending: true });
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user,
+  });
+
+  // Marketplace categories
+  const { data: categories = [] } = useQuery({
+    queryKey: ["marketplace_categories"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("marketplace_categories").select("*").eq("is_active", true).order("sort_order");
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user,
+  });
+
+  // Marketplace posts
+  const { data: posts = [] } = useQuery({
+    queryKey: ["marketplace_posts", selectedCategory],
+    queryFn: async () => {
+      let query = supabase.from("marketplace_posts").select("*, marketplace_categories(name, icon)").eq("is_active", true).order("created_at", { ascending: false });
+      if (selectedCategory) query = query.eq("category_id", selectedCategory);
+      const { data, error } = await query;
       if (error) throw error;
       return data;
     },
@@ -172,26 +191,37 @@ export default function CarChecksPage() {
     return { label: `${days}d left`, color: "text-success", bg: "bg-success/10" };
   };
 
+  const getCategoryIcon = (iconName: string) => {
+    const IconComponent = ICON_MAP[iconName] || Store;
+    return <IconComponent className="h-5 w-5" />;
+  };
+
   return (
     <div className="space-y-5 p-4 pt-6">
       <button onClick={() => navigate("/more")} className="flex items-center gap-1 text-sm text-muted-foreground mb-2">
         <ArrowLeft className="h-4 w-4" /> {t("common.back")}
       </button>
 
-      {/* Toggle Switch */}
+      {/* Toggle Switch - 3 tabs */}
       <div className="flex items-center justify-center">
-        <div className="relative flex w-full max-w-xs rounded-lg bg-muted p-1">
+        <div className="relative flex w-full max-w-md rounded-lg bg-muted p-1">
           <button
-            className={`flex-1 rounded-md py-2 text-sm font-medium transition-all ${activeTab === "checks" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}
+            className={`flex-1 rounded-md py-2 text-xs font-medium transition-all ${activeTab === "checks" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}
             onClick={() => setActiveTab("checks")}
           >
-            <Wrench className="h-4 w-4 inline mr-1" /> Car Checks
+            <Wrench className="h-3.5 w-3.5 inline mr-1" /> Car Checks
           </button>
           <button
-            className={`flex-1 rounded-md py-2 text-sm font-medium transition-all ${activeTab === "documents" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}
+            className={`flex-1 rounded-md py-2 text-xs font-medium transition-all ${activeTab === "documents" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}
             onClick={() => setActiveTab("documents")}
           >
-            <FileText className="h-4 w-4 inline mr-1" /> Documents
+            <FileText className="h-3.5 w-3.5 inline mr-1" /> Documents
+          </button>
+          <button
+            className={`flex-1 rounded-md py-2 text-xs font-medium transition-all ${activeTab === "marketplace" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}
+            onClick={() => setActiveTab("marketplace")}
+          >
+            <Store className="h-3.5 w-3.5 inline mr-1" /> Marketplace
           </button>
         </div>
       </div>
@@ -296,7 +326,6 @@ export default function CarChecksPage() {
             </Dialog>
           </div>
 
-          {/* Document List */}
           {docsLoading ? (
             <div className="flex justify-center py-10"><div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>
           ) : documents.length === 0 ? (
@@ -352,60 +381,82 @@ export default function CarChecksPage() {
               </div>
             </DialogContent>
           </Dialog>
+        </>
+      )}
 
-          {/* Insurance Marketplace */}
-          <div className="pt-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Shield className="h-5 w-5 text-primary" />
-              <h2 className="text-lg font-bold">Insurance Marketplace</h2>
-            </div>
-            <p className="text-xs text-muted-foreground mb-3">Compare & buy car insurance from top providers</p>
-            <div className="space-y-2">
-              {INSURANCE_PROVIDERS.map((provider) => (
-                <Card key={provider.name} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => { setWebviewUrl(provider.url); setWebviewTitle(provider.name); }}>
-                  <CardContent className="flex items-center justify-between p-3">
-                    <div className="flex items-center gap-3">
-                      <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${provider.color}`}>
-                        <Shield className="h-4 w-4" />
+      {/* ===== MARKETPLACE TAB ===== */}
+      {activeTab === "marketplace" && (
+        <>
+          <h1 className="text-2xl font-bold">Marketplace</h1>
+
+          {/* Category pills */}
+          <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+            <button
+              onClick={() => setSelectedCategory(null)}
+              className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-medium transition-all ${!selectedCategory ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+            >
+              All
+            </button>
+            {(categories as any[]).map((cat) => (
+              <button
+                key={cat.id}
+                onClick={() => setSelectedCategory(cat.id)}
+                className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-medium transition-all flex items-center gap-1.5 ${selectedCategory === cat.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+              >
+                {getCategoryIcon(cat.icon)}
+                {cat.name}
+              </button>
+            ))}
+          </div>
+
+          {/* Posts */}
+          {(posts as any[]).length === 0 ? (
+            <Card><CardContent className="p-6 text-center text-muted-foreground">No listings yet. Check back soon!</CardContent></Card>
+          ) : (
+            <div className="space-y-3">
+              {(posts as any[]).map((post) => (
+                <Card key={post.id} className="overflow-hidden">
+                  <CardContent className="p-0">
+                    {/* Media */}
+                    {post.post_type === "image" && post.media_url && (
+                      <img src={post.media_url} alt={post.title} className="w-full h-48 object-cover" />
+                    )}
+                    {post.post_type === "video" && post.media_url && (
+                      <video src={post.media_url} controls className="w-full h-48 object-cover" />
+                    )}
+
+                    <div className="p-4 space-y-2">
+                      {/* Category badge */}
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-full bg-primary/10 text-primary px-2.5 py-0.5 text-xs font-medium">
+                          {post.marketplace_categories?.name || "General"}
+                        </span>
+                        <span className="text-xs text-muted-foreground">{format(parseISO(post.created_at), "dd MMM yyyy")}</span>
                       </div>
-                      <div>
-                        <p className="text-sm font-medium">{provider.name}</p>
-                        <p className="text-xs text-muted-foreground">{provider.desc}</p>
+
+                      <h3 className="font-bold text-sm">{post.title}</h3>
+                      {post.description && <p className="text-xs text-muted-foreground leading-relaxed">{post.description}</p>}
+
+                      {/* Contact */}
+                      <div className="flex gap-2 pt-1">
+                        {post.contact_phone && (
+                          <a href={`tel:${post.contact_phone}`} className="flex items-center gap-1 text-xs bg-primary/10 text-primary rounded-full px-3 py-1 font-medium">
+                            <Phone className="h-3 w-3" /> Call
+                          </a>
+                        )}
+                        {post.contact_link && (
+                          <a href={post.contact_link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs bg-muted text-foreground rounded-full px-3 py-1 font-medium">
+                            <ExternalLink className="h-3 w-3" /> Visit
+                          </a>
+                        )}
                       </div>
                     </div>
-                    <ExternalLink className="h-4 w-4 text-muted-foreground" />
                   </CardContent>
                 </Card>
               ))}
             </div>
-          </div>
+          )}
         </>
-      )}
-
-      {/* In-App Insurance Webview */}
-      {webviewUrl && (
-        <div className="fixed inset-0 z-50 bg-background flex flex-col">
-          <div className="flex items-center justify-between px-4 py-3 border-b bg-card">
-            <div className="flex items-center gap-2">
-              <Shield className="h-5 w-5 text-primary" />
-              <span className="font-semibold text-sm">{webviewTitle}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => window.open(webviewUrl, "_blank")}>
-                <ExternalLink className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setWebviewUrl(null); setWebviewTitle(""); }}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-          <iframe
-            src={webviewUrl}
-            className="flex-1 w-full border-0"
-            title={webviewTitle}
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-          />
-        </div>
       )}
     </div>
   );

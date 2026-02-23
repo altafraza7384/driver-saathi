@@ -24,6 +24,10 @@ import DataBackupPage from "./pages/DataBackupPage";
 import FinanceAIPage from "./pages/FinanceAIPage";
 import AuthPage from "./pages/AuthPage";
 import NotFound from "./pages/NotFound";
+import AdminLayout from "./pages/admin/AdminLayout";
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import AdminPostsPage from "./pages/admin/AdminPostsPage";
+import AdminCategoriesPage from "./pages/admin/AdminCategoriesPage";
 
 const queryClient = new QueryClient();
 
@@ -72,6 +76,11 @@ const App = () => (
                   <Route path="/settings" element={<SettingsPage />} />
                   <Route path="/data-backup" element={<DataBackupPage />} />
                   <Route path="/finance-ai" element={<FinanceAIPage />} />
+                </Route>
+                <Route element={<AdminLayout />}>
+                  <Route path="/admin" element={<AdminDashboard />} />
+                  <Route path="/admin/posts" element={<AdminPostsPage />} />
+                  <Route path="/admin/categories" element={<AdminCategoriesPage />} />
                 </Route>
                 <Route path="*" element={<NotFound />} />
               </Routes>
