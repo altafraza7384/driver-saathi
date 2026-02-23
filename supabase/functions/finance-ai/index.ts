@@ -22,9 +22,12 @@ serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    const supabaseUser = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
-    const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: authError } = await supabaseUser.auth.getUser(token);
+    // FIX: Use a user-scoped client so RLS policies are enforced.
+    // Financial data is fetched as the authenticated user, not service role.
+    const supabaseUser = createClient(SUPABASE_URL!, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user }, error: authError } = await supabaseUser.auth.getUser();
     if (authError || !user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     const userId = user.id;
@@ -140,8 +143,9 @@ IMPORTANT: Always refer to their ACTUAL data. Do NOT give generic advice when yo
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (e) {
+    // FIX: Verbose error messages — never expose internal error details to client
     console.error("finance-ai error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
+    return new Response(JSON.stringify({ error: "Internal server error" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

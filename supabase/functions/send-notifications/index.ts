@@ -10,6 +10,14 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+// Generic error response — no internal details leaked to client
+function errorResponse(status: number, message: string) {
+  return new Response(
+    JSON.stringify({ error: message }),
+    { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -21,59 +29,52 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Helper to get or generate VAPID keys
-    async function getVapidKeys() {
-      const { data: configs } = await supabaseAdmin
-        .from("app_config")
-        .select("*")
-        .in("key", ["vapid_public_key", "vapid_private_key"]);
+    // ────────────────────────────────────────────────────────
+    // FIX: VAPID keys from environment variables (NOT database)
+    // Set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in Supabase
+    // Edge Function secrets, not in app_config table.
+    // ────────────────────────────────────────────────────────
+    function getVapidKeys() {
+      const publicKey = Deno.env.get("VAPID_PUBLIC_KEY");
+      const privateKey = Deno.env.get("VAPID_PRIVATE_KEY");
 
-      if (configs && configs.length === 2) {
-        return {
-          publicKey: configs.find((c: any) => c.key === "vapid_public_key")!.value,
-          privateKey: configs.find((c: any) => c.key === "vapid_private_key")!.value,
-        };
+      if (!publicKey || !privateKey) {
+        throw new Error("VAPID keys not configured in environment");
       }
 
-      // Generate new VAPID keys
-      const vapidKeys = webpush.generateVAPIDKeys();
-      await supabaseAdmin.from("app_config").upsert([
-        { key: "vapid_public_key", value: vapidKeys.publicKey },
-        { key: "vapid_private_key", value: vapidKeys.privateKey },
-      ]);
-      return vapidKeys;
+      return { publicKey, privateKey };
     }
 
     // GET = return VAPID public key (for client subscription)
     if (req.method === "GET") {
-      const keys = await getVapidKeys();
+      const keys = getVapidKeys();
       return new Response(
         JSON.stringify({ publicKey: keys.publicKey }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // POST = send due notifications (called by cron)
-    // Verify authorization - only service role or valid cron calls allowed
+    // ────────────────────────────────────────────────────────
+    // FIX: POST auth — use a dedicated CRON_SECRET env var
+    // instead of exposing the service role key in the apikey header.
+    // Set CRON_SECRET in Supabase Edge Function secrets and
+    // pass it as Authorization: Bearer <CRON_SECRET> from your cron.
+    // ────────────────────────────────────────────────────────
     const authHeader = req.headers.get("Authorization");
-    const apiKey = req.headers.get("apikey");
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const cronSecret = Deno.env.get("CRON_SECRET");
 
-    // Accept if apikey header matches service role key, or Bearer token matches service role key
-    const isAuthorized =
-      apiKey === serviceRoleKey ||
-      (authHeader && authHeader.replace("Bearer ", "") === serviceRoleKey);
-
-    if (!isAuthorized) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    if (!authHeader || !cronSecret) {
+      return errorResponse(401, "Unauthorized");
     }
 
-    const keys = await getVapidKeys();
+    const providedToken = authHeader.replace("Bearer ", "").trim();
+    if (providedToken !== cronSecret) {
+      return errorResponse(401, "Unauthorized");
+    }
+
+    const keys = getVapidKeys();
     webpush.setVapidDetails(
-      "mailto:noreply@driverbuddy.app",
+      "mailto:noreply@driversaathi.app",
       keys.publicKey,
       keys.privateKey
     );
@@ -97,7 +98,7 @@ serve(async (req) => {
     // 1. Reminders
     const { data: dueReminders } = await supabaseAdmin
       .from("reminders")
-      .select("*")
+      .select("id, user_id, title, description, notify_at") // select only needed columns
       .eq("is_completed", false)
       .gte("notify_at", fiveMinAgoISO)
       .lte("notify_at", nowISO);
@@ -117,7 +118,7 @@ serve(async (req) => {
     // 2. Debts / EMI
     const { data: dueDebts } = await supabaseAdmin
       .from("debts")
-      .select("*")
+      .select("id, user_id, name, emi_amount, notify_at") // select only needed columns
       .eq("is_active", true)
       .gte("notify_at", fiveMinAgoISO)
       .lte("notify_at", nowISO);
@@ -137,7 +138,7 @@ serve(async (req) => {
     // 3. Car Checks
     const { data: dueCarChecks } = await supabaseAdmin
       .from("car_checks")
-      .select("*")
+      .select("id, user_id, check_type, description, notify_at") // select only needed columns
       .eq("is_completed", false)
       .gte("notify_at", fiveMinAgoISO)
       .lte("notify_at", nowISO);
@@ -175,7 +176,7 @@ serve(async (req) => {
       // Get user's push subscriptions
       const { data: subs } = await supabaseAdmin
         .from("push_subscriptions")
-        .select("*")
+        .select("id, endpoint, p256dh, auth")
         .eq("user_id", n.user_id);
 
       for (const sub of subs || []) {
@@ -189,8 +190,9 @@ serve(async (req) => {
           );
           sent++;
         } catch (err: any) {
-          console.error("Push send error:", err.statusCode, err.body);
-          // Remove expired subscriptions
+          // FIX: Verbose error messages - log internally, don't expose to client
+          console.error("Push send error - statusCode:", err.statusCode);
+          // Remove expired subscriptions (410 = Gone, 404 = Not Found)
           if (err.statusCode === 410 || err.statusCode === 404) {
             await supabaseAdmin
               .from("push_subscriptions")
@@ -214,10 +216,8 @@ serve(async (req) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err: any) {
+    // FIX: Verbose error messages - never expose raw error details to client
     console.error("send-notifications error:", err);
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return errorResponse(500, "Internal server error");
   }
 });
