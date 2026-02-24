@@ -17,7 +17,7 @@ export function AppLayout() {
 
   return (
     <div className="min-h-screen bg-background">
-      <main className="mx-auto w-full max-w-md px-0 pb-24 sm:max-w-lg">
+      <main className="mx-auto w-full max-w-md px-0 pb-24 pt-0 sm:max-w-lg">
         <Outlet />
       </main>
       <BottomNav />

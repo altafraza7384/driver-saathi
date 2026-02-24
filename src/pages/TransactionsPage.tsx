@@ -87,18 +87,22 @@ export default function TransactionsPage() {
   const categoryOptions = editTx?.type === "income" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
 
   return (
-    <div className="space-y-4 p-4 pt-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-xl font-bold sm:text-2xl">{t("nav.transactions")}</h1>
-        <div className="flex gap-2">
-          <Button size="sm" onClick={() => navigate("/transactions/add?type=income")} className="flex-1 gap-1 bg-success text-success-foreground hover:bg-success/90 sm:flex-none">
-            <Plus className="h-4 w-4" /> {t("tx.income")}
-          </Button>
-          <Button size="sm" onClick={() => navigate("/transactions/add?type=expense")} variant="destructive" className="flex-1 gap-1 sm:flex-none">
-            <Minus className="h-4 w-4" /> {t("tx.expense")}
-          </Button>
+    <div className="space-y-4">
+      <div className="sticky top-0 z-40 bg-background/95 backdrop-blur-md px-4 pt-6 pb-3 border-b border-border/50">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <h1 className="text-xl font-bold sm:text-2xl">{t("nav.transactions")}</h1>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={() => navigate("/transactions/add?type=income")} className="flex-1 gap-1 bg-success text-success-foreground hover:bg-success/90 sm:flex-none">
+              <Plus className="h-4 w-4" /> {t("tx.income")}
+            </Button>
+            <Button size="sm" onClick={() => navigate("/transactions/add?type=expense")} variant="destructive" className="flex-1 gap-1 sm:flex-none">
+              <Minus className="h-4 w-4" /> {t("tx.expense")}
+            </Button>
+          </div>
         </div>
       </div>
+
+      <div className="px-4 space-y-4">
 
       <div className="grid grid-cols-2 gap-3">
         <Card className="border-success/20 bg-success/5">
@@ -211,6 +215,7 @@ export default function TransactionsPage() {
           </div>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 }
