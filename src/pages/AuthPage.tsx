@@ -150,12 +150,21 @@ export default function AuthPage() {
               type="button"
               variant="outline"
               className="w-full gap-2"
+              disabled={loading}
               onClick={async () => {
-                const { error } = await lovable.auth.signInWithOAuth("google", {
-                  redirect_uri: window.location.origin,
-                });
-                if (error) {
-                  toast({ title: "Google sign-in failed", description: String(error), variant: "destructive" });
+                setLoading(true);
+                try {
+                  const { error } = await lovable.auth.signInWithOAuth("google", {
+                    redirect_uri: window.location.origin,
+                  });
+                  if (error) {
+                    toast({ title: "Google sign-in failed", description: String(error), variant: "destructive" });
+                  }
+                } catch (err: any) {
+                  console.error("Google OAuth error:", err);
+                  toast({ title: "Google sign-in failed", description: err?.message || "Something went wrong", variant: "destructive" });
+                } finally {
+                  setLoading(false);
                 }
               }}
             >

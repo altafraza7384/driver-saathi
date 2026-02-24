@@ -29,7 +29,7 @@ export async function showBannerAd(): Promise<void> {
     adId: ADMOB_BANNER_ID,
     adSize: BannerAdSize.ADAPTIVE_BANNER,
     position: BannerAdPosition.BOTTOM_CENTER,
-    margin: 60, // above bottom nav
+    margin: 70, // above bottom nav (68px nav + 2px border)
     isTesting: false,
   };
 

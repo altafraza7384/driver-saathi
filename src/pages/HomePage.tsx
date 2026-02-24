@@ -77,14 +77,19 @@ export default function HomePage() {
   const driverName = profile?.full_name || t("common.driver");
 
   return (
-    <div className="space-y-5 p-4 pt-6">
-      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
-        <div>
-          <p className="text-sm text-muted-foreground">{t("home.greeting")} {t(getGreetingKey())} 👋</p>
-          <h1 className="text-2xl font-bold">{driverName}</h1>
+    <div className="space-y-5">
+      {/* Sticky Header */}
+      <div className="sticky top-0 z-40 bg-background/95 backdrop-blur-md px-4 pt-6 pb-3 border-b border-border/50">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm text-muted-foreground">{t("home.greeting")} {t(getGreetingKey())} 👋</p>
+            <h1 className="text-2xl font-bold">{driverName}</h1>
+          </div>
+          <NotificationBell />
         </div>
-        <NotificationBell />
-      </motion.div>
+      </div>
+
+      <div className="space-y-5 p-4 pt-0">
 
       <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
         <Card className="overflow-hidden border-0 bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg">
@@ -222,6 +227,7 @@ export default function HomePage() {
           </div>
         )}
       </motion.section>
+      </div>
     </div>
   );
 }

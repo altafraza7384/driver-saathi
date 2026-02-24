@@ -32,8 +32,11 @@ export default function MorePage() {
   ];
 
   return (
-    <div className="space-y-5 p-4 pt-6">
-      <h1 className="text-2xl font-bold">{t("nav.more")}</h1>
+    <div className="space-y-5">
+      <div className="sticky top-0 z-40 bg-background/95 backdrop-blur-md px-4 pt-6 pb-3 border-b border-border/50">
+        <h1 className="text-2xl font-bold">{t("nav.more")}</h1>
+      </div>
+      <div className="px-4 space-y-5">
       <div className="space-y-1">
         {menuItems.map((item) => (
           <button key={item.path} onClick={() => navigate(item.path)}
@@ -148,6 +151,7 @@ export default function MorePage() {
           </div>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 }
