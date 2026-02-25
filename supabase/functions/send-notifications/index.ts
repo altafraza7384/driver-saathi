@@ -152,6 +152,28 @@ serve(async (req) => {
       });
     }
 
+    // 4. Car Documents (expiry reminders)
+    const { data: dueCarDocs } = await supabaseAdmin
+      .from("car_documents")
+      .select("*")
+      .gte("notify_at", fiveMinAgoISO)
+      .lte("notify_at", nowISO);
+
+    for (const doc of dueCarDocs || []) {
+      const expiryDate = new Date(doc.expiry_date);
+      const daysLeft = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      const urgency = daysLeft <= 0 ? "EXPIRED" : daysLeft <= 3 ? "expires in " + daysLeft + " days!" : "expires on " + doc.expiry_date;
+      notifications.push({
+        user_id: doc.user_id,
+        source_table: "car_documents",
+        source_id: doc.id,
+        notify_at: doc.notify_at,
+        title: "📄 " + doc.document_name + " " + (daysLeft <= 0 ? "EXPIRED!" : "Expiring Soon!"),
+        body: `Your ${doc.document_name} ${urgency}. Renew it now!`,
+        url: "/car-checks",
+      });
+    }
+
     let sent = 0;
     let skipped = 0;
 

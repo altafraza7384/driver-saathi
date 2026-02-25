@@ -258,6 +258,38 @@ const tools = [
       parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "get_car_documents",
+      description: "Get user's car/vehicle documents with expiry dates. Use when user asks about document expiry, insurance expiry, PUC validity, RC, permit, fitness certificate, or any vehicle document status.",
+      parameters: {
+        type: "object",
+        properties: {
+          search: { type: "string", description: "Optional document name to search for" },
+        },
+        required: [],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "add_car_document",
+      description: "Add or save a car/vehicle document with its expiry date. Use when user mentions insurance, PUC, RC, permit, fitness certificate, or any vehicle document and its expiry.",
+      parameters: {
+        type: "object",
+        properties: {
+          document_name: { type: "string", description: "Document name like 'Insurance', 'PUC', 'RC', 'Permit', 'Fitness Certificate'" },
+          expiry_date: { type: "string", description: "Expiry date in YYYY-MM-DD format" },
+          notify_at: { type: "string", description: "Notification date-time in ISO format. Set to 7 days before expiry at 09:00 if not specified." },
+        },
+        required: ["document_name", "expiry_date"],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
 const systemPrompt = `You are a helpful AI driving assistant for Indian ride-hailing and gig drivers. You help them manage everything hands-free while driving.
@@ -297,6 +329,13 @@ HINGLISH COMMAND PARSING - You MUST understand ALL of these patterns:
   - "gaadi dhulwai 200 rupaye" = car check Wash ₹200
   - "PUC karwa liya" = car check PUC
 
+  Documents:
+  - "mera insurance kab expire ho raha hai" = get_car_documents (search insurance)
+  - "PUC ki date kya hai" = get_car_documents (search PUC)
+  - "documents dikha do" = get_car_documents
+  - "insurance 2025-06-15 tak valid hai" = add_car_document Insurance 2025-06-15
+  - "PUC expiry 2025-03-20" = add_car_document PUC 2025-03-20
+
   Goals & Debts:
   - "saving mein 2000 daalo" = add savings ₹2000
   - "loan liya 50000 ka" = add debt ₹50000
@@ -314,6 +353,7 @@ CRITICAL RULES:
    - User: "100 rupay add karo khane ka kharcha" → Save expense ₹100 Food → Reply: "✅ ₹100 khane ka kharcha add kar diya! 🍔"
    - User: "paani piya" → Add 1 water → Reply: "✅ 1 glass paani add kiya! 💧 Aaj total: X glasses"
    - User: "Uber se 1500 kamaye" → Save income ₹1500 Uber → Reply: "✅ ₹1500 Uber income add kar diya! 💰"
+   - User: "mera insurance kab expire hoga" → get_car_documents → Reply with expiry details
 4. If amount or category is unclear, ASK the user to clarify - don't guess wrong
 5. Be CONCISE - drivers are driving! Short 1-2 line responses only
 6. Use ₹ for currency always
@@ -321,6 +361,7 @@ CRITICAL RULES:
 8. If user says "break liya" without number, assume 1 break
 9. For reminders, always set notify_at so user gets notified
 10. When querying data, use the right get_ tool and summarize clearly
+11. For document queries, show expiry dates with days remaining and color-coded urgency
 
 Today's date is ${new Date().toISOString().split("T")[0]}.`;
 
@@ -617,6 +658,42 @@ async function executeToolCall(
           .eq("user_id", userId).eq("log_date", today).maybeSingle();
         if (!log) return `🏥 No health data logged today yet.`;
         return `🏥 Today's Health:\n😴 Sleep: ${log.sleep_hours || 0}hrs\n💧 Water: ${log.water_glasses || 0} glasses\n🚶 Steps: ${log.steps || 0}\n☕ Breaks: ${log.breaks_taken || 0}${log.notes ? `\n📝 ${log.notes}` : ""}`;
+      }
+      case "get_car_documents": {
+        let query = supabaseAdmin.from("car_documents").select("*").eq("user_id", userId);
+        if (args.search) {
+          const escaped = String(args.search).slice(0, 100).replace(/[%_\\]/g, '\\$&');
+          query = query.ilike("document_name", `%${escaped}%`);
+        }
+        const { data: docs } = await query.order("expiry_date", { ascending: true });
+        if (!docs?.length) return `📄 No car documents found.${args.search ? ` Try without search filter.` : " Add documents from Car Checks > Documents tab."}`;
+        const now = new Date();
+        return `📄 Car Documents (${docs.length}):\n` + docs.map((d: any, i: number) => {
+          const expiry = new Date(d.expiry_date);
+          const daysLeft = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          const status = daysLeft < 0 ? "❌ EXPIRED" : daysLeft === 0 ? "⚠️ Expires TODAY" : daysLeft <= 7 ? `⚠️ ${daysLeft} days left` : daysLeft <= 30 ? `🟡 ${daysLeft} days left` : `✅ ${daysLeft} days left`;
+          return `${i + 1}. **${d.document_name}** — Expiry: ${d.expiry_date} | ${status}`;
+        }).join("\n");
+      }
+      case "add_car_document": {
+        const docName = validateString(args.document_name, 200);
+        const expiryDate = validateDate(args.expiry_date);
+        if (!docName || !expiryDate) return "❌ Invalid data. Please provide document name and expiry date.";
+        // Set notification to 7 days before expiry at 09:00 if not specified
+        let notifyAt = validateDate(args.notify_at);
+        if (!notifyAt) {
+          const expDate = new Date(expiryDate);
+          expDate.setDate(expDate.getDate() - 7);
+          notifyAt = `${expDate.toISOString().split("T")[0]}T09:00:00`;
+        }
+        const { error } = await supabaseAdmin.from("car_documents").insert({
+          user_id: userId,
+          document_name: docName,
+          expiry_date: expiryDate,
+          notify_at: notifyAt,
+        });
+        if (error) throw error;
+        return `✅ Document "${docName}" saved with expiry ${expiryDate}. You'll be notified before it expires.`;
       }
       default:
         return `Unknown tool: ${toolName}`;
