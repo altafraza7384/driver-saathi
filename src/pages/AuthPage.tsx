@@ -45,9 +45,11 @@ export default function AuthPage() {
         });
       }
     } catch (error: any) {
+      const msg = error?.message || "Something went wrong";
+      const isFetch = msg.toLowerCase().includes("failed to fetch") || msg.toLowerCase().includes("networkerror");
       toast({
         title: t("auth.error"),
-        description: error.message,
+        description: isFetch ? "Network error — check your internet connection and try again." : msg,
         variant: "destructive",
       });
     } finally {
@@ -154,15 +156,30 @@ export default function AuthPage() {
               onClick={async () => {
                 setLoading(true);
                 try {
-                  const { error } = await lovable.auth.signInWithOAuth("google", {
+                  const result = await lovable.auth.signInWithOAuth("google", {
                     redirect_uri: window.location.origin,
                   });
-                  if (error) {
-                    toast({ title: "Google sign-in failed", description: String(error), variant: "destructive" });
+                  if (result?.error) {
+                    const errMsg = String(result.error);
+                    const isOAuthSecret = errMsg.includes("OAuth secret") || errMsg.includes("Unsupported provider");
+                    toast({
+                      title: "Google sign-in failed",
+                      description: isOAuthSecret
+                        ? "Google sign-in is not available right now. Please use email/password login."
+                        : errMsg,
+                      variant: "destructive",
+                    });
                   }
                 } catch (err: any) {
                   console.error("Google OAuth error:", err);
-                  toast({ title: "Google sign-in failed", description: err?.message || "Something went wrong", variant: "destructive" });
+                  const msg = err?.message || "Something went wrong";
+                  toast({
+                    title: "Google sign-in failed",
+                    description: msg.includes("Failed to fetch")
+                      ? "Network error — check your connection and try again."
+                      : msg,
+                    variant: "destructive",
+                  });
                 } finally {
                   setLoading(false);
                 }
