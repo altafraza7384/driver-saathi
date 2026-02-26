@@ -1,10 +1,10 @@
 import { Plus, Minus, Car, StickyNote, ChevronRight, Target, CreditCard, Heart, AlertTriangle } from "lucide-react";
 import { AdBanner } from "@/components/AdBanner";
 import { useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/lib/i18n";
 import { formatINR } from "@/lib/currency";
 import { useAuth } from "@/hooks/useAuth";
@@ -27,13 +27,37 @@ const quickActions = [
   { labelKey: "nav.sos", icon: AlertTriangle, path: "/sos", color: "bg-primary text-primary-foreground" },
 ];
 
+function HomeSkeleton() {
+  return (
+    <div className="space-y-5">
+      <div className="px-4 pt-6 pb-3">
+        <Skeleton className="h-4 w-32 mb-2" />
+        <Skeleton className="h-8 w-48" />
+      </div>
+      <div className="space-y-5 p-4 pt-0">
+        <Skeleton className="h-28 w-full rounded-2xl" />
+        <div className="grid grid-cols-5 gap-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="flex flex-col items-center gap-2">
+              <Skeleton className="w-full aspect-square rounded-2xl" />
+              <Skeleton className="h-3 w-12" />
+            </div>
+          ))}
+        </div>
+        <Skeleton className="h-20 w-full rounded-xl" />
+        <Skeleton className="h-20 w-full rounded-xl" />
+      </div>
+    </div>
+  );
+}
+
 export default function HomePage() {
   const { t } = useI18n();
   const { user } = useAuth();
   const navigate = useNavigate();
   const today = new Date().toISOString().split("T")[0];
 
-  const { data: profile } = useQuery({
+  const { data: profile, isLoading: profileLoading } = useQuery({
     queryKey: ["profile"],
     queryFn: async () => {
       const { data } = await supabase.from("profiles").select("full_name").eq("user_id", user!.id).single();
@@ -42,7 +66,7 @@ export default function HomePage() {
     enabled: !!user,
   });
 
-  const { data: todayTx = [] } = useQuery({
+  const { data: todayTx = [], isLoading: txLoading } = useQuery({
     queryKey: ["transactions_today"],
     queryFn: async () => {
       const { data, error } = await supabase.from("transactions").select("*").eq("transaction_date", today).order("created_at", { ascending: false }).limit(5);
@@ -72,6 +96,10 @@ export default function HomePage() {
     enabled: !!user,
   });
 
+  const isInitialLoading = profileLoading && txLoading;
+
+  if (isInitialLoading) return <HomeSkeleton />;
+
   const todayIncome = todayTx.filter((t) => t.type === "income").reduce((s, t) => s + Number(t.amount), 0);
   const todayExpense = todayTx.filter((t) => t.type === "expense").reduce((s, t) => s + Number(t.amount), 0);
   const driverName = profile?.full_name || t("common.driver");
@@ -91,7 +119,7 @@ export default function HomePage() {
 
       <div className="space-y-5 p-4 pt-0">
 
-      <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
+      <div className="animate-in fade-in duration-300">
         <Card className="overflow-hidden border-0 bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg">
           <CardContent className="p-5">
             <p className="text-sm font-medium opacity-90">{t("home.todayEarnings")}</p>
@@ -102,17 +130,17 @@ export default function HomePage() {
             </div>
           </CardContent>
         </Card>
-      </motion.div>
+      </div>
 
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }}>
+      <div>
         <Card className="border-0 shadow-sm overflow-hidden">
           <CardContent className="p-2">
             <AdBanner className="max-h-[60px]" />
           </CardContent>
         </Card>
-      </motion.div>
+      </div>
 
-      <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+      <section className="animate-in fade-in slide-in-from-bottom-2 duration-300">
         <h2 className="mb-3 text-base font-bold">{t("home.quickActions")}</h2>
         <div className="grid grid-cols-5 gap-3 w-full">
           {quickActions.map((action) => (
@@ -124,10 +152,10 @@ export default function HomePage() {
             </button>
           ))}
         </div>
-      </motion.section>
+      </section>
 
       {debts.length > 0 && (
-        <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }}>
+        <section>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-base font-semibold">{t("home.debtProgress")}</h2>
             <Button variant="ghost" size="sm" className="text-xs text-primary" onClick={() => navigate("/debts")}>
@@ -158,11 +186,11 @@ export default function HomePage() {
               );
             })}
           </div>
-        </motion.section>
+        </section>
       )}
 
       {goals.length > 0 && (
-        <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.24 }}>
+        <section>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-base font-semibold">{t("home.goalProgress")}</h2>
             <Button variant="ghost" size="sm" className="text-xs text-primary" onClick={() => navigate("/goals")}>
@@ -192,10 +220,10 @@ export default function HomePage() {
               );
             })}
           </div>
-        </motion.section>
+        </section>
       )}
 
-      <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+      <section>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-base font-semibold">{t("home.recentTransactions")}</h2>
           <Button variant="ghost" size="sm" className="text-xs text-primary" onClick={() => navigate("/transactions")}>
@@ -226,7 +254,7 @@ export default function HomePage() {
             ))}
           </div>
         )}
-      </motion.section>
+      </section>
       </div>
     </div>
   );
