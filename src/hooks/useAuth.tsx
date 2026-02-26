@@ -16,38 +16,84 @@ const AuthContext = createContext<AuthContextType>({
   signOut: async () => {},
 });
 
+const isLikelyNetworkError = (error: unknown) => {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return (
+    message.includes("failed to fetch") ||
+    message.includes("networkerror") ||
+    message.includes("network request failed") ||
+    message.includes("load failed") ||
+    message.includes("timed out")
+  );
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
-      }
-    );
+    let isMounted = true;
+    let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+    const applySession = (nextSession: Session | null) => {
+      if (!isMounted) return;
+      setSession(nextSession);
+      setUser(nextSession?.user ?? null);
       setLoading(false);
+    };
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      applySession(nextSession);
     });
 
-    return () => subscription.unsubscribe();
+    const bootstrapSession = async () => {
+      fallbackTimer = setTimeout(() => {
+        if (isMounted) setLoading(false);
+      }, 4000);
+
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        applySession(data.session ?? null);
+      } catch (error) {
+        console.error("Auth session bootstrap failed", error);
+
+        if (isLikelyNetworkError(error)) {
+          try {
+            await supabase.auth.signOut({ scope: "local" });
+          } catch (clearError) {
+            console.warn("Unable to clear stale local auth session", clearError);
+          }
+        }
+
+        applySession(null);
+      } finally {
+        if (fallbackTimer) clearTimeout(fallbackTimer);
+      }
+    };
+
+    void bootstrapSession();
+
+    return () => {
+      isMounted = false;
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error("Sign out failed, clearing local session", error);
+      await supabase.auth.signOut({ scope: "local" });
+    }
   };
 
-  return (
-    <AuthContext.Provider value={{ user, session, loading, signOut }}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={{ user, session, loading, signOut }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

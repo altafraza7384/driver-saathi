@@ -1,8 +1,8 @@
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable/index";
 
-const AUTH_TIMEOUT_MS = 15000;
-const OAUTH_TIMEOUT_MS = 20000;
+const AUTH_TIMEOUT_MS = 8000;
+const OAUTH_TIMEOUT_MS = 12000;
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -37,7 +37,7 @@ const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, timeoutMes
   }
 };
 
-const runWithRetry = async <T>(action: () => Promise<T>, retries = 1): Promise<T> => {
+const runWithRetry = async <T>(action: () => Promise<T>, retries = 0): Promise<T> => {
   let lastError: unknown;
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
@@ -46,7 +46,7 @@ const runWithRetry = async <T>(action: () => Promise<T>, retries = 1): Promise<T
     } catch (error) {
       lastError = error;
       if (!isLikelyNetworkError(error) || attempt === retries) break;
-      await wait(500 * (attempt + 1));
+      await wait(250 * (attempt + 1));
     }
   }
 
@@ -56,6 +56,14 @@ const runWithRetry = async <T>(action: () => Promise<T>, retries = 1): Promise<T
 const ensureOnline = () => {
   if (typeof navigator !== "undefined" && navigator.onLine === false) {
     throw new Error("No internet connection. Please reconnect and try again.");
+  }
+};
+
+const clearLocalAuthSession = async () => {
+  try {
+    await supabase.auth.signOut({ scope: "local" });
+  } catch (error) {
+    console.warn("Failed to clear local auth session", error);
   }
 };
 
@@ -82,65 +90,86 @@ export function useAuthActions() {
   const signInWithPassword = async (email: string, password: string) => {
     ensureOnline();
 
-    const { error } = await runWithRetry(
-      () =>
-        withTimeout(
-          supabase.auth.signInWithPassword({ email, password }),
-          AUTH_TIMEOUT_MS,
-          "Authentication request timed out."
-        ),
-      1
-    );
+    try {
+      const { error } = await runWithRetry(
+        () =>
+          withTimeout(
+            supabase.auth.signInWithPassword({ email, password }),
+            AUTH_TIMEOUT_MS,
+            "Authentication request timed out."
+          ),
+        0
+      );
 
-    if (error) throw error;
+      if (error) throw error;
+    } catch (error) {
+      if (isLikelyNetworkError(error)) {
+        await clearLocalAuthSession();
+      }
+      throw error;
+    }
   };
 
   const signUpWithPassword = async (email: string, password: string, fullName: string) => {
     ensureOnline();
 
-    const { error } = await runWithRetry(
-      () =>
-        withTimeout(
-          supabase.auth.signUp({
-            email,
-            password,
-            options: {
-              data: { full_name: fullName },
-              emailRedirectTo: window.location.origin,
-            },
-          }),
-          AUTH_TIMEOUT_MS,
-          "Signup request timed out."
-        ),
-      1
-    );
+    try {
+      const { error } = await runWithRetry(
+        () =>
+          withTimeout(
+            supabase.auth.signUp({
+              email,
+              password,
+              options: {
+                data: { full_name: fullName },
+                emailRedirectTo: window.location.origin,
+              },
+            }),
+            AUTH_TIMEOUT_MS,
+            "Signup request timed out."
+          ),
+        0
+      );
 
-    if (error) throw error;
+      if (error) throw error;
+    } catch (error) {
+      if (isLikelyNetworkError(error)) {
+        await clearLocalAuthSession();
+      }
+      throw error;
+    }
   };
 
   const signInWithGoogle = async () => {
     ensureOnline();
 
-    const result = await runWithRetry(
-      () =>
-        withTimeout(
-          lovable.auth.signInWithOAuth("google", {
-            redirect_uri: window.location.origin,
-            extraParams: {
-              prompt: "select_account",
-            },
-          }),
-          OAUTH_TIMEOUT_MS,
-          "Google sign-in request timed out."
-        ),
-      1
-    );
+    try {
+      const result = await runWithRetry(
+        () =>
+          withTimeout(
+            lovable.auth.signInWithOAuth("google", {
+              redirect_uri: window.location.origin,
+              extraParams: {
+                prompt: "select_account",
+              },
+            }),
+            OAUTH_TIMEOUT_MS,
+            "Google sign-in request timed out."
+          ),
+        0
+      );
 
-    if (result?.error) {
-      throw result.error;
+      if (result?.error) {
+        throw result.error;
+      }
+
+      return result;
+    } catch (error) {
+      if (isLikelyNetworkError(error)) {
+        await clearLocalAuthSession();
+      }
+      throw error;
     }
-
-    return result;
   };
 
   return {
@@ -149,3 +178,4 @@ export function useAuthActions() {
     signInWithGoogle,
   };
 }
+
