@@ -61,15 +61,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         console.error("Auth session bootstrap failed", error);
 
-        if (isLikelyNetworkError(error)) {
-          try {
-            await supabase.auth.signOut({ scope: "local" });
-          } catch (clearError) {
-            console.warn("Unable to clear stale local auth session", clearError);
-          }
+        // On network errors, DON'T clear the local session.
+        // The persisted session in localStorage is still valid and
+        // Supabase's autoRefreshToken will retry when connectivity returns.
+        // Only clear on non-network auth errors (e.g. token revoked server-side).
+        if (!isLikelyNetworkError(error)) {
+          applySession(null);
+        } else {
+          // Let the loading state end but keep whatever session is cached
+          if (isMounted) setLoading(false);
         }
-
-        applySession(null);
       } finally {
         if (fallbackTimer) clearTimeout(fallbackTimer);
       }
