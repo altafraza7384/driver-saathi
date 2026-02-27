@@ -169,7 +169,7 @@
   }
 }
 
-/* Safe area for mobile PWA */
+/* Safe area for mobile PWA & Despia native */
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
   .pb-safe {
     padding-bottom: calc(env(safe-area-inset-bottom) + 5rem);
@@ -177,4 +177,28 @@
   .safe-bottom {
     padding-bottom: env(safe-area-inset-bottom);
   }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+}
+
+/* Prevent overscroll bounce in native WebView */
+html, body {
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Disable text selection and callout in native context */
+.native-app {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Allow text selection in input fields even in native mode */
+.native-app input,
+.native-app textarea,
+.native-app [contenteditable] {
+  -webkit-user-select: text;
+  user-select: text;
 }
