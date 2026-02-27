@@ -47,36 +47,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       applySession(nextSession);
+
+      // Mark browser tab as having an active session (for keepSignedIn=false logic)
+      if (_event === "SIGNED_IN" && nextSession) {
+        const keep = localStorage.getItem("keepSignedIn");
+        if (keep === "false") {
+          sessionStorage.setItem("activeSession", "true");
+        }
+      }
     });
 
-    const bootstrapSession = async () => {
-      fallbackTimer = setTimeout(() => {
-        if (isMounted) setLoading(false);
-      }, 4000);
+    // If keepSignedIn was explicitly set to false and the browser was closed/reopened
+    // (sessionStorage is cleared on browser close), clear the persisted auth session.
+    const keepSignedIn = localStorage.getItem("keepSignedIn");
+    const hasActiveSession = sessionStorage.getItem("activeSession");
 
-      try {
-        const { data, error } = await supabase.auth.getSession();
-        if (error) throw error;
-        applySession(data.session ?? null);
-      } catch (error) {
-        console.error("Auth session bootstrap failed", error);
-
-        // On network errors, DON'T clear the local session.
-        // The persisted session in localStorage is still valid and
-        // Supabase's autoRefreshToken will retry when connectivity returns.
-        // Only clear on non-network auth errors (e.g. token revoked server-side).
-        if (!isLikelyNetworkError(error)) {
-          applySession(null);
-        } else {
-          // Let the loading state end but keep whatever session is cached
+    if (keepSignedIn === "false" && !hasActiveSession) {
+      // Browser was closed — user chose not to stay signed in
+      supabase.auth.signOut({ scope: "local" }).then(() => {
+        localStorage.removeItem("keepSignedIn");
+        if (isMounted) applySession(null);
+      });
+    } else {
+      // Normal bootstrap — keep session alive indefinitely
+      const bootstrapSession = async () => {
+        fallbackTimer = setTimeout(() => {
           if (isMounted) setLoading(false);
-        }
-      } finally {
-        if (fallbackTimer) clearTimeout(fallbackTimer);
-      }
-    };
+        }, 4000);
 
-    void bootstrapSession();
+        try {
+          const { data, error } = await supabase.auth.getSession();
+          if (error) throw error;
+          applySession(data.session ?? null);
+        } catch (error) {
+          console.error("Auth session bootstrap failed", error);
+          if (!isLikelyNetworkError(error)) {
+            applySession(null);
+          } else {
+            if (isMounted) setLoading(false);
+          }
+        } finally {
+          if (fallbackTimer) clearTimeout(fallbackTimer);
+        }
+      };
+
+      void bootstrapSession();
+    }
 
     return () => {
       isMounted = false;
@@ -87,6 +103,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     try {
+      // Clean up keepSignedIn preference on explicit logout
+      localStorage.removeItem("keepSignedIn");
+      sessionStorage.removeItem("activeSession");
       await supabase.auth.signOut();
     } catch (error) {
       console.error("Sign out failed, clearing local session", error);

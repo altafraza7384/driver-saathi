@@ -14,6 +14,13 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { formatAuthError, useAuthActions } from "@/hooks/useAuthActions";
 import { Car, Lock, Mail, User } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+
+const isNativeApp = () =>
+  typeof window !== "undefined" &&
+  (window.location.protocol === "capacitor:" ||
+    navigator.userAgent.includes("DriverSaathi") ||
+    document.URL.startsWith("https://") === false);
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -21,6 +28,7 @@ export default function AuthPage() {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [keepSignedIn, setKeepSignedIn] = useState(true);
   const { t } = useI18n();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -31,6 +39,9 @@ export default function AuthPage() {
     setLoading(true);
 
     try {
+      // Persist preference before auth so AuthProvider picks it up
+      localStorage.setItem("keepSignedIn", keepSignedIn ? "true" : "false");
+
       if (isLogin) {
         await signInWithPassword(email, password);
         navigate("/");
@@ -143,6 +154,19 @@ export default function AuthPage() {
                   />
                 </div>
               </div>
+
+              {isLogin && (
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="keepSignedIn"
+                    checked={keepSignedIn}
+                    onCheckedChange={(checked) => setKeepSignedIn(checked === true)}
+                  />
+                  <Label htmlFor="keepSignedIn" className="text-sm font-normal text-muted-foreground cursor-pointer">
+                    {t("auth.keepSignedIn")}
+                  </Label>
+                </div>
+              )}
 
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? "..." : isLogin ? t("auth.loginButton") : t("auth.signupButton")}
