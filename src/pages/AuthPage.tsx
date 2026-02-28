@@ -13,14 +13,7 @@ import {
 } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { formatAuthError, useAuthActions } from "@/hooks/useAuthActions";
-import { Car, Lock, Mail, User } from "lucide-react";
-
-
-const isNativeApp = () =>
-  typeof window !== "undefined" &&
-  (window.location.protocol === "capacitor:" ||
-    navigator.userAgent.includes("DriverSaathi") ||
-    document.URL.startsWith("https://") === false);
+import { Car, Lock, Mail, User, Wifi, WifiOff } from "lucide-react";
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -28,25 +21,30 @@ export default function AuthPage() {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(false);
-  
+  const [retryInfo, setRetryInfo] = useState<string | null>(null);
+
   const { t } = useI18n();
   const { toast } = useToast();
   const navigate = useNavigate();
   const { signInWithPassword, signUpWithPassword, signInWithGoogle } = useAuthActions();
 
+  const handleRetry = (attempt: number, maxRetries: number) => {
+    setRetryInfo(`Slow connection detected. Retrying... (${attempt}/${maxRetries})`);
+  };
+
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
+    setRetryInfo(null);
 
     try {
-
       if (isLogin) {
-        await signInWithPassword(email, password);
+        await signInWithPassword(email, password, handleRetry);
         navigate("/");
         return;
       }
 
-      await signUpWithPassword(email, password, fullName);
+      await signUpWithPassword(email, password, fullName, handleRetry);
       toast({
         title: t("auth.checkEmail"),
         description: t("auth.verifyEmail"),
@@ -60,11 +58,13 @@ export default function AuthPage() {
       });
     } finally {
       setLoading(false);
+      setRetryInfo(null);
     }
   };
 
   const handleGoogleSignIn = async () => {
     setLoading(true);
+    setRetryInfo(null);
     try {
       await signInWithGoogle();
     } catch (error) {
@@ -76,6 +76,7 @@ export default function AuthPage() {
       });
     } finally {
       setLoading(false);
+      setRetryInfo(null);
     }
   };
 
@@ -153,9 +154,23 @@ export default function AuthPage() {
                 </div>
               </div>
 
+              {/* Retry status indicator */}
+              {retryInfo && (
+                <div className="flex items-center gap-2 rounded-md bg-muted p-2.5 text-xs text-muted-foreground">
+                  <Wifi className="h-3.5 w-3.5 animate-pulse text-primary" />
+                  <span>{retryInfo}</span>
+                </div>
+              )}
 
               <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? "..." : isLogin ? t("auth.loginButton") : t("auth.signupButton")}
+                {loading ? (
+                  <span className="flex items-center gap-2">
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                    {retryInfo ? "Retrying..." : "Connecting..."}
+                  </span>
+                ) : (
+                  isLogin ? t("auth.loginButton") : t("auth.signupButton")
+                )}
               </Button>
             </form>
 
@@ -214,4 +229,3 @@ export default function AuthPage() {
     </div>
   );
 }
-
