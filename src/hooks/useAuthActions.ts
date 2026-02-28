@@ -1,8 +1,8 @@
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable/index";
 
-const AUTH_TIMEOUT_MS = 8000;
-const OAUTH_TIMEOUT_MS = 12000;
+const AUTH_TIMEOUT_MS = 20000;
+const OAUTH_TIMEOUT_MS = 30000;
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -98,7 +98,7 @@ export function useAuthActions() {
             AUTH_TIMEOUT_MS,
             "Authentication request timed out."
           ),
-        0
+        2
       );
 
       if (error) throw error;
@@ -128,7 +128,7 @@ export function useAuthActions() {
             AUTH_TIMEOUT_MS,
             "Signup request timed out."
           ),
-        0
+        2
       );
 
       if (error) throw error;
@@ -156,7 +156,7 @@ export function useAuthActions() {
             OAUTH_TIMEOUT_MS,
             "Google sign-in request timed out."
           ),
-        0
+        2
       );
 
       if (result?.error) {
