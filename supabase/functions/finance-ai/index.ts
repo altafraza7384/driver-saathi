@@ -139,7 +139,7 @@ IMPORTANT: Always refer to their ACTUAL data. Do NOT give generic advice when yo
     });
   } catch (e) {
     console.error("finance-ai error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
+    return new Response(JSON.stringify({ error: "An internal error occurred. Please try again." }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

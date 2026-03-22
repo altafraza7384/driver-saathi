@@ -100,10 +100,12 @@ const App = () => (
                     <Route path="/data-backup" element={<DataBackupPage />} />
                     <Route path="/finance-ai" element={<FinanceAIPage />} />
                   </Route>
-                  <Route element={<AdminLayout />}>
-                    <Route path="/admin" element={<AdminDashboard />} />
-                    <Route path="/admin/posts" element={<AdminPostsPage />} />
-                    <Route path="/admin/categories" element={<AdminCategoriesPage />} />
+                  <Route element={<ProtectedRoutes />}>
+                    <Route element={<AdminLayout />}>
+                      <Route path="/admin" element={<AdminDashboard />} />
+                      <Route path="/admin/posts" element={<AdminPostsPage />} />
+                      <Route path="/admin/categories" element={<AdminCategoriesPage />} />
+                    </Route>
                   </Route>
                   <Route path="*" element={<NotFound />} />
                 </Routes>
