@@ -12,21 +12,8 @@ serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    const apiKey = req.headers.get("apikey");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-
-    const isAuthorized =
-      apiKey === serviceRoleKey ||
-      (authHeader && authHeader.replace("Bearer ", "") === serviceRoleKey);
-
-    if (!isAuthorized) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
     const now = new Date();
