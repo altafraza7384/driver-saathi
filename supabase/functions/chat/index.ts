@@ -700,7 +700,7 @@ async function executeToolCall(
     }
   } catch (err) {
     console.error(`Tool ${toolName} error:`, err);
-    return `❌ Failed to save: ${err instanceof Error ? err.message : "Unknown error"}`;
+    return `❌ Failed to save. Please try again.`;
   }
 }
 
@@ -846,7 +846,7 @@ serve(async (req) => {
     });
   } catch (e) {
     console.error("chat error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
+    return new Response(JSON.stringify({ error: "An internal error occurred. Please try again." }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

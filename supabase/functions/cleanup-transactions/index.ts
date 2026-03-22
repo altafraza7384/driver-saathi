@@ -12,8 +12,22 @@ serve(async (req) => {
   }
 
   try {
+    const authHeader = req.headers.get("Authorization");
+    const apiKey = req.headers.get("apikey");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+
+    // Only allow service role key (cron jobs) - not user tokens
+    const isAuthorized =
+      apiKey === serviceRoleKey ||
+      (authHeader && authHeader.replace("Bearer ", "") === serviceRoleKey);
+
+    if (!isAuthorized) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
     const now = new Date();
@@ -90,7 +104,7 @@ serve(async (req) => {
     );
   } catch (err: any) {
     console.error("cleanup-transactions error:", err);
-    return new Response(JSON.stringify({ error: err.message }), {
+    return new Response(JSON.stringify({ error: "An internal error occurred. Please try again." }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
