@@ -700,7 +700,7 @@ async function executeToolCall(
     }
   } catch (err) {
     console.error(`Tool ${toolName} error:`, err);
-    return `❌ Failed to save: ${err instanceof Error ? err.message : "Unknown error"}`;
+    return `❌ Failed to save. Please try again.`;
   }
 }
 
