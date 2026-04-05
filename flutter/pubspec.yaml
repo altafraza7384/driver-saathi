@@ -1,0 +1,103 @@
+name: driver_saathi
+description: A comprehensive mobile app for drivers to manage finances, health, vehicle maintenance, and safety.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # UI
+  cupertino_icons: ^1.0.8
+  flutter_svg: ^2.0.10
+  shimmer: ^3.0.0
+  fl_chart: ^0.69.0
+  table_calendar: ^3.1.2
+  flutter_slidable: ^3.1.1
+  pull_to_refresh_flutter3: ^2.0.2
+
+  # State Management
+  flutter_bloc: ^8.1.6
+  provider: ^6.1.2
+  get_it: ^8.0.2
+
+  # Database & Storage
+  sqflite: ^2.4.0
+  shared_preferences: ^2.3.3
+  path_provider: ^2.1.5
+
+  # Backend - Supabase
+  supabase_flutter: ^2.8.0
+
+  # Notifications
+  flutter_local_notifications: ^18.0.1
+  timezone: ^0.10.0
+
+  # Utils
+  intl: ^0.19.0
+  uuid: ^4.5.1
+  equatable: ^2.0.7
+  dartz: ^0.10.1
+  logger: ^2.5.0
+  permission_handler: ^11.3.1
+  connectivity_plus: ^6.1.0
+  url_launcher: ^6.3.1
+  share_plus: ^10.1.2
+  package_info_plus: ^8.1.2
+  device_info_plus: ^11.2.0
+
+  # Location & Maps
+  geolocator: ^13.0.2
+  google_maps_flutter: ^2.10.0
+
+  # PDF Export
+  pdf: ^3.11.1
+  printing: ^5.13.4
+  path: ^1.9.0
+
+  # Speech
+  speech_to_text: ^7.0.0
+  flutter_tts: ^4.2.0
+
+  # Image
+  image_picker: ^1.1.2
+  cached_network_image: ^3.4.1
+
+  # Ads
+  google_mobile_ads: ^5.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  build_runner: ^2.4.13
+  json_serializable: ^6.9.0
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/images/
+    - assets/icons/
+    - assets/lang/
+
+  fonts:
+    - family: Roboto
+      fonts:
+        - asset: assets/fonts/Roboto-Regular.ttf
+        - asset: assets/fonts/Roboto-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Roboto-Bold.ttf
+          weight: 700
+    - family: Montserrat
+      fonts:
+        - asset: assets/fonts/Montserrat-Regular.ttf
+        - asset: assets/fonts/Montserrat-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Montserrat-Bold.ttf
+          weight: 700

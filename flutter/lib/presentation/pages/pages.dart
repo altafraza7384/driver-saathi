@@ -1,0 +1,13 @@
+export 'auth/auth_page.dart';
+export 'home/home_page.dart';
+export 'transactions/transactions_page.dart';
+export 'transactions/add_transaction_page.dart';
+export 'debts/debts_page.dart';
+export 'goals/goals_page.dart';
+export 'health/health_page.dart';
+export 'car_checks/car_checks_page.dart';
+export 'notes/notes_page.dart';
+export 'reminders/reminders_page.dart';
+export 'sos/sos_page.dart';
+export 'more/more_page.dart';
+export 'settings/settings_page.dart';
