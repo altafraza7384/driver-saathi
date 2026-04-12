@@ -1,164 +1,47 @@
-# Driver Helper – Complete System Plan
 
-## Overview
 
-A comprehensive web application (PWA + Admin Dashboard) for Indian ride-hailing and gig drivers, featuring income/expense tracking, debt management, vehicle maintenance, health monitoring, AI voice assistant, and emergency SOS — all with Indian market localization.
+# Plan: Fix All Critical Android App Issues
 
----
+## Issues to Fix
 
-## Phase 1: Foundation & Core Infrastructure
+### 1. Move Privacy Policy Outside Protected Routes
+**Problem**: `/privacy-policy` is inside `ProtectedRoutes`, requiring login. App stores mandate public access.
+**Fix**: Move the `<Route path="/privacy-policy">` outside the protected route group in `src/App.tsx`, placing it alongside `/auth`.
 
-### Design System & Theming
+### 2. Add Missing App Icons
+**Problem**: `manifest.json` references `/icon-192.png` and `/icon-512.png` but neither file exists.
+**Fix**: Generate proper 192x192 and 512x512 PNG app icons programmatically (a steering wheel / car-themed icon with "DS" branding matching the app's black/white theme) and place them in `/public`.
 
-- Saffron (#FF6B35) primary + Green (#00A84F) secondary color scheme
-- Dark mode support
-- Indian-style typography (Montserrat headers, Roboto body)
-- ₹ INR currency formatting with Indian numbering system (lakhs, crores)
-- Mobile-first responsive design optimized for phone screens
+### 3. Fix UI Overlap Bugs
+**Problem**: Content hidden behind bottom tab bar; top/bottom overlap; modals overlap with keyboard on Android; nav buttons too low on Android.
+**Fix** (in `src/index.css`, `src/components/layout/AppLayout.tsx`, `src/components/layout/BottomNav.tsx`):
+- Increase `pb-24` to `pb-28` on main content to clear bottom nav
+- Add `mb-safe` spacing to bottom nav with extra padding for Android nav buttons
+- Update `.safe-bottom` CSS to use `max(env(safe-area-inset-bottom), 16px)` so Android devices without notches still get clearance
+- Add `interactive-widget=resizes-content` meta tag (already present in viewport) to handle keyboard overlap for modals/forms
 
-### Multi-Language Support (5 Languages)
+### 4. Add Account Deletion Feature
+**Problem**: Google Play requires a "Delete Account" option. Currently missing.
+**Fix**:
+- Add a "Delete My Account" button in `src/pages/SettingsPage.tsx` with a confirmation dialog (type "DELETE" to confirm)
+- Create a new edge function `supabase/functions/delete-account/index.ts` that:
+  - Validates the user's JWT
+  - Deletes all user data from every table (transactions, profiles, debts, goals, notes, etc.)
+  - Deletes the user from `auth.users` using the service role key
+- Sign the user out after successful deletion
 
-- English, Hindi, Marathi, Telugu, Kannada
-- Language switcher in settings
-- RTL-ready layout structure
-- All UI labels and messages translatable
+### 5. Update Support Email
+**Problem**: Contact dialog shows `support@driversaathi.app` instead of the actual support email.
+**Fix**: Update `src/pages/MorePage.tsx` to use `razakhan.chino@gmail.com` as the email address in both the mailto link and display text.
 
-### Authentication & User Profiles
+## Files to Create/Edit
+- `src/App.tsx` — move privacy-policy route
+- `src/pages/SettingsPage.tsx` — add delete account button + confirmation
+- `src/pages/MorePage.tsx` — update support email
+- `src/components/layout/AppLayout.tsx` — adjust content padding
+- `src/components/layout/BottomNav.tsx` — adjust bottom nav safe area
+- `src/index.css` — improve safe-area CSS for Android
+- `supabase/functions/delete-account/index.ts` — new edge function
+- `public/icon-192.png`, `public/icon-512.png` — generated app icons
+- Database migration: none needed (delete function uses service role)
 
-- Email/phone login and registration
-- Driver profile with name, vehicle details, license info, (crud) platform affiliations (Ola, Uber, etc.)
-- Profile photo upload via Lovable Cloud Storage
-
-### Database Setup (Lovable Cloud)
-
-- Users & profiles table
-- Roles table (driver, admin)
-- All tables with createdAt, updatedAt for sync tracking
-
----
-
-## Phase 2: Financial Management (Core MVP)
-
-### Income & Expense Tracking(CRUD)
-
-- Quick-add income entries (ride earnings, tips, incentives)
-- Categorized expense logging (fuel, maintenance, food, tolls, etc.)
-- Daily/weekly/monthly summaries with charts
-- Platform-wise income breakdown (Ola, Uber, Rapido, etc.)
-- Export reports
-
-### Debt & EMI Tracker(CRUD)
-
-- Add loans with principal, interest rate, tenure
-- Monthly EMI calculator
-- Payment tracking with remaining balance
-- Multiple debt overview with total liability
-
-### Goals & Savings(CRUD)
-
-- Set financial goals (e.g., "Save ₹50,000 for new tires")
-- Track progress with visual indicators
-- Milestone celebrations
-
----
-
-## Phase 3: Vehicle & Document Management
-
-### Car Checks (Maintenance)
-
-- Maintenance schedule tracking (oil change, tire rotation, etc.)
-- Mileage/odometer logging
-- Expense linking to maintenance events
-- Vehicle document storage (RC, insurance, PUC, fitness certificate)
-
-### Reminders & Notifications
-
-- Document expiry reminders (license, insurance, PUC)
-- EMI due date alerts
-- Maintenance schedule reminders
-- Custom reminder creation
-- In-app notification center
-
----
-
-## Phase 4: Health & Safety
-
-### Health Tracker
-
-- Daily sleep hours logging
-- Water intake tracking
-- Break reminders (driving fatigue alerts)
-- Step counter display (uses device data)
-- Weekly health summary
-
-### Emergency SOS
-
-- One-tap SOS button prominently placed
-- Captures GPS location on trigger
-- Sends alert with location to nearby driver and contact 
-- Emergency contact management in settings
-
----
-
-## Phase 5: AI & Notes
-
-### AI Voice Assistant (Gemini-powered)
-
-- Voice input using browser Web Speech API (supports Hindi, Tamil, Telugu, Kannada)
-- Conversational AI powered by Gemini via Lovable AI gateway
-- Common commands: "Add ₹500 income from Uber", "What's my total expense today?", "Remind me about insurance renewal"
-- Text-to-speech responses in user's selected language
-- Chat history with voice and text messages
-
-### Notes & Voice Notes
-
-- Quick text notes
-- Voice recording with playback
-- Notes categorized by tags
-- Search functionality
-
----
-
-## Phase 6: Admin Dashboard (Web)
-
-### Driver Analytics
-
-- Total registered drivers overview
-- Active vs inactive driver metrics
-
-### Financial Insights
-
-- Aggregate income/expense charts across drivers
-- Debt and goal monitoring dashboards
-- Revenue trends and patterns
-
-### Health & Vehicle Insights
-
-- Fleet health overview
-- Maintenance compliance tracking
-- Driver health compliance summary
-
-### Dashboard Features
-
-- Responsive web UI with sidebar navigation
-- Real-time data updates
-- Date range filters and data export
-
----
-
-## Phase 7: PWA & Polish
-
-### Progressive Web App Setup
-
-- Install-to-home-screen capability
-- Offline support for viewing cached data
-- App icons and splash screens
-- Fast loading and mobile-optimized performance
-
-### Home Dashboard
-
-- Today's earnings summary
-- Pending reminders count
-- Quick action buttons (add income, car check, health, Note)
-- Recent Transactions 
-- Small ad banner 
