@@ -101,13 +101,15 @@ export default function MorePage() {
             </div>
             <div className="border-t pt-3 space-y-2">
               <h4 className="font-bold">{t("more.privacyPolicy")}</h4>
-              <p className="text-muted-foreground text-xs leading-relaxed">{t("more.privacyText")}</p>
+              <Button variant="link" className="p-0 h-auto text-primary text-xs" onClick={() => { setAboutOpen(false); navigate("/privacy-policy"); }}>
+                Read Full Privacy Policy →
+              </Button>
             </div>
             <div className="border-t pt-3 space-y-2">
               <h4 className="font-bold">{t("more.termsOfUse")}</h4>
               <p className="text-muted-foreground text-xs leading-relaxed">{t("more.termsText")}</p>
             </div>
-            <p className="text-center text-xs text-muted-foreground pt-2">{t("more.copyright")}</p>
+            <p className="text-center text-xs text-muted-foreground pt-2">© 2026 Driver-saathi. All rights reserved.</p>
           </div>
         </DialogContent>
       </Dialog>
@@ -129,16 +131,16 @@ export default function MorePage() {
                 <p className="text-xs text-muted-foreground">support@driversaathi.app</p>
               </div>
             </a>
-            <a href="tel:+911800000000" className="flex items-center gap-4 rounded-xl border p-4 hover:bg-muted transition-colors">
+            <a href="tel:+917718012850" className="flex items-center gap-4 rounded-xl border p-4 hover:bg-muted transition-colors">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
                 <Phone className="h-5 w-5 text-primary" />
               </div>
               <div>
                 <p className="text-sm font-extrabold">Phone Support</p>
-                <p className="text-xs text-muted-foreground">+91 1800-000-000 (Toll Free)</p>
+                <p className="text-xs text-muted-foreground">+91 7718012850</p>
               </div>
             </a>
-            <a href="https://wa.me/911800000000" target="_blank" rel="noopener noreferrer" className="flex items-center gap-4 rounded-xl border p-4 hover:bg-muted transition-colors">
+            <a href="https://wa.me/917718012850" target="_blank" rel="noopener noreferrer" className="flex items-center gap-4 rounded-xl border p-4 hover:bg-muted transition-colors">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
                 <MessageCircle className="h-5 w-5 text-primary" />
               </div>

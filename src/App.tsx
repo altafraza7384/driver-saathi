@@ -24,6 +24,7 @@ const SOSPage = lazy(() => import("./pages/SOSPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const DataBackupPage = lazy(() => import("./pages/DataBackupPage"));
 const FinanceAIPage = lazy(() => import("./pages/FinanceAIPage"));
+const PrivacyPolicyPage = lazy(() => import("./pages/PrivacyPolicyPage"));
 const AuthPage = lazy(() => import("./pages/AuthPage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const AdminLayout = lazy(() => import("./pages/admin/AdminLayout"));
@@ -99,6 +100,7 @@ const App = () => (
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/data-backup" element={<DataBackupPage />} />
                     <Route path="/finance-ai" element={<FinanceAIPage />} />
+                    <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
                   </Route>
                   <Route element={<ProtectedRoutes />}>
                     <Route element={<AdminLayout />}>
