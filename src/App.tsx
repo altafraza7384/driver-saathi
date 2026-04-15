@@ -84,6 +84,7 @@ const App = () => (
               <Suspense fallback={<RouteLoader />}>
                 <Routes>
                   <Route path="/auth" element={<AuthPage />} />
+                  <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
                   <Route element={<ProtectedRoutes />}>
                     <Route path="/" element={<HomePage />} />
                     <Route path="/transactions" element={<TransactionsPage />} />
@@ -100,7 +101,6 @@ const App = () => (
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/data-backup" element={<DataBackupPage />} />
                     <Route path="/finance-ai" element={<FinanceAIPage />} />
-                    <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
                   </Route>
                   <Route element={<ProtectedRoutes />}>
                     <Route element={<AdminLayout />}>
