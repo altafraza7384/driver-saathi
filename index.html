@@ -7,6 +7,15 @@
     <meta name="description" content="Driver Saathi - Your driving companion to manage earnings and expenses">
     <meta name="author" content="Lovable" />
 
+    <!-- Critical inline CSS for instant first paint (no render-blocking) -->
+    <style>
+      :root{--background:0 0% 100%;--foreground:0 0% 0%;--primary:0 0% 0%;--primary-foreground:0 0% 100%}
+      .dark{--background:0 0% 0%;--foreground:0 0% 100%}
+      *,::after,::before{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:'Roboto',system-ui,sans-serif;background-color:hsl(var(--background));color:hsl(var(--foreground));min-height:100dvh}
+      #root{min-height:100dvh}
+    </style>
+
     <!-- PWA / Native App Meta -->
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#000000" />
