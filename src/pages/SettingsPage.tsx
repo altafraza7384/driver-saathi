@@ -8,9 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Globe, User, Car, LogOut, Save, ArrowLeft, Pencil, Camera } from "lucide-react";
+import { Globe, User, Car, LogOut, Save, ArrowLeft, Pencil, Camera, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function SettingsPage() {
   const { user, signOut } = useAuth();
@@ -21,6 +25,9 @@ export default function SettingsPage() {
   const [editing, setEditing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [form, setForm] = useState({ full_name: "", phone: "", vehicle_type: "", vehicle_number: "", license_number: "" });
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ["profile"],
@@ -60,6 +67,31 @@ export default function SettingsPage() {
       toast.success("✅");
     } catch (err: any) { toast.error(err.message || "Upload failed"); }
     finally { setUploading(false); }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirm !== "DELETE") return;
+    setDeleting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
+
+      const response = await supabase.functions.invoke("delete-account", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+
+      if (response.error) throw new Error(response.error.message || "Failed to delete account");
+      
+      toast.success("Account deleted successfully");
+      await signOut();
+      navigate("/auth");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete account");
+    } finally {
+      setDeleting(false);
+      setDeleteOpen(false);
+      setDeleteConfirm("");
+    }
   };
 
   const handleLogout = async () => { await signOut(); navigate("/auth"); };
@@ -140,6 +172,48 @@ export default function SettingsPage() {
       </CardContent></Card>
 
       <Button variant="destructive" className="w-full gap-2" onClick={handleLogout}><LogOut className="h-4 w-4" /> {t("auth.logout")}</Button>
+
+      {/* Delete Account Section */}
+      <Card className="border-destructive/30">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Trash2 className="h-4 w-4 text-destructive" />
+            <span className="font-semibold text-destructive">Delete Account</span>
+          </div>
+          <p className="text-muted-foreground text-sm mb-3">
+            Permanently delete your account and all associated data. This action cannot be undone.
+          </p>
+          <Button variant="outline" className="w-full border-destructive/50 text-destructive hover:bg-destructive hover:text-destructive-foreground" onClick={() => setDeleteOpen(true)}>
+            <Trash2 className="h-4 w-4 mr-2" /> Delete My Account
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteOpen} onOpenChange={(open) => { setDeleteOpen(open); if (!open) setDeleteConfirm(""); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete your account and all your data including transactions, notes, goals, debts, and more. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-2">
+            <Label className="text-sm">Type <strong>DELETE</strong> to confirm:</Label>
+            <Input value={deleteConfirm} onChange={(e) => setDeleteConfirm(e.target.value)} placeholder="DELETE" className="mt-1" />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleteConfirm !== "DELETE" || deleting}
+              onClick={(e) => { e.preventDefault(); handleDeleteAccount(); }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? "Deleting..." : "Delete Forever"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

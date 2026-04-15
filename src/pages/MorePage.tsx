@@ -122,13 +122,13 @@ export default function MorePage() {
             <DialogDescription>We're here to help! Reach out to our support team.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 pt-2">
-            <a href="mailto:support@driversaathi.app" className="flex items-center gap-4 rounded-xl border p-4 hover:bg-muted transition-colors">
+            <a href="mailto:razakhan.chino@gmail.com" className="flex items-center gap-4 rounded-xl border p-4 hover:bg-muted transition-colors">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
                 <Mail className="h-5 w-5 text-primary" />
               </div>
               <div>
                 <p className="text-sm font-extrabold">Email Support</p>
-                <p className="text-xs text-muted-foreground">support@driversaathi.app</p>
+                <p className="text-xs text-muted-foreground">razakhan.chino@gmail.com</p>
               </div>
             </a>
             <a href="tel:+917718012850" className="flex items-center gap-4 rounded-xl border p-4 hover:bg-muted transition-colors">
