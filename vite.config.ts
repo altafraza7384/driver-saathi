@@ -18,4 +18,12 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Inline tiny chunks (<3KB) into their parent to reduce chain depth
+        experimentalMinChunkSize: 3000,
+      },
+    },
+  },
 }));
