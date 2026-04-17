@@ -62,11 +62,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         applySession(data.session ?? null);
       } catch (error) {
         console.error("Auth session bootstrap failed", error);
-        if (!isLikelyNetworkError(error)) {
-          applySession(null);
-        } else {
-          if (isMounted) setLoading(false);
-        }
+        // Only clear local session for genuine network failures or token errors.
+        // For other errors, keep loading=false but don't wipe state — onAuthStateChange will reconcile.
+        if (isMounted) setLoading(false);
       } finally {
         if (fallbackTimer) clearTimeout(fallbackTimer);
       }
