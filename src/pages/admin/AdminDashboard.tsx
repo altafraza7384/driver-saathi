@@ -84,6 +84,13 @@ export default function AdminDashboard() {
             <p className="text-xs text-muted-foreground">Add or edit marketplace categories</p>
           </div>
         </Button>
+        <Button className="w-full justify-start gap-3 h-14" variant="outline" onClick={() => navigate("/admin/users")}>
+          <Users className="h-5 w-5 text-success" />
+          <div className="text-left">
+            <p className="font-bold text-sm">Manage Users</p>
+            <p className="text-xs text-muted-foreground">View all users and their saved data</p>
+          </div>
+        </Button>
       </div>
     </div>
   );
