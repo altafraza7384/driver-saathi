@@ -152,6 +152,34 @@ serve(async (req) => {
       });
     }
 
+    // 3b. Recurring Expenses (rent, bills, subscriptions) - monthly notifications
+    const { data: dueRecurring } = await supabaseAdmin
+      .from("recurring_expenses")
+      .select("*")
+      .eq("is_active", true)
+      .gte("notify_at", fiveMinAgoISO)
+      .lte("notify_at", nowISO);
+
+    for (const r of dueRecurring || []) {
+      notifications.push({
+        user_id: r.user_id,
+        source_table: "recurring_expenses",
+        source_id: r.id,
+        notify_at: r.notify_at,
+        title: "📅 Bill Due: " + r.name,
+        body: `Your ${r.category} payment of ₹${r.amount} is due!`,
+        url: "/debts",
+      });
+
+      // Auto-roll notify_at to next month after sending
+      const next = new Date(r.notify_at);
+      next.setMonth(next.getMonth() + 1);
+      await supabaseAdmin
+        .from("recurring_expenses")
+        .update({ notify_at: next.toISOString() })
+        .eq("id", r.id);
+    }
+
     // 4. Car Documents (expiry reminders)
     const { data: dueCarDocs } = await supabaseAdmin
       .from("car_documents")
