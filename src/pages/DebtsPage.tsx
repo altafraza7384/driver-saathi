@@ -19,6 +19,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import RecurringExpenses from "@/components/RecurringExpenses";
 
 type Debt = {
   id: string;
@@ -338,6 +339,11 @@ export default function DebtsPage() {
           })}
         </div>
       )}
+
+      {/* Monthly Recurring Bills (Rent, Utilities, Subscriptions) */}
+      <div className="pt-4 border-t">
+        <RecurringExpenses />
+      </div>
 
       {/* Edit Dialog */}
       <Dialog open={!!editDebt} onOpenChange={(open) => !open && setEditDebt(null)}>
