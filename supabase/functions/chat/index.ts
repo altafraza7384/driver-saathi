@@ -745,14 +745,11 @@ serve(async (req) => {
     const userId = user.id;
 
     // First call: with tools enabled (non-streaming to handle tool calls)
-    const firstResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const firstResponse = await fetch(AI_URL, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
+      headers: aiHeaders,
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: AI_MODEL,
         messages: [{ role: "system", content: systemPrompt }, ...messages],
         tools,
         stream: false,
