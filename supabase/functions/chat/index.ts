@@ -709,8 +709,16 @@ serve(async (req) => {
 
   try {
     const { messages } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
+    if (!OPENROUTER_API_KEY) throw new Error("OPENROUTER_API_KEY is not configured");
+    const AI_URL = "https://openrouter.ai/api/v1/chat/completions";
+    const AI_MODEL = "google/gemini-2.5-flash";
+    const aiHeaders = {
+      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://driver-saathi.lovable.app",
+      "X-Title": "Driver Saathi",
+    };
 
     const authHeader = req.headers.get("authorization") || "";
     const token = authHeader.replace("Bearer ", "");
@@ -737,14 +745,11 @@ serve(async (req) => {
     const userId = user.id;
 
     // First call: with tools enabled (non-streaming to handle tool calls)
-    const firstResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const firstResponse = await fetch(AI_URL, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
+      headers: aiHeaders,
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: AI_MODEL,
         messages: [{ role: "system", content: systemPrompt }, ...messages],
         tools,
         stream: false,
@@ -787,14 +792,11 @@ serve(async (req) => {
         });
       }
 
-      const secondResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      const secondResponse = await fetch(AI_URL, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
+        headers: aiHeaders,
         body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
+          model: AI_MODEL,
           messages: [
             { role: "system", content: systemPrompt },
             ...messages,
@@ -819,14 +821,11 @@ serve(async (req) => {
       });
     }
 
-    const streamResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const streamResponse = await fetch(AI_URL, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
+      headers: aiHeaders,
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: AI_MODEL,
         messages: [{ role: "system", content: systemPrompt }, ...messages],
         stream: true,
       }),
