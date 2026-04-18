@@ -709,8 +709,16 @@ serve(async (req) => {
 
   try {
     const { messages } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
+    if (!OPENROUTER_API_KEY) throw new Error("OPENROUTER_API_KEY is not configured");
+    const AI_URL = "https://openrouter.ai/api/v1/chat/completions";
+    const AI_MODEL = "google/gemini-2.5-flash";
+    const aiHeaders = {
+      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://driver-saathi.lovable.app",
+      "X-Title": "Driver Saathi",
+    };
 
     const authHeader = req.headers.get("authorization") || "";
     const token = authHeader.replace("Bearer ", "");
