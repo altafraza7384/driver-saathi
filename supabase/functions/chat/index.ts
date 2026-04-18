@@ -709,15 +709,13 @@ serve(async (req) => {
 
   try {
     const { messages } = await req.json();
-    const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
-    if (!OPENROUTER_API_KEY) throw new Error("OPENROUTER_API_KEY is not configured");
-    const AI_URL = "https://openrouter.ai/api/v1/chat/completions";
-    const AI_MODEL = "google/gemini-2.5-flash";
+    const GOOGLE_AI_API_KEY = Deno.env.get("GOOGLE_AI_API_KEY");
+    if (!GOOGLE_AI_API_KEY) throw new Error("GOOGLE_AI_API_KEY is not configured");
+    const AI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+    const AI_MODEL = "gemini-2.5-flash";
     const aiHeaders = {
-      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+      Authorization: `Bearer ${GOOGLE_AI_API_KEY}`,
       "Content-Type": "application/json",
-      "HTTP-Referer": "https://driver-saathi.lovable.app",
-      "X-Title": "Driver Saathi",
     };
 
     const authHeader = req.headers.get("authorization") || "";
