@@ -792,14 +792,11 @@ serve(async (req) => {
         });
       }
 
-      const secondResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      const secondResponse = await fetch(AI_URL, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
+        headers: aiHeaders,
         body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
+          model: AI_MODEL,
           messages: [
             { role: "system", content: systemPrompt },
             ...messages,
