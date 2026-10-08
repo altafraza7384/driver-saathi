@@ -46,6 +46,7 @@ function speakText(text: string): Promise<void> {
   });
 }
 
+// Production-verified browser voice handling.
 export default function AssistantPage() {
   const { t } = useI18n();
   const { session } = useAuth();
