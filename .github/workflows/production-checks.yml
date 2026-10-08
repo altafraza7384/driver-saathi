@@ -35,3 +35,5 @@ jobs:
         run: npx tsc -p tsconfig.app.json --noEmit
       - name: Production build
         run: npm run build
+
+# Final production gate: lint, tests, typecheck, and build.
