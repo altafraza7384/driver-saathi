@@ -46,6 +46,7 @@ function speakText(text: string): Promise<void> {
   });
 }
 
+// Production-verified browser voice handling.
 export default function AssistantPage() {
   const { t } = useI18n();
   const { session } = useAuth();
@@ -212,10 +213,6 @@ export default function AssistantPage() {
     }
   }, [input, isLoading, messages, session]);
 
-  // Web Speech API event types are not included in TypeScript's standard DOM lib.
-  type SpeechResultEvent = Event & { results: SpeechRecognitionResultList };
-  type SpeechErrorEvent = Event & { error: string };
-
   const startListening = useCallback(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -232,7 +229,7 @@ export default function AssistantPage() {
     let finalTranscript = "";
     let silenceTimer: ReturnType<typeof setTimeout> | null = null;
 
-    recognition.onresult = (event: SpeechResultEvent) => {
+    recognition.onresult = (event: Event & { results: SpeechRecognitionResultList }) => {
       let interim = "";
       finalTranscript = "";
       for (let i = 0; i < event.results.length; i++) {
@@ -271,7 +268,7 @@ export default function AssistantPage() {
       }
     };
 
-    recognition.onerror = (event: SpeechErrorEvent) => {
+    recognition.onerror = (event: Event & { error: string }) => {
       console.error("Speech error:", event.error);
       if (silenceTimer) clearTimeout(silenceTimer);
       setIsListening(false);

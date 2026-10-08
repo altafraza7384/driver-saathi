@@ -462,7 +462,26 @@ async function executeToolCall(
         return `✅ Car check "${checkType}" logged.${args.next_due_date ? ` Next due: ${args.next_due_date}` : ""}`;
       }
       case "update_health_log": {
-        // Check for existing today's log
+        const sleep = args.sleep_hours != null ? validateNumber(args.sleep_hours, 0, 24) : null;
+        const waterSet = args.water_glasses != null ? validateNumber(args.water_glasses, 0, 100) : null;
+        const stepsSet = args.steps != null ? validateNumber(args.steps, 0, 200000) : null;
+        const breaksSet = args.breaks_taken != null ? validateNumber(args.breaks_taken, 0, 100) : null;
+        const waterAdd = args.add_water != null ? validateNumber(args.add_water, 0, 100) : null;
+        const stepsAdd = args.add_steps != null ? validateNumber(args.add_steps, 0, 200000) : null;
+        const breaksAdd = args.add_breaks != null ? validateNumber(args.add_breaks, 0, 100) : null;
+
+        if (
+          (args.sleep_hours != null && sleep == null) ||
+          (args.water_glasses != null && (waterSet == null || !Number.isInteger(waterSet))) ||
+          (args.steps != null && (stepsSet == null || !Number.isInteger(stepsSet))) ||
+          (args.breaks_taken != null && (breaksSet == null || !Number.isInteger(breaksSet))) ||
+          (args.add_water != null && (waterAdd == null || !Number.isInteger(waterAdd))) ||
+          (args.add_steps != null && (stepsAdd == null || !Number.isInteger(stepsAdd))) ||
+          (args.add_breaks != null && (breaksAdd == null || !Number.isInteger(breaksAdd)))
+        ) {
+          return "❌ Invalid health data. Please use realistic non-negative values.";
+        }
+
         const { data: existing } = await supabaseAdmin
           .from("health_logs")
           .select("*")
@@ -475,21 +494,29 @@ async function executeToolCall(
         const currentSteps = Number(existing?.steps ?? 0);
         const currentBreaks = Number(existing?.breaks_taken ?? 0);
 
+        const nextWater = waterSet != null ? waterSet : currentWater + (waterAdd ?? 0);
+        const nextSteps = stepsSet != null ? stepsSet : currentSteps + (stepsAdd ?? 0);
+        const nextBreaks = breaksSet != null ? breaksSet : currentBreaks + (breaksAdd ?? 0);
+
+        if (nextWater > 100 || nextSteps > 200000 || nextBreaks > 100) {
+          return "❌ Health value is above the supported daily limit.";
+        }
+
         const payload: Record<string, unknown> = {
           user_id: userId,
           log_date: today,
-          sleep_hours: args.sleep_hours != null ? Number(args.sleep_hours) : currentSleep,
-          water_glasses: args.water_glasses != null ? Number(args.water_glasses)
-            : args.add_water ? currentWater + Number(args.add_water) : currentWater,
-          steps: args.steps != null ? Number(args.steps)
-            : args.add_steps ? currentSteps + Number(args.add_steps) : currentSteps,
-          breaks_taken: args.breaks_taken != null ? Number(args.breaks_taken)
-            : args.add_breaks ? currentBreaks + Number(args.add_breaks) : currentBreaks,
-          notes: (args.notes as string) || existing?.notes || null,
+          sleep_hours: sleep ?? currentSleep,
+          water_glasses: nextWater,
+          steps: nextSteps,
+          breaks_taken: nextBreaks,
+          notes: args.notes != null ? validateString(args.notes, 1000) : existing?.notes || null,
         };
 
         if (existing) {
-          const { error } = await supabaseAdmin.from("health_logs").update(payload as Record<string, unknown>).eq("id", existing.id as string);
+          const { error } = await supabaseAdmin
+            .from("health_logs")
+            .update(payload as Record<string, unknown>)
+            .eq("id", existing.id as string);
           if (error) throw error;
         } else {
           const { error } = await supabaseAdmin.from("health_logs").insert(payload);
@@ -497,10 +524,10 @@ async function executeToolCall(
         }
 
         const parts = [];
-        if (args.sleep_hours != null) parts.push(`Sleep: ${payload.sleep_hours}hrs`);
-        if (args.water_glasses != null || args.add_water) parts.push(`Water: ${payload.water_glasses} glasses`);
-        if (args.steps != null || args.add_steps) parts.push(`Steps: ${payload.steps}`);
-        if (args.breaks_taken != null || args.add_breaks) parts.push(`Breaks: ${payload.breaks_taken}`);
+        if (sleep != null) parts.push(`Sleep: ${payload.sleep_hours}hrs`);
+        if (waterSet != null || waterAdd != null) parts.push(`Water: ${payload.water_glasses} glasses`);
+        if (stepsSet != null || stepsAdd != null) parts.push(`Steps: ${payload.steps}`);
+        if (breaksSet != null || breaksAdd != null) parts.push(`Breaks: ${payload.breaks_taken}`);
         return `✅ Health updated — ${parts.join(", ") || "saved"}`;
       }
       case "add_goal": {
