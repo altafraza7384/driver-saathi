@@ -1,4 +1,5 @@
 name: Production Checks
+# Temporary lockfile reconciliation on production-hardening; remove after sync.
 
 on:
   push:
