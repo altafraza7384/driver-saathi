@@ -17,12 +17,15 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Verify checkout
+      - name: Verify lockfile
         run: |
           pwd
           test -f package.json
           test -f package-lock.json
           git ls-files --error-unmatch package-lock.json
+          wc -c package-lock.json
+          head -8 package-lock.json
+          node -e "const p=require('./package-lock.json'); console.log('lockfileVersion=',p.lockfileVersion,'packages=',Object.keys(p.packages||{}).length)"
           npm config get package-lock
       - name: Install
         run: npm ci --no-audit --no-fund --package-lock=true
