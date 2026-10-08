@@ -454,8 +454,8 @@ export default function CarChecksPage() {
                             <Phone className="h-3 w-3" /> Call
                           </a>
                         )}
-                        {post.contact_link && (
-                          <a href={post.contact_link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs bg-muted text-foreground rounded-full px-3 py-1 font-medium">
+                        {safeExternalUrl(post.contact_link) && (
+                          <a href={safeExternalUrl(post.contact_link)!} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs bg-muted text-foreground rounded-full px-3 py-1 font-medium">
                             <ExternalLink className="h-3 w-3" /> Visit
                           </a>
                         )}
