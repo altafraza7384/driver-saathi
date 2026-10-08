@@ -17,8 +17,10 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Verify lockfile
+        run: npm config set package-lock true
       - name: Install
-        run: npm ci --no-audit --no-fund
+        run: npm ci --no-audit --no-fund --package-lock=true
       - name: Lint
         run: npm run lint
       - name: Test
