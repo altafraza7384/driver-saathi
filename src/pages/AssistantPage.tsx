@@ -228,7 +228,7 @@ export default function AssistantPage() {
     let finalTranscript = "";
     let silenceTimer: ReturnType<typeof setTimeout> | null = null;
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
+    recognition.onresult = (event: Event & { results: SpeechRecognitionResultList }) => {
       let interim = "";
       finalTranscript = "";
       for (let i = 0; i < event.results.length; i++) {
@@ -267,7 +267,7 @@ export default function AssistantPage() {
       }
     };
 
-    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+    recognition.onerror = (event: Event & { error: string }) => {
       console.error("Speech error:", event.error);
       if (silenceTimer) clearTimeout(silenceTimer);
       setIsListening(false);
