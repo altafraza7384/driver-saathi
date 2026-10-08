@@ -212,6 +212,10 @@ export default function AssistantPage() {
     }
   }, [input, isLoading, messages, session]);
 
+  // Web Speech API event types are not included in TypeScript's standard DOM lib.
+  type SpeechResultEvent = Event & { results: SpeechRecognitionResultList };
+  type SpeechErrorEvent = Event & { error: string };
+
   const startListening = useCallback(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -228,7 +232,7 @@ export default function AssistantPage() {
     let finalTranscript = "";
     let silenceTimer: ReturnType<typeof setTimeout> | null = null;
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
+    recognition.onresult = (event: SpeechResultEvent) => {
       let interim = "";
       finalTranscript = "";
       for (let i = 0; i < event.results.length; i++) {
@@ -267,7 +271,7 @@ export default function AssistantPage() {
       }
     };
 
-    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+    recognition.onerror = (event: SpeechErrorEvent) => {
       console.error("Speech error:", event.error);
       if (silenceTimer) clearTimeout(silenceTimer);
       setIsListening(false);
