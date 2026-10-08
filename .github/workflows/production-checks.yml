@@ -17,8 +17,13 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Verify lockfile
-        run: npm config set package-lock true
+      - name: Verify checkout
+        run: |
+          pwd
+          test -f package.json
+          test -f package-lock.json
+          git ls-files --error-unmatch package-lock.json
+          npm config get package-lock
       - name: Install
         run: npm ci --no-audit --no-fund --package-lock=true
       - name: Lint
