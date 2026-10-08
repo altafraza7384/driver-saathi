@@ -2,7 +2,7 @@ name: Production Checks
 
 on:
   push:
-    branches: [main, production-hardening, production-final]
+    branches: [main, production-hardening]
   pull_request:
     branches: [main]
 
