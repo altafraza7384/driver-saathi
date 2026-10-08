@@ -43,10 +43,11 @@ Deno.serve(async (req) => {
     // Use service role to delete all user data
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
-    // Delete from all user tables
+    // Delete from all user-owned tables. Child rows come first where foreign keys exist.
     const tables = [
       "transactions",
       "debt_payments",
+      "recurring_expense_payments",
       "debts",
       "goals",
       "health_logs",
@@ -58,7 +59,9 @@ Deno.serve(async (req) => {
       "platform_affiliations",
       "push_subscriptions",
       "reminders",
+      "recurring_expenses",
       "sent_notifications",
+      "ai_usage_buckets",
       "profiles",
       "user_roles",
     ];
@@ -67,6 +70,40 @@ Deno.serve(async (req) => {
       const { error } = await adminClient.from(table).delete().eq("user_id", userId);
       if (error) {
         console.error(`Error deleting from ${table}:`, error.message);
+        return new Response(JSON.stringify({ error: "Failed to delete account data" }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    // Remove avatar files stored under the user's folder.
+    const { data: avatarFiles, error: avatarListError } = await adminClient.storage
+      .from("avatars")
+      .list(userId, { limit: 1000 });
+    if (avatarListError) {
+      console.error("Error listing avatar files:", avatarListError.message);
+      return new Response(JSON.stringify({ error: "Failed to delete account data" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (avatarFiles?.length) {
+      const avatarPaths = avatarFiles
+        .filter((file) => file.name)
+        .map((file) => `${userId}/${file.name}`);
+      if (avatarPaths.length) {
+        const { error: avatarDeleteError } = await adminClient.storage
+          .from("avatars")
+          .remove(avatarPaths);
+        if (avatarDeleteError) {
+          console.error("Error deleting avatar files:", avatarDeleteError.message);
+          return new Response(JSON.stringify({ error: "Failed to delete account data" }), {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
       }
     }
 
