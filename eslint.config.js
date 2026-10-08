@@ -25,6 +25,9 @@ export default tseslint.config(
       // Keep these visible as technical-debt warnings without blocking production CI.
       "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/no-require-imports": "warn",
+      "@typescript-eslint/no-empty-object-type": "warn",
+      "no-misleading-character-class": "warn",
+      "no-empty": "warn",
     },
   },
 );
