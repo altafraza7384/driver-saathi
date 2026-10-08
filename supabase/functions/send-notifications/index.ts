@@ -206,25 +206,38 @@ serve(async (req) => {
     let skipped = 0;
 
     for (const n of notifications) {
-      // Check if already sent for this exact notify_at
-      const { data: existing } = await supabaseAdmin
+      // Atomically claim this notification before sending so concurrent cron
+      // invocations cannot both deliver the same notification.
+      const { data: claim, error: claimError } = await supabaseAdmin
         .from("sent_notifications")
+        .upsert(
+          {
+            user_id: n.user_id,
+            source_table: n.source_table,
+            source_id: n.source_id,
+            notify_at: n.notify_at,
+          },
+          { onConflict: "source_table,source_id,notify_at", ignoreDuplicates: true }
+        )
         .select("id")
-        .eq("source_table", n.source_table)
-        .eq("source_id", n.source_id)
-        .eq("notify_at", n.notify_at)
         .maybeSingle();
 
-      if (existing) {
+      if (claimError) {
+        console.error("Notification claim error:", claimError.message);
+        continue;
+      }
+
+      if (!claim) {
         skipped++;
         continue;
       }
 
-      // Get user's push subscriptions
       const { data: subs } = await supabaseAdmin
         .from("push_subscriptions")
         .select("*")
         .eq("user_id", n.user_id);
+
+      let delivered = 0;
 
       for (const sub of subs || []) {
         try {
@@ -236,25 +249,23 @@ serve(async (req) => {
             JSON.stringify({ title: n.title, body: n.body, url: n.url })
           );
           sent++;
+          delivered++;
         } catch (err: any) {
           console.error("Push send error:", err.statusCode, err.body);
-          // Remove expired subscriptions
           if (err.statusCode === 410 || err.statusCode === 404) {
-            await supabaseAdmin
-              .from("push_subscriptions")
-              .delete()
-              .eq("id", sub.id);
+            await supabaseAdmin.from("push_subscriptions").delete().eq("id", sub.id);
           }
         }
       }
 
-      // Mark as sent
-      await supabaseAdmin.from("sent_notifications").insert({
-        user_id: n.user_id,
-        source_table: n.source_table,
-        source_id: n.source_id,
-        notify_at: n.notify_at,
-      });
+      // If every existing subscription failed, release the claim for retry.
+      // If there were no subscriptions, keep the claim to avoid repeated work.
+      if ((subs || []).length > 0 && delivered === 0) {
+        await supabaseAdmin
+          .from("sent_notifications")
+          .delete()
+          .eq("id", claim.id);
+      }
     }
 
     return new Response(
