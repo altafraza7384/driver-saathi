@@ -686,6 +686,45 @@ export type Database = {
         }
         Relationships: []
       }
+      subscription_plans: {
+        Row: {
+          billing_interval: string
+          created_at: string
+          description: string
+          features: string[]
+          id: string
+          is_active: boolean
+          name: string
+          price_inr: number
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          billing_interval?: string
+          created_at?: string
+          description?: string
+          features?: string[]
+          id?: string
+          is_active?: boolean
+          name: string
+          price_inr?: number
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          billing_interval?: string
+          created_at?: string
+          description?: string
+          features?: string[]
+          id?: string
+          is_active?: boolean
+          name?: string
+          price_inr?: number
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       transactions: {
         Row: {
           amount: number
