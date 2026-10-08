@@ -19,11 +19,19 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Verify lockfile
+        run: |
+          test -f package-lock.json
+          npm config set package-lock true
+          npm --version
+          node --version
       - name: Install
         run: npm ci --no-audit --no-fund
       - name: Lint
         run: npm run lint
       - name: Test
         run: npm test -- --run
+      - name: Typecheck
+        run: npx tsc -p tsconfig.app.json --noEmit
       - name: Production build
         run: npm run build
