@@ -708,7 +708,35 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { messages } = await req.json();
+    const body = await req.json();
+    const messages = body?.messages;
+
+    // Never trust client-supplied system/tool messages or unbounded history.
+    if (!Array.isArray(messages) || messages.length === 0 || messages.length > 20) {
+      return new Response(JSON.stringify({ error: "Invalid messages format" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    let totalChars = 0;
+    for (const message of messages) {
+      if (!message || (message.role !== "user" && message.role !== "assistant") || typeof message.content !== "string") {
+        return new Response(JSON.stringify({ error: "Invalid message format" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (message.content.length > 4000) {
+        return new Response(JSON.stringify({ error: "Message too long" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      totalChars += message.content.length;
+    }
+    if (totalChars > 20000) {
+      return new Response(JSON.stringify({ error: "Conversation too long" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const GOOGLE_AI_API_KEY = Deno.env.get("GOOGLE_AI_API_KEY");
     if (!GOOGLE_AI_API_KEY) throw new Error("GOOGLE_AI_API_KEY is not configured");
     const AI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
@@ -742,6 +770,18 @@ serve(async (req) => {
     }
     const userId = user.id;
 
+    // Atomic server-side quota: protects against public abuse without changing normal AI behavior.
+    const { data: quotaAllowed, error: quotaError } = await supabaseAdmin.rpc("consume_ai_quota", {
+      p_user_id: userId,
+      p_feature: "chat",
+      p_limit: 30,
+    });
+    if (quotaError || quotaAllowed !== true) {
+      return new Response(JSON.stringify({ error: "AI usage limit reached. Please try again later." }), {
+        status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // First call: with tools enabled (non-streaming to handle tool calls)
     const firstResponse = await fetch(AI_URL, {
       method: "POST",
@@ -751,6 +791,7 @@ serve(async (req) => {
         messages: [{ role: "system", content: systemPrompt }, ...messages],
         tools,
         stream: false,
+        max_tokens: 512,
       }),
     });
 
@@ -778,10 +819,34 @@ serve(async (req) => {
     if (choice?.message?.tool_calls && choice.message.tool_calls.length > 0 && userId) {
       const toolResults: { role: string; tool_call_id: string; content: string }[] = [];
 
+      if (choice.message.tool_calls.length > 3) {
+        return new Response(JSON.stringify({ error: "Too many actions in one request." }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       for (const toolCall of choice.message.tool_calls) {
-        const args = typeof toolCall.function.arguments === "string"
-          ? JSON.parse(toolCall.function.arguments)
-          : toolCall.function.arguments;
+        let args: Record<string, unknown>;
+        try {
+          args = typeof toolCall.function.arguments === "string"
+            ? JSON.parse(toolCall.function.arguments)
+            : toolCall.function.arguments;
+        } catch {
+          return new Response(JSON.stringify({ error: "Invalid AI tool arguments." }), {
+            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        if (!args || typeof args !== "object" || Array.isArray(args)) {
+          return new Response(JSON.stringify({ error: "Invalid AI tool arguments." }), {
+            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        const allowedToolNames = new Set(tools.map((tool) => tool.function.name));
+        if (!allowedToolNames.has(toolCall.function.name)) {
+          return new Response(JSON.stringify({ error: "Unknown AI action." }), {
+            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
         const result = await executeToolCall(toolCall.function.name, args, userId, supabaseAdmin);
         toolResults.push({
           role: "tool",
@@ -802,6 +867,7 @@ serve(async (req) => {
             ...toolResults,
           ],
           stream: true,
+          max_tokens: 512,
         }),
       });
 
@@ -826,6 +892,7 @@ serve(async (req) => {
         model: AI_MODEL,
         messages: [{ role: "system", content: systemPrompt }, ...messages],
         stream: true,
+        max_tokens: 512,
       }),
     });
 

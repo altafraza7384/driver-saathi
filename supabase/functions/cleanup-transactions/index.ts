@@ -93,6 +93,13 @@ serve(async (req) => {
 
     const deletedCount = deleted?.length || 0;
 
+    // Keep AI quota buckets bounded; usage data older than 48h is no longer needed.
+    const { error: quotaCleanupError } = await supabaseAdmin
+      .from("ai_usage_buckets")
+      .delete()
+      .lt("bucket_start", new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString());
+    if (quotaCleanupError) console.error("AI quota cleanup error:", quotaCleanupError);
+
     return new Response(
       JSON.stringify({
         remindersCreated,
