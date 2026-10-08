@@ -29,19 +29,32 @@ serve(async (req) => {
     const body = await req.json();
     const messages = body?.messages;
     
-    // Validate messages input
-    if (!Array.isArray(messages) || messages.length === 0 || messages.length > 50) {
+    // Validate messages input. Only user/assistant history is accepted.
+    if (!Array.isArray(messages) || messages.length === 0 || messages.length > 20) {
       return new Response(JSON.stringify({ error: "Invalid messages format" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
     
     // Validate each message has required fields and reasonable length
     for (const msg of messages) {
-      if (!msg || typeof msg.role !== "string" || typeof msg.content !== "string") {
+      if (!msg || (msg.role !== "user" && msg.role !== "assistant") || typeof msg.content !== "string") {
         return new Response(JSON.stringify({ error: "Invalid message format" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
-      if (msg.content.length > 10000) {
+      if (msg.content.length > 4000) {
         return new Response(JSON.stringify({ error: "Message too long" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
+    }
+    const totalChars = messages.reduce((sum: number, msg: { content: string }) => sum + msg.content.length, 0);
+    if (totalChars > 20000) {
+      return new Response(JSON.stringify({ error: "Conversation too long" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const { data: quotaAllowed, error: quotaError } = await supabaseUser.rpc("consume_ai_quota", {
+      p_user_id: userId,
+      p_feature: "finance-ai",
+      p_limit: 20,
+    });
+    if (quotaError || quotaAllowed !== true) {
+      return new Response(JSON.stringify({ error: "AI usage limit reached. Please try again later." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // Fetch all financial data for personalized advice
@@ -125,6 +138,7 @@ IMPORTANT: Always refer to their ACTUAL data. Do NOT give generic advice when yo
           ...messages,
         ],
         stream: true,
+        max_tokens: 768,
       }),
     });
 
