@@ -8,6 +8,13 @@
       "when": 1791470402037,
       "tag": "0000_create_subscription_plans",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791541760865,
+      "tag": "0001_production_hardening_reconcile",
+      "breakpoints": true
     }
   ]
 }
