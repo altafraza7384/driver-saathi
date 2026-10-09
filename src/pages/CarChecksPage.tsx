@@ -21,15 +21,7 @@ const ICON_MAP: Record<string, any> = {
   Shield, UserCheck, FileCheck, Wrench, Cog, GraduationCap, Store,
 };
 
-function safeExternalUrl(value: string | null): string | null {
-  if (!value) return null;
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : null;
-  } catch {
-    return null;
-  }
-}
+import { safeExternalUrl } from "@/lib/url";
 
 export default function CarChecksPage() {
   const { user } = useAuth();

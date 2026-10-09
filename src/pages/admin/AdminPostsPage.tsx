@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { safeExternalUrl } from "@/lib/url";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -56,6 +57,8 @@ export default function AdminPostsPage() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      const link = form.contact_link.trim();
+      if (link && !safeExternalUrl(link)) throw new Error("Website link must start with http:// or https://");
       setUploading(true);
       let mediaUrl = form.media_url;
       if (mediaFile) {
@@ -68,17 +71,17 @@ export default function AdminPostsPage() {
         category_id: form.category_id,
         post_type: form.post_type,
         contact_phone: form.contact_phone || null,
-        contact_link: form.contact_link || null,
+        contact_link: link ? safeExternalUrl(link) : null,
         media_url: mediaUrl || null,
-        created_by: user!.id,
         is_active: true,
       };
 
       if (editPost) {
+        // Keep the original author on edit.
         const { error } = await supabase.from("marketplace_posts").update(payload as any).eq("id", editPost.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("marketplace_posts").insert(payload as any);
+        const { error } = await supabase.from("marketplace_posts").insert({ ...payload, created_by: user!.id } as any);
         if (error) throw error;
       }
     },
