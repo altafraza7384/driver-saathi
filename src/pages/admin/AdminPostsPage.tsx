@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { safeExternalUrl } from "@/lib/url";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -80,7 +81,7 @@ export default function AdminPostsPage() {
         const { error } = await supabase.from("marketplace_posts").update(payload as any).eq("id", editPost.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("marketplace_posts").insert(payload as any);
+        const { error } = await supabase.from("marketplace_posts").insert({ ...payload, created_by: user!.id } as any);
         if (error) throw error;
       }
     },
