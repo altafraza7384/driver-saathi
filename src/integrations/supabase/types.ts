@@ -14,6 +14,27 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_usage_buckets: {
+        Row: {
+          bucket_start: string
+          feature: string
+          request_count: number
+          user_id: string
+        }
+        Insert: {
+          bucket_start: string
+          feature: string
+          request_count?: number
+          user_id: string
+        }
+        Update: {
+          bucket_start?: string
+          feature?: string
+          request_count?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       app_config: {
         Row: {
           created_at: string | null
@@ -787,6 +808,11 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      consume_ai_quota: {
+        Args: { p_feature: string; p_limit: number; p_user_id: string }
+        Returns: boolean
+      }
+      delete_user_data: { Args: { p_user_id: string }; Returns: undefined }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
