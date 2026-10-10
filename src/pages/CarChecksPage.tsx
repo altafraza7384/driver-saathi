@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DatePicker, TimePicker, parseDateValue } from "@/components/ui/date-time-picker";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, Wrench, Trash2, ArrowLeft, FileText, Pencil, Shield, Store, AlertTriangle, Phone, ExternalLink, UserCheck, FileCheck, Cog, GraduationCap, Image, Video, Play } from "lucide-react";
@@ -32,7 +33,7 @@ export default function CarChecksPage() {
   const [open, setOpen] = useState(false);
   const [docOpen, setDocOpen] = useState(false);
   const [editDoc, setEditDoc] = useState<any>(null);
-  const [form, setForm] = useState({ check_type: "", description: "", odometer_reading: "", cost: "", check_date: new Date().toISOString().split("T")[0], next_due_date: "", notify_date: "", notify_time: "" });
+  const [form, setForm] = useState({ check_type: "", description: "", odometer_reading: "", cost: "", check_date: format(new Date(), "yyyy-MM-dd"), next_due_date: "", notify_date: "", notify_time: "" });
   const [customType, setCustomType] = useState("");
   const [showCustomType, setShowCustomType] = useState(false);
   const [docForm, setDocForm] = useState({ document_name: "", expiry_date: "", notify_date: "", notify_time: "" });
@@ -86,9 +87,11 @@ export default function CarChecksPage() {
 
   const addMutation = useMutation({
     mutationFn: async () => {
+      if (!user) throw new Error("Please sign in again.");
+      if (!form.check_type.trim() || !parseDateValue(form.check_date)) throw new Error("Select a type and valid date.");
       const notifyAt = form.notify_date && form.notify_time ? `${form.notify_date}T${form.notify_time}:00` : form.notify_date ? `${form.notify_date}T09:00:00` : null;
       const { error } = await supabase.from("car_checks").insert({
-        user_id: user!.id,
+        user_id: user.id,
         check_type: form.check_type,
         description: form.description || null,
         odometer_reading: form.odometer_reading ? Number(form.odometer_reading) : null,
@@ -103,7 +106,7 @@ export default function CarChecksPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["car_checks"] });
       setOpen(false);
-      setForm({ check_type: "", description: "", odometer_reading: "", cost: "", check_date: new Date().toISOString().split("T")[0], next_due_date: "", notify_date: "", notify_time: "" });
+      setForm({ check_type: "", description: "", odometer_reading: "", cost: "", check_date: format(new Date(), "yyyy-MM-dd"), next_due_date: "", notify_date: "", notify_time: "" });
       setCustomType(""); setShowCustomType(false);
       toast.success("Car check added!");
     },
@@ -121,12 +124,13 @@ export default function CarChecksPage() {
   // Document CRUD
   const addDocMutation = useMutation({
     mutationFn: async () => {
+      if (!user) throw new Error("Please sign in again.");
       const notifyAt = docForm.notify_date && docForm.notify_time
         ? `${docForm.notify_date}T${docForm.notify_time}:00`
         : docForm.notify_date ? `${docForm.notify_date}T09:00:00`
         : docForm.expiry_date ? `${docForm.expiry_date}T09:00:00` : null;
       const { error } = await supabase.from("car_documents").insert({
-        user_id: user!.id,
+        user_id: user.id,
         document_name: docForm.document_name,
         expiry_date: docForm.expiry_date,
         notify_at: notifyAt,
@@ -237,7 +241,7 @@ export default function CarChecksPage() {
               <DialogTrigger asChild>
                 <Button size="sm" className="gap-1"><Plus className="h-4 w-4" /> Add</Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-1rem)] overflow-y-auto overscroll-contain">
                 <DialogHeader><DialogTitle>{t("car.addCheck")}</DialogTitle></DialogHeader>
                 <div className="space-y-3">
                   <div>
@@ -260,14 +264,14 @@ export default function CarChecksPage() {
                     <div><Label>Cost (₹)</Label><Input type="number" value={form.cost} onChange={(e) => setForm({ ...form, cost: e.target.value })} /></div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    <div><Label>Date</Label><Input type="date" value={form.check_date} onChange={(e) => setForm({ ...form, check_date: e.target.value })} /></div>
-                    <div><Label>Next Due</Label><Input type="date" value={form.next_due_date} onChange={(e) => setForm({ ...form, next_due_date: e.target.value })} /></div>
+                    <div><Label htmlFor="car-form-check_date-1">Date</Label><DatePicker id="car-form-check_date-1" label="Date" value={form.check_date} onChange={(value) => setForm((prev) => ({ ...prev, check_date: value }))} required /></div>
+                    <div><Label htmlFor="car-form-next_due_date-1">Next Due</Label><DatePicker id="car-form-next_due_date-1" label="Next Due" value={form.next_due_date} onChange={(value) => setForm((prev) => ({ ...prev, next_due_date: value }))} /></div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    <div><Label>Notify Date</Label><Input type="date" value={form.notify_date} onChange={(e) => setForm({ ...form, notify_date: e.target.value })} /></div>
-                    <div><Label>Notify Time</Label><Input type="time" value={form.notify_time} onChange={(e) => setForm({ ...form, notify_time: e.target.value })} /></div>
+                    <div><Label htmlFor="car-form-notify_date-1">Notify Date</Label><DatePicker id="car-form-notify_date-1" label="Notify Date" value={form.notify_date} onChange={(value) => setForm((prev) => ({ ...prev, notify_date: value }))} /></div>
+                    <div><Label htmlFor="car-form-notify_time-1">Notify Time</Label><TimePicker id="car-form-notify_time-1" label="Notify Time" value={form.notify_time} onChange={(value) => setForm((prev) => ({ ...prev, notify_time: value }))} /></div>
                   </div>
-                  <Button className="w-full" onClick={() => addMutation.mutate()} disabled={!form.check_type || addMutation.isPending}>
+                  <Button className="w-full" onClick={() => addMutation.mutate()} disabled={!form.check_type.trim() || !parseDateValue(form.check_date) || addMutation.isPending}>
                     {addMutation.isPending ? "Saving..." : "Save"}
                   </Button>
                 </div>
@@ -311,14 +315,14 @@ export default function CarChecksPage() {
               <DialogTrigger asChild>
                 <Button size="sm" className="gap-1"><Plus className="h-4 w-4" /> Add</Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-1rem)] overflow-y-auto overscroll-contain">
                 <DialogHeader><DialogTitle>Add Document</DialogTitle></DialogHeader>
                 <div className="space-y-3">
                   <div><Label>Document Name</Label><Input placeholder="e.g. PUC Certificate, Insurance" value={docForm.document_name} onChange={(e) => setDocForm({ ...docForm, document_name: e.target.value })} /></div>
-                  <div><Label>Expiry Date</Label><Input type="date" value={docForm.expiry_date} onChange={(e) => setDocForm({ ...docForm, expiry_date: e.target.value })} /></div>
+                  <div><Label htmlFor="car-docForm-expiry_date-1">Expiry Date</Label><DatePicker id="car-docForm-expiry_date-1" label="Expiry Date" value={docForm.expiry_date} onChange={(value) => setDocForm((prev) => ({ ...prev, expiry_date: value }))} required /></div>
                   <div className="grid grid-cols-2 gap-3">
-                    <div><Label>Notify Date</Label><Input type="date" value={docForm.notify_date} onChange={(e) => setDocForm({ ...docForm, notify_date: e.target.value })} /></div>
-                    <div><Label>Notify Time</Label><Input type="time" value={docForm.notify_time} onChange={(e) => setDocForm({ ...docForm, notify_time: e.target.value })} /></div>
+                    <div><Label htmlFor="car-docForm-notify_date-1">Notify Date</Label><DatePicker id="car-docForm-notify_date-1" label="Notify Date" value={docForm.notify_date} onChange={(value) => setDocForm((prev) => ({ ...prev, notify_date: value }))} /></div>
+                    <div><Label htmlFor="car-docForm-notify_time-1">Notify Time</Label><TimePicker id="car-docForm-notify_time-1" label="Notify Time" value={docForm.notify_time} onChange={(value) => setDocForm((prev) => ({ ...prev, notify_time: value }))} /></div>
                   </div>
                   <Button className="w-full" onClick={() => addDocMutation.mutate()} disabled={!docForm.document_name || !docForm.expiry_date || addDocMutation.isPending}>
                     {addDocMutation.isPending ? "Saving..." : "Save Document"}
@@ -368,14 +372,14 @@ export default function CarChecksPage() {
 
           {/* Edit Document Dialog */}
           <Dialog open={!!editDoc} onOpenChange={(o) => { if (!o) setEditDoc(null); }}>
-            <DialogContent>
+            <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-1rem)] overflow-y-auto overscroll-contain">
               <DialogHeader><DialogTitle>Edit Document</DialogTitle></DialogHeader>
               <div className="space-y-3">
                 <div><Label>Document Name</Label><Input value={docForm.document_name} onChange={(e) => setDocForm({ ...docForm, document_name: e.target.value })} /></div>
-                <div><Label>Expiry Date</Label><Input type="date" value={docForm.expiry_date} onChange={(e) => setDocForm({ ...docForm, expiry_date: e.target.value })} /></div>
+                <div><Label htmlFor="car-docForm-expiry_date-2">Expiry Date</Label><DatePicker id="car-docForm-expiry_date-2" label="Expiry Date" value={docForm.expiry_date} onChange={(value) => setDocForm((prev) => ({ ...prev, expiry_date: value }))} required /></div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div><Label>Notify Date</Label><Input type="date" value={docForm.notify_date} onChange={(e) => setDocForm({ ...docForm, notify_date: e.target.value })} /></div>
-                  <div><Label>Notify Time</Label><Input type="time" value={docForm.notify_time} onChange={(e) => setDocForm({ ...docForm, notify_time: e.target.value })} /></div>
+                  <div><Label htmlFor="car-docForm-notify_date-2">Notify Date</Label><DatePicker id="car-docForm-notify_date-2" label="Notify Date" value={docForm.notify_date} onChange={(value) => setDocForm((prev) => ({ ...prev, notify_date: value }))} /></div>
+                  <div><Label htmlFor="car-docForm-notify_time-2">Notify Time</Label><TimePicker id="car-docForm-notify_time-2" label="Notify Time" value={docForm.notify_time} onChange={(value) => setDocForm((prev) => ({ ...prev, notify_time: value }))} /></div>
                 </div>
                 <Button className="w-full" onClick={() => updateDocMutation.mutate()} disabled={!docForm.document_name || !docForm.expiry_date || updateDocMutation.isPending}>
                   {updateDocMutation.isPending ? "Saving..." : "Update Document"}
