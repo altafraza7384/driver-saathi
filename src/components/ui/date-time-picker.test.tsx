@@ -24,13 +24,13 @@ function Form() {
 describe("nested modal pickers", () => {
   it("selects an ISO date, displays dd/MM/yyyy and returns to the parent", () => {
     render(<Form />);
-    fireEvent.click(screen.getByRole("button", { name: "Date", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: /^Date$/ }));
     const calendar = screen.getByRole("grid");
     const day = calendar.querySelector('button[name="day"]');
     expect(day).not.toBeNull();
     if (day) fireEvent.click(day);
     expect(screen.getByTestId("iso").textContent).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(screen.getByRole("button", { name: "Date", exact: true }).textContent).toMatch(/^\d{2}\/\d{2}\/\d{4}$/);
+    expect(screen.getByRole("button", { name: /^Date$/ }).textContent).toMatch(/^\d{2}\/\d{2}\/\d{4}$/);
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
   });
 
@@ -39,7 +39,7 @@ describe("nested modal pickers", () => {
     fireEvent.click(screen.getByRole("button", { name: "Notify Time" }));
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(screen.getByTestId("time-value")).toHaveTextContent("09:00");
-    fireEvent.click(screen.getByRole("button", { name: "Date", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: /^Date$/ }));
     fireEvent.click(screen.getByRole("button", { name: "Clear" }));
     expect(screen.getByTestId("iso")).toBeEmptyDOMElement();
   });
