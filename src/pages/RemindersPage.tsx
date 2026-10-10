@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DatePicker, TimePicker, parseDateValue } from "@/components/ui/date-time-picker";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, Bell, Check, Trash2, ArrowLeft } from "lucide-react";
@@ -33,8 +34,10 @@ export default function RemindersPage() {
 
   const addMutation = useMutation({
     mutationFn: async () => {
+      if (!user) throw new Error("Please sign in again.");
+      if (!form.title.trim() || !parseDateValue(form.reminder_date)) throw new Error("Enter a title and select a valid date.");
       const notifyAt = form.notify_date && form.notify_time ? `${form.notify_date}T${form.notify_time}:00` : form.notify_date ? `${form.notify_date}T09:00:00` : null;
-      const { error } = await supabase.from("reminders").insert({ user_id: user!.id, title: form.title, description: form.description || null, reminder_date: form.reminder_date, category: form.category, notify_at: notifyAt } as any);
+      const { error } = await supabase.from("reminders").insert({ user_id: user.id, title: form.title, description: form.description || null, reminder_date: form.reminder_date, category: form.category, notify_at: notifyAt } as any);
       if (error) throw error;
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["reminders"] }); setOpen(false); setForm({ title: "", description: "", reminder_date: "", category: "general", notify_date: "", notify_time: "" }); setCustomCategory(""); setShowCustomCategory(false); toast.success("✅"); },
@@ -61,13 +64,13 @@ export default function RemindersPage() {
         <h1 className="text-2xl font-bold">{t("reminder.title")}</h1>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild><Button size="sm" className="gap-1"><Plus className="h-4 w-4" /> {t("common.add")}</Button></DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-1rem)] overflow-y-auto overscroll-contain">
             <DialogHeader><DialogTitle>{t("reminder.addReminder")}</DialogTitle></DialogHeader>
             <div className="space-y-3">
               <div><Label>{t("common.title")}</Label><Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></div>
               <div><Label>{t("common.description")}</Label><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
               <div className="grid grid-cols-2 gap-3">
-                <div><Label>{t("common.date")}</Label><Input type="date" value={form.reminder_date} onChange={(e) => setForm({ ...form, reminder_date: e.target.value })} /></div>
+                <div><Label htmlFor="reminder-form-reminder_date-1">{t("common.date")}</Label><DatePicker id="reminder-form-reminder_date-1" label={t("common.date")} value={form.reminder_date} onChange={(value) => setForm((prev) => ({ ...prev, reminder_date: value }))} required /></div>
                 <div><Label>{t("common.category")}</Label>
                   <Select value={showCustomCategory ? "__custom__" : form.category} onValueChange={(v) => {
                     if (v === "__custom__") { setShowCustomCategory(true); setForm({ ...form, category: "" }); }
@@ -83,10 +86,10 @@ export default function RemindersPage() {
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><Label>{t("reminder.notifyDate")}</Label><Input type="date" value={form.notify_date} onChange={(e) => setForm({ ...form, notify_date: e.target.value })} /></div>
-                <div><Label>{t("reminder.notifyTime")}</Label><Input type="time" value={form.notify_time} onChange={(e) => setForm({ ...form, notify_time: e.target.value })} /></div>
+                <div><Label htmlFor="reminder-form-notify_date-1">{t("reminder.notifyDate")}</Label><DatePicker id="reminder-form-notify_date-1" label={t("reminder.notifyDate")} value={form.notify_date} onChange={(value) => setForm((prev) => ({ ...prev, notify_date: value }))} /></div>
+                <div><Label htmlFor="reminder-form-notify_time-1">{t("reminder.notifyTime")}</Label><TimePicker id="reminder-form-notify_time-1" label={t("reminder.notifyTime")} value={form.notify_time} onChange={(value) => setForm((prev) => ({ ...prev, notify_time: value }))} /></div>
               </div>
-              <Button className="w-full" onClick={() => addMutation.mutate()} disabled={!form.title || !form.reminder_date || addMutation.isPending}>{addMutation.isPending ? t("common.saving") : t("common.save")}</Button>
+              <Button className="w-full" onClick={() => addMutation.mutate()} disabled={!form.title.trim() || !parseDateValue(form.reminder_date) || addMutation.isPending}>{addMutation.isPending ? t("common.saving") : t("common.save")}</Button>
             </div>
           </DialogContent>
         </Dialog>
