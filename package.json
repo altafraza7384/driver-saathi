@@ -20,6 +20,7 @@
     "@capacitor/core": "^8.1.0",
     "@capacitor/local-notifications": "^8.0.1",
     "@capacitor/push-notifications": "^8.0.1",
+    "@capawesome/capacitor-app-update": "^8.1.0",
     "@fontsource/montserrat": "^5.2.8",
     "@fontsource/roboto": "^5.2.9",
     "@hookform/resolvers": "^3.10.0",

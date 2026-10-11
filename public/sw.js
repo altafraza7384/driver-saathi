@@ -1,6 +1,6 @@
 // Service Worker for Push Notifications & Offline Support
 
-const CACHE_NAME = "driver-saathi-v1";
+const CACHE_NAME = "driver-saathi-v2";
 
 // Cache app shell on install
 self.addEventListener("install", (event) => {
@@ -31,6 +31,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (
     url.pathname.startsWith("/~oauth") ||
+    url.pathname === "/version.json" ||
     url.pathname.startsWith("/auth") ||
     url.hostname.includes("supabase")
   ) {
