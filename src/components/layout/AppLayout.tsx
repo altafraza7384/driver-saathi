@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Outlet } from "react-router-dom";
 import { BottomNav } from "./BottomNav";
+import { UpdatePrompt } from "@/components/UpdatePrompt";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { initAdMob, showBannerAd } from "@/lib/admob";
 import { requestAllPermissions } from "@/lib/native-permissions";
@@ -31,6 +32,7 @@ export function AppLayout() {
         <Outlet />
       </main>
       <BottomNav />
+      <UpdatePrompt />
     </div>
   );
 }
