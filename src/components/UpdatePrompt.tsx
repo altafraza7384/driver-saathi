@@ -3,7 +3,6 @@ import { Capacitor } from "@capacitor/core";
 import { RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-declare const __APP_BUILD_ID__: string;
 
 const CHECK_INTERVAL = 5 * 60 * 1000;
 type Kind = "store" | "web" | null;
