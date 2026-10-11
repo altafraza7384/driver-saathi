@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
-import { Store, FileText, Users, LayoutDashboard, LogOut } from "lucide-react";
+import { Store, FileText, Users, LayoutDashboard, LogOut, CreditCard } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
 export default function AdminDashboard() {
@@ -89,6 +89,13 @@ export default function AdminDashboard() {
           <div className="text-left">
             <p className="font-bold text-sm">Manage Users</p>
             <p className="text-xs text-muted-foreground">View all users and their saved data</p>
+          </div>
+        </Button>
+        <Button className="w-full justify-start gap-3 h-14" variant="outline" onClick={() => navigate("/admin/plans")}>
+          <CreditCard className="h-5 w-5 text-primary" />
+          <div className="text-left">
+            <p className="font-bold text-sm">Subscription Plans</p>
+            <p className="text-xs text-muted-foreground">Create & edit plans (payments later)</p>
           </div>
         </Button>
       </div>
