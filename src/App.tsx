@@ -32,6 +32,7 @@ const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
 const AdminPostsPage = lazy(() => import("./pages/admin/AdminPostsPage"));
 const AdminCategoriesPage = lazy(() => import("./pages/admin/AdminCategoriesPage"));
 const AdminUsersPage = lazy(() => import("./pages/admin/AdminUsersPage"));
+const AdminPlansPage = lazy(() => import("./pages/admin/AdminPlansPage"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -109,6 +110,7 @@ const App = () => (
                       <Route path="/admin/posts" element={<AdminPostsPage />} />
                       <Route path="/admin/categories" element={<AdminCategoriesPage />} />
                       <Route path="/admin/users" element={<AdminUsersPage />} />
+                      <Route path="/admin/plans" element={<AdminPlansPage />} />
                     </Route>
                   </Route>
                   <Route path="*" element={<NotFound />} />

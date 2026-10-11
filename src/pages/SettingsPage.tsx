@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Globe, User, Car, LogOut, Save, ArrowLeft, Pencil, Camera, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { SubscriptionPlansCard } from "@/components/SubscriptionPlansCard";
 import { useNavigate } from "react-router-dom";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -170,6 +171,8 @@ export default function SettingsPage() {
           ))}
         </div>
       </CardContent></Card>
+
+      <SubscriptionPlansCard />
 
       <Button variant="destructive" className="w-full gap-2" onClick={handleLogout}><LogOut className="h-4 w-4" /> {t("auth.logout")}</Button>
 
