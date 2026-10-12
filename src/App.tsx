@@ -26,6 +26,7 @@ const DataBackupPage = lazy(() => import("./pages/DataBackupPage"));
 const FinanceAIPage = lazy(() => import("./pages/FinanceAIPage"));
 const PrivacyPolicyPage = lazy(() => import("./pages/PrivacyPolicyPage"));
 const AuthPage = lazy(() => import("./pages/AuthPage"));
+const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const AdminLayout = lazy(() => import("./pages/admin/AdminLayout"));
 const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
@@ -86,6 +87,7 @@ const App = () => (
               <Suspense fallback={<RouteLoader />}>
                 <Routes>
                   <Route path="/auth" element={<AuthPage />} />
+                  <Route path="/reset-password" element={<ResetPasswordPage />} />
                   <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
                   <Route element={<ProtectedRoutes />}>
                     <Route path="/" element={<HomePage />} />

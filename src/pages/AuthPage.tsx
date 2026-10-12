@@ -152,6 +152,14 @@ export default function AuthPage() {
                     required
                   />
                 </div>
+                {isLogin && (
+                  <div className="text-right">
+                    <button type="button" onClick={() => navigate("/reset-password")}
+                      className="text-sm font-medium text-primary hover:underline">
+                      Forgot password?
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Retry status indicator */}
