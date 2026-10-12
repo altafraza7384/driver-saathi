@@ -5,8 +5,8 @@ const config: CapacitorConfig = {
   appName: 'Driver Saathi',
   webDir: 'dist',
   server: {
-    url: 'https://87f2ba68-ef69-4fc7-b0be-20f77e06132f.lovableproject.com?forceHideBadge=true',
-    cleartext: true,
+    // Live published app: Google sign-in (/~oauth) only works on the published domain.
+    url: 'https://driver-saathi.lovable.app',
   },
 };
 
