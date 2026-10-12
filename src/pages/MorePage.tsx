@@ -11,6 +11,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { SubscriptionPlansCard } from "@/components/SubscriptionPlansCard";
 
 export default function MorePage() {
   const { t } = useI18n();
@@ -86,6 +87,10 @@ export default function MorePage() {
           <ChevronRight className="h-5 w-5 text-muted-foreground" />
         </button>
       </div>
+
+      {/* Subscription Plans */}
+      <SubscriptionPlansCard />
+
 
       {/* About Dialog */}
       <Dialog open={aboutOpen} onOpenChange={setAboutOpen}>
