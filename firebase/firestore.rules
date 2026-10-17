@@ -18,18 +18,18 @@ service cloud.firestore {
         && !request.resource.data.keys().hasAny(['role', 'roles', 'admin']);
       allow delete: if false; // deletion only via deleteAccount function
 
+      function ownedCollections() {
+        return ['transactions','debts','debt_payments','goals','notes','reminders',
+                'car_checks','car_documents','health_logs','emergency_contacts',
+                'platform_affiliations','push_subscriptions','chat_messages',
+                'recurring_expenses','recurring_expense_payments'];
+      }
       match /{collection}/{docId} {
-        allow read, delete: if isOwner(uid)
-          && collection in ['transactions','debts','debt_payments','goals','notes','reminders',
-                            'car_checks','car_documents','health_logs','emergency_contacts',
-                            'platform_affiliations','push_subscriptions','chat_messages',
-                            'recurring_expenses','recurring_expense_payments'];
-        allow create, update: if isOwner(uid) && ownsPayload(uid)
-          && collection in ['transactions','debts','debt_payments','goals','notes','reminders',
-                            'car_checks','car_documents','health_logs','emergency_contacts',
-                            'platform_affiliations','push_subscriptions',
-                            'recurring_expenses','recurring_expense_payments']
-          || (isOwner(uid) && collection == 'chat_messages' && request.method == 'create');
+        allow read, delete: if isOwner(uid) && collection in ownedCollections();
+        allow create: if isOwner(uid) && ownsPayload(uid) && collection in ownedCollections();
+        // chat messages are append-only (matches previous policy: no UPDATE)
+        allow update: if isOwner(uid) && ownsPayload(uid)
+          && collection in ownedCollections() && collection != 'chat_messages';
       }
       // aiUsage / sentNotifications fall through: denied for clients.
     }
