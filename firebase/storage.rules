@@ -1,0 +1,17 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Mirrors public Supabase buckets: anyone may read, only owner writes own folder.
+    match /avatars/{uid}/{file} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == uid
+        && request.resource.size < 5 * 1024 * 1024 && request.resource.contentType.matches('image/.*');
+    }
+    match /marketplace/{file=**} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.admin == true
+        && request.resource.size < 20 * 1024 * 1024;
+    }
+    match /{all=**} { allow read, write: if false; }
+  }
+}

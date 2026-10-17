@@ -1,0 +1,57 @@
+rules_version = '2';
+// Data model: users/{uid}/{collection}/{docId}. uid == migrated Supabase user UUID.
+// Server-only: roles, aiUsage, sentNotifications, appConfig (Admin SDK bypasses rules).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
+    // Admin comes ONLY from a custom claim set by trusted server code / import script.
+    function isAdmin() { return signedIn() && request.auth.token.admin == true; }
+    function ownsPayload(uid) {
+      return !('user_id' in request.resource.data) || request.resource.data.user_id == uid;
+    }
+
+    match /users/{uid} {
+      // Profile document
+      allow read: if isOwner(uid);
+      allow create, update: if isOwner(uid)
+        && !request.resource.data.keys().hasAny(['role', 'roles', 'admin']);
+      allow delete: if false; // deletion only via deleteAccount function
+
+      match /{collection}/{docId} {
+        allow read, delete: if isOwner(uid)
+          && collection in ['transactions','debts','debt_payments','goals','notes','reminders',
+                            'car_checks','car_documents','health_logs','emergency_contacts',
+                            'platform_affiliations','push_subscriptions','chat_messages',
+                            'recurring_expenses','recurring_expense_payments'];
+        allow create, update: if isOwner(uid) && ownsPayload(uid)
+          && collection in ['transactions','debts','debt_payments','goals','notes','reminders',
+                            'car_checks','car_documents','health_logs','emergency_contacts',
+                            'platform_affiliations','push_subscriptions',
+                            'recurring_expenses','recurring_expense_payments']
+          || (isOwner(uid) && collection == 'chat_messages' && request.method == 'create');
+      }
+      // aiUsage / sentNotifications fall through: denied for clients.
+    }
+
+    match /roles/{uid} { allow read: if isOwner(uid) || isAdmin(); allow write: if false; }
+
+    match /subscription_plans/{planId} {
+      allow read: if signedIn() && (resource.data.is_active == true || isAdmin());
+      allow write: if isAdmin()
+        && request.resource.data.price_inr is number
+        && ((request.resource.data.billing_interval == 'free' && request.resource.data.price_inr == 0)
+          || (request.resource.data.billing_interval in ['monthly','yearly'] && request.resource.data.price_inr > 0));
+    }
+
+    match /marketplace_categories/{id} { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /marketplace_posts/{id} {
+      allow read: if signedIn();
+      allow create: if isAdmin() && request.resource.data.created_by == request.auth.uid;
+      allow update: if isAdmin() && request.resource.data.created_by == resource.data.created_by;
+      allow delete: if isAdmin();
+    }
+
+    match /{document=**} { allow read, write: if false; }
+  }
+}
