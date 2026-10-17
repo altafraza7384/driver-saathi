@@ -1,6 +1,7 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { defineSecret } from "firebase-functions/params";
+import { getMessaging } from "firebase-admin/messaging";
 import webpush from "web-push";
 import { db, auth, requireUser, requireAdmin, deleteUserData } from "./shared";
 
@@ -71,7 +72,28 @@ export const sendNotifications = onSchedule(
       let ok = false;
       for (const s of subs.docs) {
         const endpoint = s.get("endpoint") as string;
-        if (endpoint.startsWith("fcm://")) continue; // native FCM: send via admin messaging after cutover
+        if (endpoint.startsWith("fcm://")) {
+          const token = endpoint.slice(6);
+          if (!token) { await s.ref.delete(); continue; }
+          try {
+            await getMessaging().send({
+              token,
+              notification: { title: n.title, body: n.body },
+              data: { url: n.url, source: n.source, notificationId: key },
+              android: { priority: "high", notification: { channelId: "driver_saathi_reminders", sound: "default" } },
+            });
+            ok = true;
+          } catch (e: any) {
+            const code = e?.code;
+            if (code === "messaging/registration-token-not-registered" ||
+                code === "messaging/invalid-registration-token") {
+              await s.ref.delete();
+            } else {
+              console.error("FCM send failed", { code: code || "unknown" });
+            }
+          }
+          continue;
+        }
         try {
           await webpush.sendNotification({ endpoint, keys: { p256dh: s.get("p256dh"), auth: s.get("auth") } },
             JSON.stringify({ title: n.title, body: n.body, url: n.url }));
