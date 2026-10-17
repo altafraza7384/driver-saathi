@@ -1,0 +1,94 @@
+import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { defineSecret } from "firebase-functions/params";
+import { z } from "zod";
+import { db, requireUser, consumeQuota } from "./shared";
+
+const GOOGLE_AI_API_KEY = defineSecret("GOOGLE_AI_API_KEY");
+const Msgs = z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(4000) }))
+  .min(1).max(20).refine((m) => m.reduce((s, x) => s + x.content.length, 0) <= 20000, "Conversation too long");
+
+async function gemini(system: string, messages: z.infer<typeof Msgs>, key: string, tools?: unknown[]) {
+  const r = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "gemini-2.5-flash", max_tokens: 768,
+      messages: [{ role: "system", content: system }, ...messages], ...(tools ? { tools } : {}) }),
+  });
+  if (r.status === 429) throw new HttpsError("resource-exhausted", "Rate limit exceeded");
+  if (!r.ok) throw new HttpsError("internal", "AI provider error");
+  return r.json() as Promise<any>;
+}
+
+export const financeAi = onCall({ secrets: [GOOGLE_AI_API_KEY], region: "asia-south1" }, async (req) => {
+  const uid = requireUser(req);
+  const parsed = Msgs.safeParse(req.data?.messages);
+  if (!parsed.success) throw new HttpsError("invalid-argument", "Invalid messages");
+  if (!(await consumeQuota(uid, "finance-ai", 20))) throw new HttpsError("resource-exhausted", "AI usage limit reached");
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  const base = db.collection("users").doc(uid);
+  const [tx, debts, goals] = await Promise.all([
+    base.collection("transactions").where("transaction_date", ">=", monthStart).get(),
+    base.collection("debts").where("is_active", "==", true).get(),
+    base.collection("goals").get(),
+  ]);
+  const t = tx.docs.map((d) => d.data());
+  const income = t.filter((x) => x.type === "income").reduce((s, x) => s + Number(x.amount), 0);
+  const expense = t.filter((x) => x.type === "expense").reduce((s, x) => s + Number(x.amount), 0);
+  const system = `You are a Personal Finance AI for Indian gig drivers. Use ₹, give specific advice from this data.
+Income this month: ₹${income.toFixed(0)}; Expenses: ₹${expense.toFixed(0)}; Net: ₹${(income - expense).toFixed(0)}
+Debts: ${debts.docs.map((d) => `${d.get("name")} ₹${Number(d.get("principal")) - Number(d.get("total_paid"))} @${d.get("interest_rate")}%`).join("; ") || "none"}
+Goals: ${goals.docs.map((g) => `${g.get("title")} ₹${g.get("saved_amount")}/${g.get("target_amount")}`).join("; ") || "none"}
+Recommend an emergency fund first; flag EMI > 40% of income.`;
+  const json = await gemini(system, parsed.data, GOOGLE_AI_API_KEY.value());
+  return { content: json.choices?.[0]?.message?.content ?? "" };
+});
+
+/**
+ * Assistant chat. Core tools ported; remaining tools from supabase/functions/chat
+ * (debts, health, car docs, goals updates, etc.) must be ported before cutover.
+ */
+const TOOLS = [
+  { type: "function", function: { name: "add_transaction", description: "Record income or expense",
+    parameters: { type: "object", required: ["type", "amount", "category"], properties: {
+      type: { type: "string", enum: ["income", "expense"] }, amount: { type: "number" },
+      category: { type: "string" }, description: { type: "string" } } } } },
+  { type: "function", function: { name: "add_note", description: "Save a note",
+    parameters: { type: "object", required: ["title", "content"], properties: { title: { type: "string" }, content: { type: "string" } } } } },
+  { type: "function", function: { name: "add_reminder", description: "Create a reminder",
+    parameters: { type: "object", required: ["title", "reminder_date"], properties: {
+      title: { type: "string" }, reminder_date: { type: "string", description: "yyyy-MM-dd" }, category: { type: "string" } } } } },
+];
+
+export const chat = onCall({ secrets: [GOOGLE_AI_API_KEY], region: "asia-south1" }, async (req) => {
+  const uid = requireUser(req);
+  const parsed = Msgs.safeParse(req.data?.messages);
+  if (!parsed.success) throw new HttpsError("invalid-argument", "Invalid messages");
+  if (!(await consumeQuota(uid, "chat", 30))) throw new HttpsError("resource-exhausted", "AI usage limit reached");
+
+  const json = await gemini("You are Driver Saathi, a Hinglish assistant for Indian drivers. Use tools to save data the user mentions.",
+    parsed.data, GOOGLE_AI_API_KEY.value(), TOOLS);
+  const msg = json.choices?.[0]?.message ?? {};
+  const base = db.collection("users").doc(uid);
+  const now = new Date().toISOString();
+  const actions: string[] = [];
+  for (const call of msg.tool_calls ?? []) {
+    let a: any; try { a = JSON.parse(call.function.arguments); } catch { continue; }
+    const today = now.slice(0, 10);
+    if (call.function.name === "add_transaction" && Number(a.amount) > 0 && ["income", "expense"].includes(a.type)) {
+      await base.collection("transactions").add({ user_id: uid, type: a.type, amount: Number(a.amount),
+        category: String(a.category).slice(0, 100), description: a.description ?? null, transaction_date: today, created_at: now, updated_at: now });
+      actions.push(`₹${a.amount} ${a.type} saved`);
+    } else if (call.function.name === "add_note") {
+      await base.collection("notes").add({ user_id: uid, title: String(a.title).slice(0, 200), content: String(a.content).slice(0, 5000),
+        tags: [], is_voice_note: false, created_at: now, updated_at: now });
+      actions.push("Note saved");
+    } else if (call.function.name === "add_reminder" && /^\d{4}-\d{2}-\d{2}$/.test(a.reminder_date)) {
+      await base.collection("reminders").add({ user_id: uid, title: String(a.title).slice(0, 200), reminder_date: a.reminder_date,
+        category: a.category ?? "general", is_completed: false, created_at: now, updated_at: now });
+      actions.push("Reminder saved");
+    }
+  }
+  return { content: msg.content || actions.join("\n") || "Done!", actions };
+});
