@@ -34,12 +34,12 @@ jobs:
         run: |
           test -d "$ANDROID_HOME" || { echo 'Android SDK not found'; exit 1; }
           echo "Android SDK: $ANDROID_HOME"
+      - name: Repair inconsistent npm lockfile for CI build
+        run: npm install --package-lock-only --legacy-peer-deps --ignore-scripts --no-audit --no-fund
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
       - name: Compile web assets
         run: npm run build
-      - name: Generate native Android project
-        run: npx cap add android
       - name: Bundle web app locally (never load remote Lovable URL)
         run: |
           node --input-type=module <<'NODE'
@@ -50,6 +50,8 @@ jobs:
           if (updated === c) throw new Error('Expected remote server configuration not found');
           fs.writeFileSync(p, updated);
           NODE
+      - name: Generate native Android project
+        run: npx cap add android
       - name: Android Firebase configuration
         shell: bash
         env:
@@ -66,7 +68,7 @@ jobs:
           node -e 'const x=require("./android/app/google-services.json"); if (!x.client?.some(c=>c.client_info?.android_client_info?.package_name==="com.driversaathi.app")) process.exit(1)'
       - name: Synchronize Capacitor
         run: npx cap sync android
-      - name: Build unsigned-for-release debug APK
+      - name: Build debug APK
         run: |
           cd android
           chmod +x gradlew
