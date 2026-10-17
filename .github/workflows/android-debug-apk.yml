@@ -29,7 +29,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: android-actions/setup-android@v3
+      # GitHub ubuntu-latest already includes Android SDK; setup-android@v3 currently fails installing retired 'tools' package.
+      - name: Verify Android SDK
+        run: |
+          test -d "$ANDROID_HOME" || { echo 'Android SDK not found'; exit 1; }
+          echo "Android SDK: $ANDROID_HOME"
       - name: Install dependencies
         run: npm ci
       - name: Compile web assets
