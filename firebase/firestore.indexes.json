@@ -1,0 +1,14 @@
+{
+  "indexes": [
+    { "collectionGroup": "transactions", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "type", "order": "ASCENDING" }, { "fieldPath": "transaction_date", "order": "DESCENDING" }] },
+    { "collectionGroup": "transactions", "queryScope": "COLLECTION_GROUP", "fields": [{ "fieldPath": "transaction_date", "order": "ASCENDING" }] },
+    { "collectionGroup": "reminders", "queryScope": "COLLECTION_GROUP", "fields": [{ "fieldPath": "is_completed", "order": "ASCENDING" }, { "fieldPath": "notify_at", "order": "ASCENDING" }] },
+    { "collectionGroup": "debts", "queryScope": "COLLECTION_GROUP", "fields": [{ "fieldPath": "is_active", "order": "ASCENDING" }, { "fieldPath": "notify_at", "order": "ASCENDING" }] },
+    { "collectionGroup": "goals", "queryScope": "COLLECTION_GROUP", "fields": [{ "fieldPath": "is_completed", "order": "ASCENDING" }, { "fieldPath": "notify_at", "order": "ASCENDING" }] },
+    { "collectionGroup": "car_checks", "queryScope": "COLLECTION_GROUP", "fields": [{ "fieldPath": "is_completed", "order": "ASCENDING" }, { "fieldPath": "notify_at", "order": "ASCENDING" }] },
+    { "collectionGroup": "car_documents", "queryScope": "COLLECTION_GROUP", "fields": [{ "fieldPath": "notify_at", "order": "ASCENDING" }] },
+    { "collectionGroup": "recurring_expenses", "queryScope": "COLLECTION_GROUP", "fields": [{ "fieldPath": "is_active", "order": "ASCENDING" }, { "fieldPath": "notify_at", "order": "ASCENDING" }] },
+    { "collectionGroup": "chat_messages", "queryScope": "COLLECTION_GROUP", "fields": [{ "fieldPath": "created_at", "order": "ASCENDING" }] }
+  ],
+  "fieldOverrides": []
+}
