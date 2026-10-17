@@ -75,6 +75,34 @@ jobs:
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace
+      - name: Smoke test Android launch in emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+            adb logcat -c
+            adb shell am force-stop com.driversaathi.app || true
+            adb shell monkey -p com.driversaathi.app -c android.intent.category.LAUNCHER 1
+            sleep 12
+            adb logcat -d -v time > android-launch-logcat.txt
+            echo '--- Android fatal errors ---'
+            grep -A 35 -B 5 -E 'FATAL EXCEPTION|Process: com.driversaathi.app|AndroidRuntime' android-launch-logcat.txt | tail -150 || true
+            if grep -q -E 'FATAL EXCEPTION' android-launch-logcat.txt; then
+              echo '::error::Android emulator reported a fatal exception'
+              exit 1
+            fi
+      - name: Upload Android launch diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-launch-logcat
+          path: android-launch-logcat.txt
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Upload test APK
         uses: actions/upload-artifact@v4
         with:
