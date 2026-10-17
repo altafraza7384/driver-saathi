@@ -50,6 +50,8 @@ jobs:
           if (updated === c) throw new Error('Expected remote server configuration not found');
           fs.writeFileSync(p, updated);
           NODE
+      - name: Install matching Capacitor Android platform
+        run: npm install --no-save --legacy-peer-deps --ignore-scripts --no-audit --no-fund @capacitor/android@8.1.0
       - name: Generate native Android project
         run: npx cap add android
       - name: Android Firebase configuration
