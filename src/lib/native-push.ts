@@ -18,12 +18,11 @@ export async function registerNativePush(userId: string): Promise<void> {
     return;
   }
 
-  // Register with FCM
-  await PushNotifications.register();
+  // Register only after listeners are installed.
 
   // Listen for the FCM token
-  PushNotifications.addListener("registration", async (token) => {
-    console.log("FCM token:", token.value);
+  await PushNotifications.addListener("registration", async (token) => {
+    // Never log FCM registration tokens.
     // Store FCM token in push_subscriptions (reuse the table)
     await supabase.from("push_subscriptions").upsert(
       {
@@ -36,12 +35,12 @@ export async function registerNativePush(userId: string): Promise<void> {
     );
   });
 
-  PushNotifications.addListener("registrationError", (err) => {
+  await PushNotifications.addListener("registrationError", (err) => {
     console.error("FCM registration error:", err);
   });
 
   // Handle incoming notifications when app is open
-  PushNotifications.addListener("pushNotificationReceived", async (notification) => {
+  await PushNotifications.addListener("pushNotificationReceived", async (notification) => {
     // Show as local notification so user sees it
     await LocalNotifications.schedule({
       notifications: [
@@ -56,12 +55,13 @@ export async function registerNativePush(userId: string): Promise<void> {
   });
 
   // Handle notification tap
-  PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
+  await PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
     const url = action.notification.data?.url;
     if (url && typeof window !== "undefined") {
-      window.location.hash = url;
+      if (url.startsWith("/") && !url.startsWith("//")) window.location.assign(url);
     }
   });
+  await PushNotifications.register();
 }
 
 export async function requestLocalNotificationPermission(): Promise<boolean> {
