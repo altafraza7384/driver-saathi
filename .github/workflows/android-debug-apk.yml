@@ -1,0 +1,115 @@
+name: Android debug APK (integration testing)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'firebase/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'capacitor.config.ts'
+      - '.github/workflows/android-debug-apk.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  android-debug:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      # GitHub ubuntu-latest already includes Android SDK; setup-android@v3 currently fails installing retired 'tools' package.
+      - name: Verify Android SDK
+        run: |
+          test -d "$ANDROID_HOME" || { echo 'Android SDK not found'; exit 1; }
+          echo "Android SDK: $ANDROID_HOME"
+      - name: Repair inconsistent npm lockfile for CI build
+        run: npm install --package-lock-only --legacy-peer-deps --ignore-scripts --no-audit --no-fund
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+      - name: Compile web assets
+        run: npm run build
+      - name: Bundle web app locally (never load remote Lovable URL)
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const p = 'capacitor.config.ts';
+          const c = fs.readFileSync(p, 'utf8');
+          const updated = c.replace(/\s*server:\s*\{[\s\S]*?\},?/, '');
+          if (updated === c) throw new Error('Expected remote server configuration not found');
+          fs.writeFileSync(p, updated);
+          NODE
+      - name: Install matching Capacitor Android platform
+        run: npm install --no-save --legacy-peer-deps --ignore-scripts --no-audit --no-fund @capacitor/android@8.1.0
+      - name: Generate native Android project
+        run: npx cap add android
+      - name: Android Firebase configuration
+        shell: bash
+        env:
+          GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON_B64" ]; then
+            echo "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > android/app/google-services.json
+          elif [ -f public/google-services.json ]; then
+            cp public/google-services.json android/app/google-services.json
+          else
+            echo "::error::Firebase Android google-services.json is missing"
+            exit 1
+          fi
+          node -e 'const x=require("./android/app/google-services.json"); if (!x.client?.some(c=>c.client_info?.android_client_info?.package_name==="com.driversaathi.app")) process.exit(1)'
+      - name: Synchronize Capacitor
+        run: npx cap sync android
+      - name: Build debug APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
+      - name: Smoke test Android launch in emulator
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: pixel_2
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-metrics
+          disable-animations: true
+          script: |
+            adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+            adb logcat -c
+            adb shell am force-stop com.driversaathi.app || true
+            adb shell monkey -p com.driversaathi.app -c android.intent.category.LAUNCHER 1
+            sleep 12
+            adb logcat -d -v time > android-launch-logcat.txt
+            echo '--- Android fatal errors ---'
+            grep -A 35 -B 5 -E 'FATAL EXCEPTION|Process: com.driversaathi.app|AndroidRuntime' android-launch-logcat.txt | tail -150 || true
+            if grep -q -E 'FATAL EXCEPTION' android-launch-logcat.txt; then
+              echo '::error::Android emulator reported a fatal exception'
+              exit 1
+            fi
+      - name: Upload Android launch diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-launch-logcat
+          path: android-launch-logcat.txt
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload test APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: driver-saathi-debug-apk-NOT-PRODUCTION
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
