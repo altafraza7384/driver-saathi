@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
 import { formatINR } from "@/lib/currency";
 import { Card, CardContent } from "@/components/ui/card";
@@ -78,7 +78,7 @@ export default function RecurringExpenses() {
   }, [user]);
 
   const fetchItems = async () => {
-    const { data } = await supabase
+    const { data } = await db
       .from("recurring_expenses")
       .select("*")
       .order("due_day", { ascending: true });
@@ -117,8 +117,8 @@ export default function RecurringExpenses() {
     };
 
     const { error } = editing
-      ? await supabase.from("recurring_expenses").update(payload).eq("id", editing.id)
-      : await supabase.from("recurring_expenses").insert(payload);
+      ? await db.from("recurring_expenses").update(payload).eq("id", editing.id)
+      : await db.from("recurring_expenses").insert(payload);
 
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -132,27 +132,27 @@ export default function RecurringExpenses() {
   };
 
   const handleDelete = async (id: string) => {
-    await supabase.from("recurring_expenses").delete().eq("id", id);
+    await db.from("recurring_expenses").delete().eq("id", id);
     toast({ title: "Expense removed" });
     fetchItems();
   };
 
   const handleMarkPaid = async (it: RecurringExpense) => {
     if (!user) return;
-    await supabase.from("recurring_expense_payments").insert({
+    await db.from("recurring_expense_payments").insert({
       user_id: user.id,
       expense_id: it.id,
       amount: it.amount,
     });
     // also create a regular transaction record so it shows in finance
-    await supabase.from("transactions").insert({
+    await db.from("transactions").insert({
       user_id: user.id,
       type: "expense",
       category: it.category,
       amount: it.amount,
       description: it.name,
     });
-    await supabase
+    await db
       .from("recurring_expenses")
       .update({ last_paid_date: new Date().toISOString().slice(0, 10) })
       .eq("id", it.id);

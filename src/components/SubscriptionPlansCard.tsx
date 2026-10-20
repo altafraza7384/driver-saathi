@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/backend";
 import { Card, CardContent } from "@/components/ui/card";
 import { CreditCard, Check } from "lucide-react";
 import { formatINR } from "@/lib/currency";
@@ -8,7 +8,7 @@ export function SubscriptionPlansCard() {
   const { data: plans = [], isLoading } = useQuery({
     queryKey: ["subscription_plans"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("subscription_plans").select("*").eq("is_active", true).order("sort_order");
+      const { data, error } = await db.from("subscription_plans").select("*").eq("is_active", true).order("sort_order");
       if (error) throw error;
       return data;
     },

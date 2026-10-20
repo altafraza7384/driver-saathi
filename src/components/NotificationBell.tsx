@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { Bell } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -45,7 +45,7 @@ export function NotificationBell() {
   const { data: reminders = [] } = useQuery({
     queryKey: ["notifications_reminders"],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await db
         .from("reminders")
         .select("*")
         .eq("is_completed", false);
@@ -57,7 +57,7 @@ export function NotificationBell() {
   const { data: debts = [] } = useQuery({
     queryKey: ["notifications_debts"],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await db
         .from("debts")
         .select("*")
         .eq("is_active", true);
@@ -69,7 +69,7 @@ export function NotificationBell() {
   const { data: carChecks = [] } = useQuery({
     queryKey: ["notifications_car_checks"],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await db
         .from("car_checks")
         .select("*");
       return data ?? [];
@@ -80,7 +80,7 @@ export function NotificationBell() {
   const { data: carDocuments = [] } = useQuery({
     queryKey: ["notifications_car_documents"],
     queryFn: async () => {
-      const { data } = await supabase.from("car_documents").select("*");
+      const { data } = await db.from("car_documents").select("*");
       return data ?? [];
     },
     enabled: !!user,
@@ -89,7 +89,7 @@ export function NotificationBell() {
   const { data: goals = [] } = useQuery({
     queryKey: ["notifications_goals"],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await db
         .from("goals")
         .select("*")
         .eq("is_completed", false);
@@ -102,7 +102,7 @@ export function NotificationBell() {
   const { data: healthLog } = useQuery({
     queryKey: ["notifications_health", todayStr],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await db
         .from("health_logs")
         .select("*")
         .eq("log_date", todayStr)
