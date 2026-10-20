@@ -15,7 +15,7 @@ export function parseDateValue(value: string): Date | undefined {
 }
 
 // A separate modal layer avoids clipped popovers and native WebView input pickers.
-function PickerContent({ label, children }: { label: string; children: ReactNode }) {
+export function PickerContent({ label, children }: { label: string; children: ReactNode }) {
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className="fixed inset-0 z-[60] bg-foreground/60" />
