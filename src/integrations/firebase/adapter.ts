@@ -105,11 +105,19 @@ function toErr(e: unknown): BackendError {
 
 const nowIso = () => new Date().toISOString();
 
-/** Strip undefined values (Firestore rejects them); keep everything else. */
+/**
+ * Strip values Firestore can't or shouldn't store: undefined (Firestore
+ * rejects it outright) and NaN (Firestore stores it as a double, where it
+ * then poisons every downstream sum and renders as "₹NaN"). A NaN here
+ * always comes from a failed parse upstream, i.e. "no value" — dropping
+ * the key matches how undefined is treated.
+ */
 function clean<T extends Record<string, unknown>>(obj: T): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(obj ?? {})) {
-    if (v !== undefined) out[k] = v;
+    if (v === undefined) continue;
+    if (typeof v === "number" && Number.isNaN(v)) continue;
+    out[k] = v;
   }
   return out;
 }
@@ -593,6 +601,15 @@ class QueryBuilder implements PromiseLike<Result> {
   private filteredQuery(collRef: CollectionReference, uid: string | null): Query | CollectionReference {
     const constraints: QueryConstraint[] = [];
     for (const f of this.filters) {
+      // Rows are keyed by the Firestore document id, and the `id` field
+      // itself is never stored on the document (runInsert strips it).
+      // An id filter must therefore target documentId() — a plain field
+      // filter matches zero documents, which made every .eq("id", …)
+      // update/delete silently resolve no targets and report success.
+      if (f.col === "id") {
+        constraints.push(where(documentId(), OP_MAP[f.op], f.val as never));
+        continue;
+      }
       // The subcollection path already scopes rows to the owner.
       if (!TOP_LEVEL_TABLES.has(this.table) && f.col === "user_id") {
         if (f.op === "eq" && uid && f.val !== uid) {
