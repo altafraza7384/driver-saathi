@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
 import { Plus, ArrowLeft, CreditCard, Trash2, Pencil, Banknote } from "lucide-react";
 import { motion } from "framer-motion";
 import {
@@ -44,6 +45,15 @@ export default function DebtsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Home's debt widget and the notification bell read debts via
+  // react-query; invalidate both so they refresh on return.
+  const invalidateDebtReaders = () => {
+    queryClient.invalidateQueries({ queryKey: ["debts_active"] });
+    queryClient.invalidateQueries({ queryKey: ["notifications_debts"] });
+  };
+
   const [debts, setDebts] = useState<Debt[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
@@ -107,6 +117,7 @@ export default function DebtsPage() {
       toast({ title: "Loan added!" });
       setShowAdd(false);
       setName(""); setPrincipal(""); setRate(""); setTenure(""); setNotifyDate(""); setNotifyTime(""); setCustomEmi("");
+      invalidateDebtReaders();
       fetchDebts();
     }
     setSaving(false);
@@ -141,6 +152,7 @@ export default function DebtsPage() {
     } else {
       toast({ title: "Loan updated!" });
       setEditDebt(null);
+      invalidateDebtReaders();
       fetchDebts();
     }
     setSaving(false);
@@ -171,12 +183,14 @@ export default function DebtsPage() {
     toast({ title: isFullyPaid ? "🎉 Loan fully paid!" : `₹${payAmount} payment recorded!` });
     setPayDebtId(null);
     setPayAmount("");
+    invalidateDebtReaders();
     fetchDebts();
   };
 
   const handleDelete = async (id: string) => {
     await db.from("debts").delete().eq("id", id);
     toast({ title: "Loan deleted" });
+    invalidateDebtReaders();
     fetchDebts();
   };
 

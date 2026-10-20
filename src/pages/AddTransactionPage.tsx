@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import { INCOME_CATEGORIES, EXPENSE_CATEGORIES } from "./TransactionsPage";
 
@@ -21,6 +22,7 @@ export default function AddTransactionPage() {
   const { t } = useI18n();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const [type, setType] = useState<"income" | "expense">(initialType as "income" | "expense" || "income");
   const [amount, setAmount] = useState("");
@@ -51,6 +53,10 @@ export default function AddTransactionPage() {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
       toast({ title: type === "income" ? "Income added!" : "Expense added!" });
+      // Home reads transactions via react-query (["transactions_today"],
+      // 5-minute staleTime): invalidate so the dashboard reflects the new
+      // entry on return instead of staying stale until a reload.
+      queryClient.invalidateQueries({ queryKey: ["transactions_today"] });
       navigate("/transactions");
     }
     setLoading(false);

@@ -41,18 +41,18 @@ export default function RemindersPage() {
       const { error } = await db.from("reminders").insert({ user_id: user.id, title: form.title, description: form.description || null, reminder_date: form.reminder_date, category: form.category, notify_at: notifyAt } as any);
       if (error) throw error;
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["reminders"] }); setOpen(false); setForm({ title: "", description: "", reminder_date: "", category: "general", notify_date: "", notify_time: "" }); setCustomCategory(""); setShowCustomCategory(false); toast.success("✅"); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["reminders"] }); queryClient.invalidateQueries({ queryKey: ["notifications_reminders"] }); setOpen(false); setForm({ title: "", description: "", reminder_date: "", category: "general", notify_date: "", notify_time: "" }); setCustomCategory(""); setShowCustomCategory(false); toast.success("✅"); },
     onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
 
   const toggleMutation = useMutation({
     mutationFn: async ({ id, completed }: { id: string; completed: boolean }) => { const { error } = await db.from("reminders").update({ is_completed: completed }).eq("id", id); if (error) throw error; },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["reminders"] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["reminders"] }); queryClient.invalidateQueries({ queryKey: ["notifications_reminders"] }); },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => { const { error } = await db.from("reminders").delete().eq("id", id); if (error) throw error; },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["reminders"] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["reminders"] }); queryClient.invalidateQueries({ queryKey: ["notifications_reminders"] }); },
   });
 
   const pending = reminders.filter((r) => !r.is_completed);

@@ -106,6 +106,7 @@ export default function CarChecksPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["car_checks"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications_car_checks"] });
       setOpen(false);
       setForm({ check_type: "", description: "", odometer_reading: "", cost: "", check_date: format(new Date(), "yyyy-MM-dd"), next_due_date: "", notify_date: "", notify_time: "" });
       setCustomType(""); setShowCustomType(false);
@@ -119,7 +120,7 @@ export default function CarChecksPage() {
       const { error } = await db.from("car_checks").delete().eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["car_checks"] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["car_checks"] }); queryClient.invalidateQueries({ queryKey: ["notifications_car_checks"] }); },
   });
 
   // Document CRUD

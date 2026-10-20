@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Minus, Trash2, Pencil, TrendingUp, TrendingDown } from "lucide-react";
 import { motion } from "framer-motion";
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO } from "date-fns";
@@ -28,6 +29,12 @@ export default function TransactionsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Home's today-summary reads transactions through react-query; keep it
+  // in sync with edits/deletes made here.
+  const invalidateHomeTransactions = () =>
+    queryClient.invalidateQueries({ queryKey: ["transactions_today"] });
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [filter, setFilter] = useState<"all" | "income" | "expense">("all");
   const [loading, setLoading] = useState(true);
@@ -59,6 +66,7 @@ export default function TransactionsPage() {
   const handleDelete = async (id: string) => {
     await db.from("transactions").delete().eq("id", id);
     toast({ title: t("common.delete") });
+    invalidateHomeTransactions();
     fetchTransactions(); fetchWeeklyData();
   };
 
@@ -75,7 +83,7 @@ export default function TransactionsPage() {
       description: editDescription || null, transaction_date: editDate,
     }).eq("id", editTx.id);
     if (error) { toast({ title: t("auth.error"), description: error.message, variant: "destructive" }); }
-    else { toast({ title: t("tx.updateTransaction") }); setEditTx(null); fetchTransactions(); fetchWeeklyData(); }
+    else { toast({ title: t("tx.updateTransaction") }); setEditTx(null); invalidateHomeTransactions(); fetchTransactions(); fetchWeeklyData(); }
     setSaving(false);
   };
 

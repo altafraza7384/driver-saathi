@@ -42,6 +42,8 @@ export default function HealthPage() {
     else await db.from("health_logs").insert(payload);
     queryClient.invalidateQueries({ queryKey: ["health_log"] });
     queryClient.invalidateQueries({ queryKey: ["health_logs_week"] });
+    // Partial key: also matches the bell's ["notifications_health", date].
+    queryClient.invalidateQueries({ queryKey: ["notifications_health"] });
   };
 
   const quickMark = async (key: "water_glasses" | "breaks_taken" | "steps", increment: number) => {

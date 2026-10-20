@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { formatAuthError, useAuthActions } from "@/hooks/useAuthActions";
+import { BACKEND } from "@/lib/backend";
 import { Car, Lock, Mail, User, Wifi, WifiOff } from "lucide-react";
 
 export default function AuthPage() {
@@ -66,7 +67,15 @@ export default function AuthPage() {
     setLoading(true);
     setRetryInfo(null);
     try {
-      await signInWithGoogle();
+      const result = await signInWithGoogle();
+      // The Firebase popup/native flow resolves in-page instead of
+      // redirecting the browser away (the old brokered flow), so land the
+      // user in the app explicitly. Without this they stay on the login
+      // form — signed in, but only "in" after reopening the app.
+      if (BACKEND === "firebase") {
+        const r = result as { cancelled?: boolean; redirected?: boolean } | null;
+        if (!r?.cancelled && !r?.redirected) navigate("/");
+      }
     } catch (error) {
       console.error("Google sign-in failed", error);
       toast({

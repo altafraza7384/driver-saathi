@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
 import { Plus, ArrowLeft, Target, Trash2, PartyPopper, Pencil } from "lucide-react";
 import { motion } from "framer-motion";
 import { format } from "date-fns";
@@ -35,6 +36,15 @@ export default function GoalsPage() {
   const { t } = useI18n();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Home's goal widget and the notification bell read goals via
+  // react-query; invalidate both so they refresh on return.
+  const invalidateGoalReaders = () => {
+    queryClient.invalidateQueries({ queryKey: ["goals_active"] });
+    queryClient.invalidateQueries({ queryKey: ["notifications_goals"] });
+  };
+
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
@@ -87,6 +97,7 @@ export default function GoalsPage() {
       toast({ title: "Goal created! 🎯" });
       setShowAdd(false);
       setTitle(""); setTarget(""); setDeadline(""); setNotifyDate(""); setNotifyTime("");
+      invalidateGoalReaders();
       fetchGoals();
     }
     setSaving(false);
@@ -117,6 +128,7 @@ export default function GoalsPage() {
     } else {
       toast({ title: "Goal updated!" });
       setEditGoal(null);
+      invalidateGoalReaders();
       fetchGoals();
     }
     setSaving(false);
@@ -142,12 +154,14 @@ export default function GoalsPage() {
 
     setShowAddSavings(null);
     setAddAmount("");
+    invalidateGoalReaders();
     fetchGoals();
   };
 
   const handleDelete = async (id: string) => {
     await db.from("goals").delete().eq("id", id);
     toast({ title: "Goal deleted" });
+    invalidateGoalReaders();
     fetchGoals();
   };
 
