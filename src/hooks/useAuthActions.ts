@@ -177,6 +177,15 @@ export function useAuthActions() {
     ensureOnline();
 
     if (BACKEND === "firebase") {
+      const { Capacitor } = await import("@capacitor/core");
+      if (Capacitor.isNativePlatform()) {
+        // Native Google sign-in is user-paced (system account picker via
+        // the FirebaseAuthentication plugin): a timeout would fire mid-pick
+        // and the retry loop would reopen the picker. Call it directly —
+        // the plugin surfaces its own errors, and user cancellation
+        // resolves quietly without throwing.
+        return signInWithGoogleFirebase();
+      }
       // Firebase persists its own session — do not clear it on network
       // errors (unlike the Supabase/Lovable flow below).
       return runWithRetry(
