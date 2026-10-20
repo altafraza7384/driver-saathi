@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Pencil, Home, Banknote, Calendar } from "lucide-react";
 import { motion } from "framer-motion";
 import {
@@ -60,6 +61,7 @@ function nextNotifyDate(dueDay: number): string {
 export default function RecurringExpenses() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [items, setItems] = useState<RecurringExpense[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
@@ -156,6 +158,8 @@ export default function RecurringExpenses() {
       .from("recurring_expenses")
       .update({ last_paid_date: new Date().toISOString().slice(0, 10) })
       .eq("id", it.id);
+    // The payment also created a transaction: refresh Home's summary.
+    queryClient.invalidateQueries({ queryKey: ["transactions_today"] });
     toast({ title: `✅ Paid ${formatINR(it.amount)}` });
     fetchItems();
   };
