@@ -1,7 +1,7 @@
 import { Capacitor } from "@capacitor/core";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { LocalNotifications } from "@capacitor/local-notifications";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/backend";
 
 /**
  * Native push notifications using FCM (Firebase Cloud Messaging) on Android.
@@ -25,7 +25,7 @@ export async function registerNativePush(userId: string): Promise<void> {
   PushNotifications.addListener("registration", async (token) => {
     console.log("FCM token:", token.value);
     // Store FCM token in push_subscriptions (reuse the table)
-    await supabase.from("push_subscriptions").upsert(
+    await db.from("push_subscriptions").upsert(
       {
         user_id: userId,
         endpoint: `fcm://${token.value}`,
