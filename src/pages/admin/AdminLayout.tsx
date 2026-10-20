@@ -1,6 +1,6 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/backend";
 import { Navigate, Outlet } from "react-router-dom";
 
 export default function AdminLayout() {
@@ -9,7 +9,7 @@ export default function AdminLayout() {
   const { data: isAdmin, isLoading: roleLoading } = useQuery({
     queryKey: ["is_admin", user?.id],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("has_role", {
+      const { data, error } = await db.rpc("has_role", {
         _user_id: user!.id,
         _role: "admin",
       });

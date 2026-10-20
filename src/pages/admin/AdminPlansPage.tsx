@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/backend";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,7 +31,7 @@ export default function AdminPlansPage() {
   const { data: plans = [], isLoading } = useQuery({
     queryKey: ["admin_subscription_plans"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("subscription_plans").select("*").order("sort_order");
+      const { data, error } = await db.from("subscription_plans").select("*").order("sort_order");
       if (error) throw error;
       return data as Plan[];
     },
@@ -57,8 +57,8 @@ export default function AdminPlansPage() {
         sort_order: Number(form.sort_order) || 0,
       };
       const { error } = edit
-        ? await supabase.from("subscription_plans").update(payload).eq("id", edit.id)
-        : await supabase.from("subscription_plans").insert({ ...payload, is_active: true });
+        ? await db.from("subscription_plans").update(payload).eq("id", edit.id)
+        : await db.from("subscription_plans").insert({ ...payload, is_active: true });
       if (error) throw error;
     },
     onSuccess: () => { refresh(); toast.success(edit ? "Plan updated" : "Plan created"); close(); },
@@ -67,7 +67,7 @@ export default function AdminPlansPage() {
 
   const toggle = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
-      const { error } = await supabase.from("subscription_plans").update({ is_active }).eq("id", id);
+      const { error } = await db.from("subscription_plans").update({ is_active }).eq("id", id);
       if (error) throw error;
     },
     onSuccess: refresh,

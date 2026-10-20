@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/backend";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -47,7 +47,7 @@ export default function AdminUsersPage() {
   const { data, isLoading, error } = useQuery({
     queryKey: ["admin_users"],
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("admin-list-users");
+      const { data, error } = await db.functions.invoke("admin-list-users");
       if (error) throw error;
       return data as { users: AdminUser[] };
     },

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db, BACKEND } from "@/lib/backend";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -13,7 +13,7 @@ export default function AdminDashboard() {
   const { data: postCount = 0 } = useQuery({
     queryKey: ["admin_post_count"],
     queryFn: async () => {
-      const { count, error } = await supabase.from("marketplace_posts").select("*", { count: "exact", head: true });
+      const { count, error } = await db.from("marketplace_posts").select("*", { count: "exact", head: true });
       if (error) throw error;
       return count || 0;
     },
@@ -22,7 +22,7 @@ export default function AdminDashboard() {
   const { data: categoryCount = 0 } = useQuery({
     queryKey: ["admin_category_count"],
     queryFn: async () => {
-      const { count, error } = await supabase.from("marketplace_categories").select("*", { count: "exact", head: true });
+      const { count, error } = await db.from("marketplace_categories").select("*", { count: "exact", head: true });
       if (error) throw error;
       return count || 0;
     },
@@ -31,7 +31,17 @@ export default function AdminDashboard() {
   const { data: userCount = 0 } = useQuery({
     queryKey: ["admin_user_count"],
     queryFn: async () => {
-      const { count, error } = await supabase.from("profiles").select("*", { count: "exact", head: true });
+      if (BACKEND === "firebase") {
+        try {
+          const { data, error } = await db.functions.invoke("admin-list-users");
+          if (error) return 0;
+          const users = (data as { users?: unknown[] } | null)?.users;
+          return Array.isArray(users) ? users.length : 0;
+        } catch {
+          return 0;
+        }
+      }
+      const { count, error } = await db.from("profiles").select("*", { count: "exact", head: true });
       if (error) throw error;
       return count || 0;
     },

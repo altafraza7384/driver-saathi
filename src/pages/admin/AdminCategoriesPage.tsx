@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/backend";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,7 +21,7 @@ export default function AdminCategoriesPage() {
   const { data: categories = [], isLoading } = useQuery({
     queryKey: ["admin_all_categories"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("marketplace_categories").select("*").order("sort_order");
+      const { data, error } = await db.from("marketplace_categories").select("*").order("sort_order");
       if (error) throw error;
       return data;
     },
@@ -31,10 +31,10 @@ export default function AdminCategoriesPage() {
     mutationFn: async () => {
       const payload = { name: form.name, icon: form.icon, sort_order: Number(form.sort_order) };
       if (editCat) {
-        const { error } = await supabase.from("marketplace_categories").update(payload as any).eq("id", editCat.id);
+        const { error } = await db.from("marketplace_categories").update(payload as any).eq("id", editCat.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("marketplace_categories").insert({ ...payload, is_active: true } as any);
+        const { error } = await db.from("marketplace_categories").insert({ ...payload, is_active: true } as any);
         if (error) throw error;
       }
     },
@@ -48,7 +48,7 @@ export default function AdminCategoriesPage() {
 
   const toggleMutation = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
-      const { error } = await supabase.from("marketplace_categories").update({ is_active } as any).eq("id", id);
+      const { error } = await db.from("marketplace_categories").update({ is_active } as any).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin_all_categories"] }),
@@ -56,7 +56,7 @@ export default function AdminCategoriesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("marketplace_categories").delete().eq("id", id);
+      const { error } = await db.from("marketplace_categories").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {

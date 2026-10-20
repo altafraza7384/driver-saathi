@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { safeExternalUrl } from "@/lib/url";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,7 +31,7 @@ export default function AdminPostsPage() {
   const { data: categories = [] } = useQuery({
     queryKey: ["admin_categories"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("marketplace_categories").select("*").order("sort_order");
+      const { data, error } = await db.from("marketplace_categories").select("*").order("sort_order");
       if (error) throw error;
       return data;
     },
@@ -40,7 +40,7 @@ export default function AdminPostsPage() {
   const { data: posts = [], isLoading } = useQuery({
     queryKey: ["admin_posts"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("marketplace_posts").select("*, marketplace_categories(name)").order("created_at", { ascending: false });
+      const { data, error } = await db.from("marketplace_posts").select("*, marketplace_categories(name)").order("created_at", { ascending: false });
       if (error) throw error;
       return data;
     },
@@ -49,9 +49,9 @@ export default function AdminPostsPage() {
   const uploadMedia = async (file: File): Promise<string> => {
     const ext = file.name.split(".").pop();
     const path = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-    const { error } = await supabase.storage.from("marketplace").upload(path, file);
+    const { error } = await db.storage.from("marketplace").upload(path, file);
     if (error) throw error;
-    const { data: urlData } = supabase.storage.from("marketplace").getPublicUrl(path);
+    const { data: urlData } = await db.storage.from("marketplace").getPublicUrl(path);
     return urlData.publicUrl;
   };
 
@@ -78,10 +78,10 @@ export default function AdminPostsPage() {
 
       if (editPost) {
         // Keep the original author on edit.
-        const { error } = await supabase.from("marketplace_posts").update(payload as any).eq("id", editPost.id);
+        const { error } = await db.from("marketplace_posts").update(payload as any).eq("id", editPost.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("marketplace_posts").insert({ ...payload, created_by: user!.id } as any);
+        const { error } = await db.from("marketplace_posts").insert({ ...payload, created_by: user!.id } as any);
         if (error) throw error;
       }
     },
@@ -96,7 +96,7 @@ export default function AdminPostsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("marketplace_posts").delete().eq("id", id);
+      const { error } = await db.from("marketplace_posts").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
