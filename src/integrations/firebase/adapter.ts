@@ -19,9 +19,14 @@
 // ISO strings, matching what the staged Cloud Functions write.
 //
 // Known simplifications vs PostgREST (deliberate for this staged port):
-// - Filters run server-side (where), ordering + limit are applied
-//   client-side after fetch. Per-user collections are small, and this
-//   avoids requiring a composite index for every filter/order pairing.
+// - Filters run server-side (where). Ordering + limit are ALSO pushed
+//   server-side (orderBy/limit) whenever the pair appears together and
+//   Firestore's constraint rules allow it — see readQuery(). Ordering on
+//   its own stays client-side: it would save no reads, and Firestore's
+//   orderBy silently drops documents missing the sort field (e.g.
+//   emergency_contacts.is_primary is optional), which would change the
+//   returned row set. The order+limit pairings the app uses are covered
+//   by the composite indexes staged in firebase/firestore.indexes.json.
 // - Joins are emulated client-side (marketplace_posts -> category embed).
 // - Writes stamp created_at/updated_at (ISO) like the Postgres defaults did.
 
@@ -36,6 +41,8 @@ import {
   deleteDoc,
   query as fsQuery,
   where,
+  orderBy,
+  limit as fsLimit,
   documentId,
   getCountFromServer,
   type CollectionReference,
@@ -599,6 +606,53 @@ class QueryBuilder implements PromiseLike<Result> {
     return constraints.length ? fsQuery(collRef, ...constraints) : collRef;
   }
 
+  /**
+   * Read query for selects: filteredQuery() plus server-side orderBy /
+   * limit where that cannot change the result.
+   *
+   * - orderBy is pushed only together with a limit (the only case where
+   *   it reduces Firestore reads). On its own it stays client-side — see
+   *   the header note: Firestore's orderBy excludes documents missing the
+   *   sort field, which would shrink the row set for optional fields.
+   * - Firestore legality: when an inequality filter (>, >=, <, <=, !=)
+   *   is present, the first orderBy must be on that same field, or the
+   *   query is rejected. If the caller's ordering violates that, nothing
+   *   is pushed and the legacy fetch-all + client sort/limit path runs.
+   * - single()/maybeSingle() depend only on the row count (0 / 1 / >1),
+   *   so they are capped at 2 rows server-side regardless of ordering.
+   * - sortAndLimit() still runs over the returned page as a post-pass:
+   *   over an already ordered + limited page it is a no-op, and it keeps
+   *   the exact legacy ordering for every non-pushed query.
+   */
+  private readQuery(collRef: CollectionReference, uid: string | null): Query | CollectionReference {
+    const base = this.filteredQuery(collRef, uid);
+    // user_id filters on per-user tables never reach Firestore (the path
+    // scopes them), so exclude them from the legality check as well.
+    const effectiveFilters = TOP_LEVEL_TABLES.has(this.table)
+      ? this.filters
+      : this.filters.filter((f) => f.col !== "user_id");
+    const ineqCols = new Set(effectiveFilters.filter((f) => f.op !== "eq").map((f) => f.col));
+    const orderPushable =
+      this.orders.length > 0 &&
+      (ineqCols.size === 0 || (ineqCols.size === 1 && ineqCols.has(this.orders[0].col)));
+
+    let limitPush: number | null = null;
+    if (this.limitN !== null && (orderPushable || this.orders.length === 0)) {
+      limitPush = this.limitN;
+    }
+    if (this.singleFlag) {
+      limitPush = limitPush === null ? 2 : Math.min(limitPush, 2);
+    }
+    if (limitPush === null) return base;
+
+    const constraints: QueryConstraint[] = [];
+    if (orderPushable) {
+      for (const o of this.orders) constraints.push(orderBy(o.col, o.ascending ? "asc" : "desc"));
+    }
+    constraints.push(fsLimit(limitPush));
+    return fsQuery(base, ...constraints);
+  }
+
   private finishRows(rows: Record<string, unknown>[]): Result {
     if (this.singleFlag === "single") {
       if (rows.length === 1) return { data: rows[0], error: null };
@@ -697,7 +751,7 @@ class QueryBuilder implements PromiseLike<Result> {
       const snap = await getCountFromServer(this.filteredQuery(collRef, uid));
       return { data: null, error: null, count: snap.data().count };
     }
-    const snap = await getDocs(this.filteredQuery(collRef, uid));
+    const snap = await getDocs(this.readQuery(collRef, uid));
     let rows: Record<string, unknown>[] = snap.docs.map((d) => ({ ...(d.data() as Record<string, unknown>), id: d.id }));
     const { fields, embeds } = parseSelect(this.cols);
     if (embeds.length) await this.applyEmbeds(rows, embeds);
