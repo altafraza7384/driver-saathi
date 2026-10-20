@@ -54,8 +54,10 @@ export function NotificationBell() {
     enabled: !!user,
   });
 
+  // Same query (and queryFn) as HomePage's ["debts_active"]: sharing the
+  // key lets react-query dedupe the identical Firestore read on Home.
   const { data: debts = [] } = useQuery({
-    queryKey: ["notifications_debts"],
+    queryKey: ["debts_active"],
     queryFn: async () => {
       const { data } = await db
         .from("debts")
@@ -86,8 +88,10 @@ export function NotificationBell() {
     enabled: !!user,
   });
 
+  // Same query (and queryFn) as HomePage's ["goals_active"]: sharing the
+  // key lets react-query dedupe the identical Firestore read on Home.
   const { data: goals = [] } = useQuery({
-    queryKey: ["notifications_goals"],
+    queryKey: ["goals_active"],
     queryFn: async () => {
       const { data } = await db
         .from("goals")
