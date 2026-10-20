@@ -7,6 +7,8 @@ import { formatINR } from "@/lib/currency";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
+import { TimePicker } from "@/components/ui/time-picker";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
@@ -189,17 +191,17 @@ export default function GoalsPage() {
                 <Input type="number" placeholder="50000" value={target} onChange={(e) => setTarget(e.target.value)} min="1" required />
               </div>
               <div className="space-y-2">
-                <Label>Deadline (optional)</Label>
-                <Input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+                <Label htmlFor="goal-deadline">Deadline (optional)</Label>
+                <DatePicker id="goal-deadline" label="Deadline" value={deadline} onChange={setDeadline} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label>Notify Date</Label>
-                  <Input type="date" value={notifyDate} onChange={(e) => setNotifyDate(e.target.value)} />
+                  <Label htmlFor="goal-notify-date">Notify Date</Label>
+                  <DatePicker id="goal-notify-date" label="Notify Date" value={notifyDate} onChange={setNotifyDate} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Notify Time</Label>
-                  <Input type="time" value={notifyTime} onChange={(e) => setNotifyTime(e.target.value)} />
+                  <Label htmlFor="goal-notify-time">Notify Time</Label>
+                  <TimePicker id="goal-notify-time" label="Notify Time" value={notifyTime} onChange={setNotifyTime} />
                 </div>
               </div>
               <Button type="submit" className="w-full" disabled={saving}>
@@ -305,8 +307,8 @@ export default function GoalsPage() {
               <Input type="number" value={editTarget} onChange={(e) => setEditTarget(e.target.value)} min="1" />
             </div>
             <div className="space-y-2">
-              <Label>Deadline (optional)</Label>
-              <Input type="date" value={editDeadline} onChange={(e) => setEditDeadline(e.target.value)} />
+              <Label htmlFor="goal-edit-deadline">Deadline (optional)</Label>
+              <DatePicker id="goal-edit-deadline" label="Deadline" value={editDeadline} onChange={setEditDeadline} />
             </div>
             <Button className="w-full" onClick={handleUpdate} disabled={saving}>
               {saving ? "Saving..." : "Update Goal"}

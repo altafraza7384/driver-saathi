@@ -6,6 +6,7 @@ import { useI18n } from "@/lib/i18n";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
@@ -133,8 +134,8 @@ export default function AddTransactionPage() {
             )}
 
             <div className="space-y-2">
-              <Label>Date</Label>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+              <Label htmlFor="tx-date">Date</Label>
+              <DatePicker id="tx-date" label="Date" value={date} onChange={setDate} required />
             </div>
 
             <div className="space-y-2">

@@ -7,6 +7,7 @@ import { formatINR } from "@/lib/currency";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -218,7 +219,7 @@ export default function TransactionsPage() {
             <div className="space-y-2"><Label>{t("common.amount")} (₹)</Label><Input type="number" value={editAmount} onChange={(e) => setEditAmount(e.target.value)} min="1" /></div>
             <div className="space-y-2"><Label>{t("common.category")}</Label><Select value={editCategory} onValueChange={setEditCategory}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{categoryOptions.map((c) => (<SelectItem key={c} value={c}>{c}</SelectItem>))}</SelectContent></Select></div>
             <div className="space-y-2"><Label>{t("common.description")}</Label><Input value={editDescription} onChange={(e) => setEditDescription(e.target.value)} placeholder={t("common.optional")} /></div>
-            <div className="space-y-2"><Label>{t("common.date")}</Label><Input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} /></div>
+            <div className="space-y-2"><Label htmlFor="tx-edit-date">{t("common.date")}</Label><DatePicker id="tx-edit-date" label={t("common.date")} value={editDate} onChange={setEditDate} /></div>
             <Button className="w-full" onClick={handleUpdate} disabled={saving}>{saving ? t("common.saving") : t("tx.updateTransaction")}</Button>
           </div>
         </DialogContent>

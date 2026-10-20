@@ -7,6 +7,8 @@ import { formatINR } from "@/lib/currency";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
+import { TimePicker } from "@/components/ui/time-picker";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
@@ -232,12 +234,12 @@ export default function DebtsPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label>Notify Date</Label>
-                  <Input type="date" value={notifyDate} onChange={(e) => setNotifyDate(e.target.value)} />
+                  <Label htmlFor="debt-notify-date">Notify Date</Label>
+                  <DatePicker id="debt-notify-date" label="Notify Date" value={notifyDate} onChange={setNotifyDate} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Notify Time</Label>
-                  <Input type="time" value={notifyTime} onChange={(e) => setNotifyTime(e.target.value)} />
+                  <Label htmlFor="debt-notify-time">Notify Time</Label>
+                  <TimePicker id="debt-notify-time" label="Notify Time" value={notifyTime} onChange={setNotifyTime} />
                 </div>
               </div>
               {principal && tenure && (
