@@ -33,6 +33,35 @@ export default defineConfig(({ mode }) => ({
       output: {
         // Inline tiny chunks (<3KB) into their parent to reduce chain depth
         experimentalMinChunkSize: 3000,
+        // Split the big third-party stacks out of the entry chunk. Routes
+        // are already lazy (see src/App.tsx), so the entry otherwise
+        // carries every vendor lib the shell touches (~1.4 MB). As their
+        // own chunks the vendors download in parallel and — more importantly
+        // for repeat web loads — stay cached across app deploys, since
+        // their content hashes only change when the dependency does.
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          if (
+            id.includes("node_modules/react/") ||
+            id.includes("node_modules/react-dom/") ||
+            id.includes("node_modules/scheduler/") ||
+            id.includes("node_modules/react-router")
+          ) {
+            return "vendor-react";
+          }
+          if (id.includes("node_modules/@firebase") || id.includes("node_modules/firebase/")) {
+            return "vendor-firebase";
+          }
+          if (id.includes("node_modules/@supabase")) return "vendor-supabase";
+          if (
+            id.includes("node_modules/@capacitor") ||
+            id.includes("node_modules/@capawesome") ||
+            id.includes("node_modules/@lovable.dev")
+          ) {
+            return "vendor-capacitor";
+          }
+          return undefined;
+        },
       },
     },
   },
