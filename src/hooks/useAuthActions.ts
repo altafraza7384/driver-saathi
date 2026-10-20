@@ -1,4 +1,5 @@
-import { supabase } from "@/integrations/supabase/client";
+import { db, BACKEND } from "@/lib/backend";
+import { signInWithGoogleFirebase } from "@/integrations/firebase/adapter";
 import { lovable } from "@/integrations/lovable/index";
 
 const AUTH_TIMEOUT_MS = 30000;
@@ -78,7 +79,7 @@ const ensureOnline = () => {
 
 const clearLocalAuthSession = async () => {
   try {
-    await supabase.auth.signOut({ scope: "local" });
+    await db.auth.signOut({ scope: "local" });
   } catch (error) {
     console.warn("Failed to clear local auth session", error);
   }
@@ -119,7 +120,7 @@ export function useAuthActions() {
       const { error } = await runWithRetry(
         () =>
           withTimeout(
-            supabase.auth.signInWithPassword({ email, password }),
+            db.auth.signInWithPassword({ email, password }),
             AUTH_TIMEOUT_MS,
             "Login request timed out. Please check your internet and try again."
           ),
@@ -148,7 +149,7 @@ export function useAuthActions() {
       const { error } = await runWithRetry(
         () =>
           withTimeout(
-            supabase.auth.signUp({
+            db.auth.signUp({
               email,
               password,
               options: {
@@ -174,6 +175,20 @@ export function useAuthActions() {
 
   const signInWithGoogle = async () => {
     ensureOnline();
+
+    if (BACKEND === "firebase") {
+      // Firebase persists its own session — do not clear it on network
+      // errors (unlike the Supabase/Lovable flow below).
+      return runWithRetry(
+        () =>
+          withTimeout(
+            signInWithGoogleFirebase(),
+            OAUTH_TIMEOUT_MS,
+            "Google sign-in request timed out. Please check your internet and try again."
+          ),
+        MAX_RETRIES
+      );
+    }
 
     try {
       const result = await runWithRetry(

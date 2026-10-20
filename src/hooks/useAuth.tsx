@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/backend";
 import type { User, Session } from "@supabase/supabase-js";
 
 type AuthContextType = {
@@ -45,7 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = db.auth.onAuthStateChange((_event, nextSession) => {
       applySession(nextSession);
 
     });
@@ -57,7 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }, 4000);
 
       try {
-        const { data, error } = await supabase.auth.getSession();
+        const { data, error } = await db.auth.getSession();
         if (error) throw error;
         applySession(data.session ?? null);
       } catch (error) {
@@ -81,10 +81,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     try {
-      await supabase.auth.signOut();
+      await db.auth.signOut();
     } catch (error) {
       console.error("Sign out failed, clearing local session", error);
-      await supabase.auth.signOut({ scope: "local" });
+      await db.auth.signOut({ scope: "local" });
     }
   };
 

@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useRef } from "react";
 import { Capacitor } from "@capacitor/core";
-import { supabase } from "@/integrations/supabase/client";
+import { db, BACKEND } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
 import { registerNativePush } from "@/lib/native-push";
 
@@ -61,24 +61,34 @@ export function usePushNotifications() {
         return;
       }
 
-      const resp = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-notifications`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-          },
+      let publicKey: string | undefined;
+      if (BACKEND === "firebase") {
+        publicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+        if (!publicKey) {
+          console.warn("VITE_VAPID_PUBLIC_KEY is not set; skipping web push subscription.");
+          return;
         }
-      );
+      } else {
+        const resp = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-notifications`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+              apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            },
+          }
+        );
 
-      if (!resp.ok) {
-        console.error("Failed to get VAPID key:", resp.status);
-        return;
+        if (!resp.ok) {
+          console.error("Failed to get VAPID key:", resp.status);
+          return;
+        }
+
+        const data = await resp.json();
+        publicKey = data.publicKey;
+        if (!publicKey) return;
       }
-
-      const { publicKey } = await resp.json();
-      if (!publicKey) return;
 
       const subscription = await reg.pushManager.subscribe({
         userVisibleOnly: true,
@@ -91,7 +101,7 @@ export function usePushNotifications() {
         return;
       }
 
-      const { error } = await supabase.from("push_subscriptions").upsert(
+      const { error } = await db.from("push_subscriptions").upsert(
         {
           user_id: user.id,
           endpoint: subJson.endpoint,
