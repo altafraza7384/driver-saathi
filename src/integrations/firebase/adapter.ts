@@ -185,12 +185,22 @@ function completeRedirectOnce() {
         return res;
       })
       .catch((e) => {
-        console.warn("Redirect sign-in completion failed", e);
+        // Do not swallow redirect errors silently: a failed web redirect
+        // sign-in (expired link, unauthorized domain, …) otherwise looks
+        // like "Google login just does nothing".
+        const code = (e as { code?: string })?.code ?? "unknown";
+        console.error(`Redirect sign-in completion failed [${code}]`, e);
         return null;
       });
   }
   return redirectResultPromise;
 }
+
+// Kick off redirect completion at adapter init: if this page load is the
+// return leg of a web signInWithRedirect, consume the result immediately
+// instead of waiting for the first getSession() call. Guarded by the
+// promise singleton above, so it still runs exactly once.
+void completeRedirectOnce();
 
 async function readyUser(): Promise<FirebaseUser | null> {
   await completeRedirectOnce();
@@ -266,10 +276,23 @@ const authAdapter = {
   async signOut(_options?: { scope?: string }) {
     try {
       await fbSignOut(firebaseAuth);
-      return { error: null };
     } catch (e) {
       return { error: toErr(e) };
     }
+    // Native: also sign out of the FirebaseAuthentication plugin so the
+    // native Google account-chooser state is cleared and the next sign-in
+    // asks for an account again. Best-effort — the JS SDK session (the
+    // source of truth) is already gone at this point.
+    try {
+      const { Capacitor } = await import("@capacitor/core");
+      if (Capacitor.isNativePlatform()) {
+        const { FirebaseAuthentication } = await import("@capacitor-firebase/authentication");
+        await FirebaseAuthentication.signOut();
+      }
+    } catch (e) {
+      console.warn("Native FirebaseAuthentication sign-out failed", e);
+    }
+    return { error: null };
   },
 
   async resetPasswordForEmail(email: string, options?: { redirectTo?: string }) {
@@ -317,31 +340,97 @@ export async function confirmFirebasePasswordReset(code: string, newPassword: st
 }
 
 /**
+ * True when an auth error just means "the user backed out" (closed the
+ * account chooser/popup, dismissed the prompt) rather than a real failure —
+ * callers treat this as a quiet cancellation, not an error toast.
+ */
+function isUserCancelledSignIn(e: unknown): boolean {
+  const code = (e as { code?: string })?.code ?? "";
+  if (code === "auth/popup-closed-by-user") return true;
+  // Other firebase/auth codes are genuine failures; don't let the loose
+  // substring match below reclassify them (e.g. auth/cancelled-popup-request
+  // keeps its redirect-fallback handling).
+  if (code.startsWith("auth/")) return false;
+  const message = e instanceof Error ? e.message : String(e ?? "");
+  const haystack = `${code} ${message}`.toLowerCase();
+  // Native plugin cancellations surface as the platform SDK's error:
+  // iOS "The user canceled the sign-in flow", Android Credential Manager
+  // "user canceled", legacy Google Sign-In status 12501 (SIGN_IN_CANCELLED).
+  return haystack.includes("cancel") || haystack.includes("12501");
+}
+
+/**
  * Google sign-in on the Firebase backend (replaces the Lovable-brokered
- * OAuth flow used on Supabase). Web: popup, falling back to redirect when
- * the popup is blocked. Native (Capacitor): redirect — the result is
- * completed by readyUser()/getRedirectResult in the auth adapter.
- * Note: on Android the project's SHA-1 must be registered in the Firebase
- * console for Google sign-in (see firebase/README.md constraints).
+ * OAuth flow used on Supabase).
+ *
+ * Native (Capacitor): the FirebaseAuthentication plugin brokers the Google
+ * account pick natively and — because capacitor.config.ts sets
+ * skipNativeAuth — returns the Google credential WITHOUT signing in; the
+ * Firebase JS SDK then performs the actual sign-in via
+ * signInWithCredential, so the JS SDK stays the single source of truth for
+ * auth state. (The old signInWithRedirect approach lost its result across
+ * the WebView/Custom-Tab boundary and dropped users back on the Log In
+ * page, signed out.)
+ *
+ * Web: popup first; if the popup is blocked/unavailable, fall back to
+ * signInWithRedirect — its result is consumed by completeRedirectOnce()
+ * (getRedirectResult) at adapter init.
  */
 export async function signInWithGoogleFirebase() {
-  const { GoogleAuthProvider, signInWithPopup, signInWithRedirect } = await import("firebase/auth");
   const { Capacitor } = await import("@capacitor/core");
+  if (Capacitor.isNativePlatform()) {
+    return signInWithGoogleNative();
+  }
+  return signInWithGoogleWeb();
+}
+
+async function signInWithGoogleNative() {
+  const { FirebaseAuthentication } = await import("@capacitor-firebase/authentication");
+  const { GoogleAuthProvider, signInWithCredential } = await import("firebase/auth");
+  const result = await FirebaseAuthentication.signInWithGoogle().catch((e: unknown) => {
+    if (isUserCancelledSignIn(e)) return null;
+    throw toErr(e);
+  });
+  if (!result) {
+    return { redirected: false as const, cancelled: true as const };
+  }
+  const idToken = result.credential?.idToken;
+  if (!idToken) {
+    throw new BackendError(
+      "Google sign-in did not return an ID token. Verify the app's SHA-1 is registered in the Firebase console and google-services.json is up to date.",
+      "auth/missing-id-token",
+    );
+  }
+  const credential = GoogleAuthProvider.credential(idToken, result.credential?.accessToken ?? undefined);
+  try {
+    const cred = await signInWithCredential(firebaseAuth, credential);
+    await ensureProfile(cred.user);
+    return { redirected: false as const, user: mapUser(cred.user) };
+  } catch (e) {
+    throw toErr(e);
+  }
+}
+
+async function signInWithGoogleWeb() {
+  const { GoogleAuthProvider, signInWithPopup, signInWithRedirect } = await import("firebase/auth");
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: "select_account" });
-  if (Capacitor.isNativePlatform()) {
-    await signInWithRedirect(firebaseAuth, provider);
-    return { redirected: true as const };
-  }
   try {
     const cred = await signInWithPopup(firebaseAuth, provider);
     await ensureProfile(cred.user);
     return { redirected: false as const, user: mapUser(cred.user) };
   } catch (e) {
     const code = (e as { code?: string })?.code;
-    if (code === "auth/popup-blocked" || code === "auth/cancelled-popup-request" || code === "auth/operation-not-supported-in-this-environment") {
+    if (
+      code === "auth/popup-blocked" ||
+      code === "auth/cancelled-popup-request" ||
+      code === "auth/operation-not-supported-in-this-environment"
+    ) {
       await signInWithRedirect(firebaseAuth, provider);
       return { redirected: true as const };
+    }
+    if (isUserCancelledSignIn(e)) {
+      return { redirected: false as const, cancelled: true as const };
     }
     throw toErr(e);
   }
