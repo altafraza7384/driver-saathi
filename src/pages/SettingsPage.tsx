@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { db, BACKEND } from "@/lib/backend";
+import { friendlyErrorMessage } from "@/lib/errors";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n, LANGUAGES } from "@/lib/i18n";
 import { Card, CardContent } from "@/components/ui/card";
@@ -45,7 +46,7 @@ export default function SettingsPage() {
       if (error) throw error;
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["profile"] }); setEditing(false); toast.success("✅"); },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -67,7 +68,7 @@ export default function SettingsPage() {
       if (updateError) throw updateError;
       queryClient.invalidateQueries({ queryKey: ["profile"] });
       toast.success("✅");
-    } catch (err: any) { toast.error(err.message || "Upload failed"); }
+    } catch (err: any) { toast.error(friendlyErrorMessage(err, "Upload failed")); }
     finally { setUploading(false); }
   };
 
@@ -93,7 +94,7 @@ export default function SettingsPage() {
       await signOut();
       navigate("/auth");
     } catch (err: any) {
-      toast.error(err.message || "Failed to delete account");
+      toast.error(friendlyErrorMessage(err, "Failed to delete account"));
     } finally {
       setDeleting(false);
       setDeleteOpen(false);

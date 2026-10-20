@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { db } from "@/lib/backend";
+import { friendlyErrorMessage } from "@/lib/errors";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
 import { Card, CardContent } from "@/components/ui/card";
@@ -31,7 +32,7 @@ export default function SOSPage() {
   const addMutation = useMutation({
     mutationFn: async () => { const { error } = await db.from("emergency_contacts").insert({ user_id: user!.id, name: form.name, phone: form.phone, relationship: form.relationship || null, is_primary: contacts.length === 0 }); if (error) throw error; },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["emergency_contacts"] }); setOpen(false); setForm({ name: "", phone: "", relationship: "" }); toast.success("✅"); },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
 
   const deleteMutation = useMutation({

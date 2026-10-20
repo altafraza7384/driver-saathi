@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { db } from "@/lib/backend";
+import { friendlyErrorMessage } from "@/lib/errors";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
 import { formatINR } from "@/lib/currency";
@@ -110,7 +111,7 @@ export default function CarChecksPage() {
       setCustomType(""); setShowCustomType(false);
       toast.success("Car check added!");
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
 
   const deleteMutation = useMutation({
@@ -144,7 +145,7 @@ export default function CarChecksPage() {
       setDocForm({ document_name: "", expiry_date: "", notify_date: "", notify_time: "" });
       toast.success("Document added!");
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
 
   const updateDocMutation = useMutation({
@@ -168,7 +169,7 @@ export default function CarChecksPage() {
       setDocForm({ document_name: "", expiry_date: "", notify_date: "", notify_time: "" });
       toast.success("Document updated!");
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
 
   const deleteDocMutation = useMutation({

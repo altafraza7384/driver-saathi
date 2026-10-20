@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { db } from "@/lib/backend";
+import { friendlyErrorMessage } from "@/lib/errors";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
 import { Card, CardContent } from "@/components/ui/card";
@@ -53,7 +54,7 @@ export default function HealthPage() {
   const saveMutation = useMutation({
     mutationFn: async () => { await upsertLog({}); },
     onSuccess: () => toast.success("✅"),
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
 
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
