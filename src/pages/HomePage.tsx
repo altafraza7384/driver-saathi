@@ -199,7 +199,8 @@ export default function HomePage() {
           </div>
           <div className="space-y-2">
             {goals.slice(0, 3).map((goal) => {
-              const savedPercent = Number(goal.target_amount) > 0 ? Math.min((Number(goal.saved_amount) / Number(goal.target_amount)) * 100, 100) : 0;
+              const savedNum = Number(goal.saved_amount) || 0;
+              const savedPercent = Number(goal.target_amount) > 0 ? Math.min((savedNum / Number(goal.target_amount)) * 100, 100) : 0;
               return (
                 <Card key={goal.id} className="border-0 shadow-sm">
                   <CardContent className="p-3 space-y-2">
@@ -212,7 +213,7 @@ export default function HomePage() {
                     </div>
                     <Progress value={savedPercent} className="h-2" />
                     <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>{t("home.saved")}: {formatINR(goal.saved_amount)}</span>
+                      <span>{t("home.saved")}: {formatINR(savedNum)}</span>
                       <span>{t("home.target")}: {formatINR(goal.target_amount)}</span>
                     </div>
                   </CardContent>

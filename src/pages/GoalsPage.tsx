@@ -75,6 +75,8 @@ export default function GoalsPage() {
       user_id: user.id,
       title,
       target_amount: parseFloat(target),
+      saved_amount: 0,
+      is_completed: false,
       deadline: deadline || null,
       notify_at: notifyAt,
     } as any);
@@ -101,7 +103,7 @@ export default function GoalsPage() {
     if (!editGoal) return;
     setSaving(true);
     const newTarget = parseFloat(editTarget);
-    const isCompleted = Number(editGoal.saved_amount) >= newTarget;
+    const isCompleted = (Number(editGoal.saved_amount) || 0) >= newTarget;
 
     const { error } = await db.from("goals").update({
       title: editTitle,
@@ -124,7 +126,7 @@ export default function GoalsPage() {
     const goal = goals.find(g => g.id === goalId);
     if (!goal || !addAmount) return;
 
-    const newSaved = Number(goal.saved_amount) + parseFloat(addAmount);
+    const newSaved = (Number(goal.saved_amount) || 0) + parseFloat(addAmount);
     const isCompleted = newSaved >= Number(goal.target_amount);
 
     await db.from("goals").update({
@@ -203,8 +205,11 @@ export default function GoalsPage() {
       ) : (
         <div className="space-y-3">
           {goals.map((goal, i) => {
+            // saved_amount may be missing on docs created before defaults were set
+            // (Firestore has no column defaults like Supabase) — guard against NaN
+            const savedNum = Number(goal.saved_amount) || 0;
             const progress = Number(goal.target_amount) > 0
-              ? Math.min((Number(goal.saved_amount) / Number(goal.target_amount)) * 100, 100)
+              ? Math.min((savedNum / Number(goal.target_amount)) * 100, 100)
               : 0;
             return (
               <motion.div key={goal.id} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
@@ -236,7 +241,7 @@ export default function GoalsPage() {
                       </div>
                     </div>
                     <div className="flex justify-between text-xs">
-                      <span>Saved: {formatINR(Number(goal.saved_amount))}</span>
+                      <span>Saved: {formatINR(savedNum)}</span>
                       <span>Target: {formatINR(Number(goal.target_amount))}</span>
                     </div>
                     <Progress value={progress} className="h-2" />
