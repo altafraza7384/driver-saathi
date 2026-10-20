@@ -23,7 +23,6 @@ export async function registerNativePush(userId: string): Promise<void> {
 
   // Listen for the FCM token
   PushNotifications.addListener("registration", async (token) => {
-    console.log("FCM token:", token.value);
     // Store FCM token in push_subscriptions (reuse the table)
     await db.from("push_subscriptions").upsert(
       {
