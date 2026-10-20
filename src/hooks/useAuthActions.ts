@@ -186,17 +186,13 @@ export function useAuthActions() {
         // resolves quietly without throwing.
         return signInWithGoogleFirebase();
       }
-      // Firebase persists its own session — do not clear it on network
-      // errors (unlike the Supabase/Lovable flow below).
-      return runWithRetry(
-        () =>
-          withTimeout(
-            signInWithGoogleFirebase(),
-            OAUTH_TIMEOUT_MS,
-            "Google sign-in request timed out. Please check your internet and try again."
-          ),
-        MAX_RETRIES
-      );
+      // Web popup sign-in is user-paced too (the account picker can stay
+      // open indefinitely): a 45s timeout fires mid-pick, its "timed out"
+      // message classifies as a network error, and the retry then reopens
+      // the popup → auth/cancelled-popup-request → unwanted redirect
+      // fallback. Call directly, like native — the popup API surfaces real
+      // errors itself and cancellation resolves quietly.
+      return signInWithGoogleFirebase();
     }
 
     try {
