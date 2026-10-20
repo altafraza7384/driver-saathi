@@ -76,6 +76,20 @@ export default function HomePage() {
     enabled: !!user,
   });
 
+  // Totals must cover ALL of today's transactions — the recent list above is
+  // capped at 5 for display, so summing it under-reports on busy days. The key
+  // extends ["transactions_today"], which the write pages already invalidate
+  // (react-query invalidates by key prefix), so totals refresh after mutations.
+  const { data: todayTxTotals = [] } = useQuery({
+    queryKey: ["transactions_today", "totals"],
+    queryFn: async () => {
+      const { data, error } = await db.from("transactions").select("*").eq("transaction_date", today);
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user,
+  });
+
   const { data: debts = [] } = useQuery({
     queryKey: ["debts_active"],
     queryFn: async () => {
@@ -100,8 +114,8 @@ export default function HomePage() {
 
   if (isInitialLoading) return <HomeSkeleton />;
 
-  const todayIncome = todayTx.filter((t) => t.type === "income").reduce((s, t) => s + Number(t.amount), 0);
-  const todayExpense = todayTx.filter((t) => t.type === "expense").reduce((s, t) => s + Number(t.amount), 0);
+  const todayIncome = todayTxTotals.filter((t) => t.type === "income").reduce((s, t) => s + Number(t.amount), 0);
+  const todayExpense = todayTxTotals.filter((t) => t.type === "expense").reduce((s, t) => s + Number(t.amount), 0);
   const driverName = profile?.full_name || t("common.driver");
 
   return (
