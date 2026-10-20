@@ -7,7 +7,7 @@ import {
   BannerAdPluginEvents,
 } from '@capacitor-community/admob';
 
-const ADMOB_BANNER_ID = 'ca-app-pub-1994214977986364/1134120555';
+const ADMOB_BANNER_ID = 'ca-app-pub-1994214977986364/7524617781';
 
 let initialized = false;
 
