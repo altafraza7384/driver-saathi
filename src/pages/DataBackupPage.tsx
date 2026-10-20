@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Download, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
@@ -32,7 +32,7 @@ export default function DataBackupPage() {
       doc.setFontSize(18); doc.text("Driver Buddy - Data Export", 14, currentY); currentY += 8;
       doc.setFontSize(10); doc.text(`Exported on: ${new Date().toLocaleString()}`, 14, currentY); currentY += 12;
       for (const table of BACKUP_TABLES) {
-        const { data, error } = await supabase.from(table.key).select("*");
+        const { data, error } = await db.from(table.key).select("*");
         if (error) throw error;
         if (!data || data.length === 0) continue;
         if (currentY > 250) { doc.addPage(); currentY = 20; }

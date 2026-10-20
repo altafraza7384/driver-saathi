@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db, BACKEND } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n, LANGUAGES } from "@/lib/i18n";
 import { Card, CardContent } from "@/components/ui/card";
@@ -31,7 +31,7 @@ export default function SettingsPage() {
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ["profile"],
-    queryFn: async () => { const { data, error } = await supabase.from("profiles").select("*").eq("user_id", user!.id).single(); if (error) throw error; return data; },
+    queryFn: async () => { const { data, error } = await db.from("profiles").select("*").eq("user_id", user!.id).single(); if (error) throw error; return data; },
     enabled: !!user,
   });
 
@@ -41,7 +41,7 @@ export default function SettingsPage() {
 
   const updateMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from("profiles").update({ full_name: form.full_name, phone: form.phone, vehicle_type: form.vehicle_type, vehicle_number: form.vehicle_number, license_number: form.license_number, preferred_language: language }).eq("user_id", user!.id);
+      const { error } = await db.from("profiles").update({ full_name: form.full_name, phone: form.phone, vehicle_type: form.vehicle_type, vehicle_number: form.vehicle_number, license_number: form.license_number, preferred_language: language }).eq("user_id", user!.id);
       if (error) throw error;
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["profile"] }); setEditing(false); toast.success("✅"); },
@@ -57,11 +57,13 @@ export default function SettingsPage() {
     try {
       const ext = file.name.split(".").pop();
       const path = `${user.id}/avatar.${ext}`;
-      const { error: uploadError } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+      const { error: uploadError } = await db.storage.from("avatars").upload(path, file, { upsert: true });
       if (uploadError) throw uploadError;
-      const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path);
-      const avatarUrl = `${urlData.publicUrl}?t=${Date.now()}`;
-      const { error: updateError } = await supabase.from("profiles").update({ avatar_url: avatarUrl }).eq("user_id", user.id);
+      const { data: urlData } = await db.storage.from("avatars").getPublicUrl(path);
+      if (!urlData.publicUrl) throw new Error("Avatar storage is not available yet");
+      const sep = urlData.publicUrl.includes("?") ? "&" : "?";
+      const avatarUrl = `${urlData.publicUrl}${sep}t=${Date.now()}`;
+      const { error: updateError } = await db.from("profiles").update({ avatar_url: avatarUrl }).eq("user_id", user.id);
       if (updateError) throw updateError;
       queryClient.invalidateQueries({ queryKey: ["profile"] });
       toast.success("✅");
@@ -73,12 +75,17 @@ export default function SettingsPage() {
     if (deleteConfirm !== "DELETE") return;
     setDeleting(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("Not authenticated");
+      let response;
+      if (BACKEND === "firebase") {
+        response = await db.functions.invoke("delete-account", { body: { confirm: "DELETE" } });
+      } else {
+        const { data: { session } } = await db.auth.getSession();
+        if (!session) throw new Error("Not authenticated");
 
-      const response = await supabase.functions.invoke("delete-account", {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
+        response = await db.functions.invoke("delete-account", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+      }
 
       if (response.error) throw new Error(response.error.message || "Failed to delete account");
       

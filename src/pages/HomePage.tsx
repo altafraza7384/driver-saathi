@@ -9,7 +9,7 @@ import { useI18n } from "@/lib/i18n";
 import { formatINR } from "@/lib/currency";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/backend";
 import { NotificationBell } from "@/components/NotificationBell";
 
 function getGreetingKey(): string {
@@ -60,7 +60,7 @@ export default function HomePage() {
   const { data: profile, isLoading: profileLoading } = useQuery({
     queryKey: ["profile"],
     queryFn: async () => {
-      const { data } = await supabase.from("profiles").select("full_name").eq("user_id", user!.id).single();
+      const { data } = await db.from("profiles").select("full_name").eq("user_id", user!.id).single();
       return data;
     },
     enabled: !!user,
@@ -69,7 +69,7 @@ export default function HomePage() {
   const { data: todayTx = [], isLoading: txLoading } = useQuery({
     queryKey: ["transactions_today"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("transactions").select("*").eq("transaction_date", today).order("created_at", { ascending: false }).limit(5);
+      const { data, error } = await db.from("transactions").select("*").eq("transaction_date", today).order("created_at", { ascending: false }).limit(5);
       if (error) throw error;
       return data;
     },
@@ -79,7 +79,7 @@ export default function HomePage() {
   const { data: debts = [] } = useQuery({
     queryKey: ["debts_active"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("debts").select("*").eq("is_active", true);
+      const { data, error } = await db.from("debts").select("*").eq("is_active", true);
       if (error) throw error;
       return data ?? [];
     },
@@ -89,7 +89,7 @@ export default function HomePage() {
   const { data: goals = [] } = useQuery({
     queryKey: ["goals_active"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("goals").select("*").eq("is_completed", false);
+      const { data, error } = await db.from("goals").select("*").eq("is_completed", false);
       if (error) throw error;
       return data ?? [];
     },

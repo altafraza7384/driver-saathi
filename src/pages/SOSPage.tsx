@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,18 +24,18 @@ export default function SOSPage() {
 
   const { data: contacts = [] } = useQuery({
     queryKey: ["emergency_contacts"],
-    queryFn: async () => { const { data, error } = await supabase.from("emergency_contacts").select("*").order("is_primary", { ascending: false }); if (error) throw error; return data; },
+    queryFn: async () => { const { data, error } = await db.from("emergency_contacts").select("*").order("is_primary", { ascending: false }); if (error) throw error; return data; },
     enabled: !!user,
   });
 
   const addMutation = useMutation({
-    mutationFn: async () => { const { error } = await supabase.from("emergency_contacts").insert({ user_id: user!.id, name: form.name, phone: form.phone, relationship: form.relationship || null, is_primary: contacts.length === 0 }); if (error) throw error; },
+    mutationFn: async () => { const { error } = await db.from("emergency_contacts").insert({ user_id: user!.id, name: form.name, phone: form.phone, relationship: form.relationship || null, is_primary: contacts.length === 0 }); if (error) throw error; },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["emergency_contacts"] }); setOpen(false); setForm({ name: "", phone: "", relationship: "" }); toast.success("✅"); },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => { const { error } = await supabase.from("emergency_contacts").delete().eq("id", id); if (error) throw error; },
+    mutationFn: async (id: string) => { const { error } = await db.from("emergency_contacts").delete().eq("id", id); if (error) throw error; },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["emergency_contacts"] }),
   });
 

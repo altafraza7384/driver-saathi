@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
 import { useNavigate } from "react-router-dom";
@@ -28,7 +28,7 @@ export default function RemindersPage() {
 
   const { data: reminders = [], isLoading } = useQuery({
     queryKey: ["reminders"],
-    queryFn: async () => { const { data, error } = await supabase.from("reminders").select("*").order("reminder_date", { ascending: true }); if (error) throw error; return data; },
+    queryFn: async () => { const { data, error } = await db.from("reminders").select("*").order("reminder_date", { ascending: true }); if (error) throw error; return data; },
     enabled: !!user,
   });
 
@@ -37,7 +37,7 @@ export default function RemindersPage() {
       if (!user) throw new Error("Please sign in again.");
       if (!form.title.trim() || !parseDateValue(form.reminder_date)) throw new Error("Enter a title and select a valid date.");
       const notifyAt = form.notify_date && form.notify_time ? `${form.notify_date}T${form.notify_time}:00` : form.notify_date ? `${form.notify_date}T09:00:00` : null;
-      const { error } = await supabase.from("reminders").insert({ user_id: user.id, title: form.title, description: form.description || null, reminder_date: form.reminder_date, category: form.category, notify_at: notifyAt } as any);
+      const { error } = await db.from("reminders").insert({ user_id: user.id, title: form.title, description: form.description || null, reminder_date: form.reminder_date, category: form.category, notify_at: notifyAt } as any);
       if (error) throw error;
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["reminders"] }); setOpen(false); setForm({ title: "", description: "", reminder_date: "", category: "general", notify_date: "", notify_time: "" }); setCustomCategory(""); setShowCustomCategory(false); toast.success("✅"); },
@@ -45,12 +45,12 @@ export default function RemindersPage() {
   });
 
   const toggleMutation = useMutation({
-    mutationFn: async ({ id, completed }: { id: string; completed: boolean }) => { const { error } = await supabase.from("reminders").update({ is_completed: completed }).eq("id", id); if (error) throw error; },
+    mutationFn: async ({ id, completed }: { id: string; completed: boolean }) => { const { error } = await db.from("reminders").update({ is_completed: completed }).eq("id", id); if (error) throw error; },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["reminders"] }),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => { const { error } = await supabase.from("reminders").delete().eq("id", id); if (error) throw error; },
+    mutationFn: async (id: string) => { const { error } = await db.from("reminders").delete().eq("id", id); if (error) throw error; },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["reminders"] }),
   });
 

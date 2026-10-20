@@ -6,6 +6,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Send, Bot, User, Trash2, TrendingUp, Mic, Square } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
+import { BACKEND } from "@/lib/backend";
+import { callFinanceAiFunction } from "@/lib/ai";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -46,6 +48,14 @@ export default function FinanceAIPage() {
     const allMessages = [...messages, userMsg];
 
     try {
+      if (BACKEND === "firebase") {
+        const result = await callFinanceAiFunction(allMessages);
+        const content = result.content || "Done!";
+        assistantSoFar = content;
+        setMessages((prev) => [...prev, { role: "assistant", content }]);
+        return;
+      }
+
       const resp = await fetch(FINANCE_CHAT_URL, {
         method: "POST",
         headers: {

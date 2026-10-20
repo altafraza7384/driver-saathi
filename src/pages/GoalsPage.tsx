@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
 import { formatINR } from "@/lib/currency";
 import { Card, CardContent } from "@/components/ui/card";
@@ -60,7 +60,7 @@ export default function GoalsPage() {
   }, [user]);
 
   const fetchGoals = async () => {
-    const { data } = await supabase.from("goals").select("*").order("created_at", { ascending: false });
+    const { data } = await db.from("goals").select("*").order("created_at", { ascending: false });
     setGoals((data as Goal[]) || []);
     setLoading(false);
   };
@@ -71,7 +71,7 @@ export default function GoalsPage() {
     setSaving(true);
 
     const notifyAt = notifyDate && notifyTime ? `${notifyDate}T${notifyTime}:00` : notifyDate ? `${notifyDate}T09:00:00` : null;
-    const { error } = await supabase.from("goals").insert({
+    const { error } = await db.from("goals").insert({
       user_id: user.id,
       title,
       target_amount: parseFloat(target),
@@ -103,7 +103,7 @@ export default function GoalsPage() {
     const newTarget = parseFloat(editTarget);
     const isCompleted = Number(editGoal.saved_amount) >= newTarget;
 
-    const { error } = await supabase.from("goals").update({
+    const { error } = await db.from("goals").update({
       title: editTitle,
       target_amount: newTarget,
       deadline: editDeadline || null,
@@ -127,7 +127,7 @@ export default function GoalsPage() {
     const newSaved = Number(goal.saved_amount) + parseFloat(addAmount);
     const isCompleted = newSaved >= Number(goal.target_amount);
 
-    await supabase.from("goals").update({
+    await db.from("goals").update({
       saved_amount: newSaved,
       is_completed: isCompleted,
     }).eq("id", goalId);
@@ -144,7 +144,7 @@ export default function GoalsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    await supabase.from("goals").delete().eq("id", id);
+    await db.from("goals").delete().eq("id", id);
     toast({ title: "Goal deleted" });
     fetchGoals();
   };

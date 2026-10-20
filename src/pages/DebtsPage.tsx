@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
 import { formatINR } from "@/lib/currency";
 import { Card, CardContent } from "@/components/ui/card";
@@ -74,7 +74,7 @@ export default function DebtsPage() {
   }, [user]);
 
   const fetchDebts = async () => {
-    const { data } = await supabase.from("debts").select("*").order("created_at", { ascending: false });
+    const { data } = await db.from("debts").select("*").order("created_at", { ascending: false });
     setDebts((data as Debt[]) || []);
     setLoading(false);
   };
@@ -91,7 +91,7 @@ export default function DebtsPage() {
     const finalEmi = customEmi ? parseFloat(customEmi) : calculatedEmi;
 
     const notifyAt = notifyDate && notifyTime ? `${notifyDate}T${notifyTime}:00` : notifyDate ? `${notifyDate}T09:00:00` : null;
-    const { error } = await supabase.from("debts").insert({
+    const { error } = await db.from("debts").insert({
       user_id: user.id,
       name,
       principal: p,
@@ -128,7 +128,7 @@ export default function DebtsPage() {
     const m = parseInt(editTenure) || 12;
     const emi = calculateEMI(p, r, m);
 
-    const { error } = await supabase.from("debts").update({
+    const { error } = await db.from("debts").update({
       name: editName,
       principal: p,
       interest_rate: r,
@@ -156,14 +156,14 @@ export default function DebtsPage() {
     const isFullyPaid = newTotalPaid >= Number(debt.principal);
 
     // Record payment
-    await supabase.from("debt_payments").insert({
+    await db.from("debt_payments").insert({
       user_id: user.id,
       debt_id: payDebtId,
       amount,
     });
 
     // Update debt
-    await supabase.from("debts").update({
+    await db.from("debts").update({
       total_paid: newTotalPaid,
       is_active: !isFullyPaid,
     }).eq("id", payDebtId);
@@ -175,7 +175,7 @@ export default function DebtsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    await supabase.from("debts").delete().eq("id", id);
+    await db.from("debts").delete().eq("id", id);
     toast({ title: "Loan deleted" });
     fetchDebts();
   };

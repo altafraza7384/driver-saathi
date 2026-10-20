@@ -7,7 +7,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Send, Bot, User, Trash2, Mic, Square, Volume2, VolumeX, Headphones, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
-import { supabase } from "@/integrations/supabase/client";
+import { BACKEND } from "@/lib/backend";
+import { callChatFunction } from "@/lib/ai";
 
 const FinanceAIPage = lazy(() => import("./FinanceAIPage"));
 
@@ -121,6 +122,14 @@ export default function AssistantPage() {
     const allMessages = [...messages, userMsg];
 
     try {
+      if (BACKEND === "firebase") {
+        const result = await callChatFunction(allMessages);
+        const content = result.content || result.actions.join("\n") || "Done!";
+        assistantSoFar = content;
+        setMessages((prev) => [...prev, { role: "assistant", content }]);
+        return;
+      }
+
       const resp = await fetch(CHAT_URL, {
         method: "POST",
         headers: {

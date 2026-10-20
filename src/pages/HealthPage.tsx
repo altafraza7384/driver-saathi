@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
 import { Card, CardContent } from "@/components/ui/card";
@@ -21,7 +21,7 @@ export default function HealthPage() {
   const { data: log, isLoading } = useQuery({
     queryKey: ["health_log", today],
     queryFn: async () => {
-      const { data, error } = await supabase.from("health_logs").select("*").eq("user_id", user!.id).eq("log_date", today).maybeSingle();
+      const { data, error } = await db.from("health_logs").select("*").eq("user_id", user!.id).eq("log_date", today).maybeSingle();
       if (error) throw error;
       return data;
     },
@@ -37,8 +37,8 @@ export default function HealthPage() {
   const upsertLog = async (updates: Partial<{ sleep_hours: number; water_glasses: number; breaks_taken: number; steps: number }>) => {
     if (!user) return;
     const payload = { user_id: user.id, log_date: today, sleep_hours: Number(form.sleep_hours), water_glasses: Number(form.water_glasses), breaks_taken: Number(form.breaks_taken), steps: Number(form.steps), ...updates };
-    if (log) await supabase.from("health_logs").update(payload).eq("id", log.id);
-    else await supabase.from("health_logs").insert(payload);
+    if (log) await db.from("health_logs").update(payload).eq("id", log.id);
+    else await db.from("health_logs").insert(payload);
     queryClient.invalidateQueries({ queryKey: ["health_log"] });
     queryClient.invalidateQueries({ queryKey: ["health_logs_week"] });
   };
@@ -62,7 +62,7 @@ export default function HealthPage() {
   const { data: weeklyLogs = [] } = useQuery({
     queryKey: ["health_logs_week"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("health_logs").select("*").gte("log_date", format(weekStart, "yyyy-MM-dd")).lte("log_date", format(weekEnd, "yyyy-MM-dd")).order("log_date", { ascending: true });
+      const { data, error } = await db.from("health_logs").select("*").gte("log_date", format(weekStart, "yyyy-MM-dd")).lte("log_date", format(weekEnd, "yyyy-MM-dd")).order("log_date", { ascending: true });
       if (error) throw error;
       return data;
     },

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
 import { formatINR } from "@/lib/currency";
@@ -44,12 +44,12 @@ export default function TransactionsPage() {
   const fetchWeeklyData = async () => {
     const weekStart = format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd");
     const weekEnd = format(endOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd");
-    const { data } = await supabase.from("transactions").select("*").gte("transaction_date", weekStart).lte("transaction_date", weekEnd);
+    const { data } = await db.from("transactions").select("*").gte("transaction_date", weekStart).lte("transaction_date", weekEnd);
     setWeeklyTx((data as Transaction[]) || []);
   };
 
   const fetchTransactions = async () => {
-    let query = supabase.from("transactions").select("*").order("transaction_date", { ascending: false }).limit(50);
+    let query = db.from("transactions").select("*").order("transaction_date", { ascending: false }).limit(50);
     if (filter !== "all") query = query.eq("type", filter);
     const { data } = await query;
     setTransactions((data as Transaction[]) || []);
@@ -57,7 +57,7 @@ export default function TransactionsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    await supabase.from("transactions").delete().eq("id", id);
+    await db.from("transactions").delete().eq("id", id);
     toast({ title: t("common.delete") });
     fetchTransactions(); fetchWeeklyData();
   };
@@ -70,7 +70,7 @@ export default function TransactionsPage() {
   const handleUpdate = async () => {
     if (!editTx) return;
     setSaving(true);
-    const { error } = await supabase.from("transactions").update({
+    const { error } = await db.from("transactions").update({
       amount: parseFloat(editAmount), category: editCategory,
       description: editDescription || null, transaction_date: editDate,
     }).eq("id", editTx.id);

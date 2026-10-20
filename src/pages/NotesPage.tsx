@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,14 +24,14 @@ export default function NotesPage() {
 
   const { data: notes = [], isLoading } = useQuery({
     queryKey: ["notes"],
-    queryFn: async () => { const { data, error } = await supabase.from("notes").select("*").order("updated_at", { ascending: false }); if (error) throw error; return data; },
+    queryFn: async () => { const { data, error } = await db.from("notes").select("*").order("updated_at", { ascending: false }); if (error) throw error; return data; },
     enabled: !!user,
   });
 
   const addMutation = useMutation({
     mutationFn: async () => {
       const tags = form.tags ? form.tags.split(",").map((t) => t.trim()).filter(Boolean) : [];
-      const { error } = await supabase.from("notes").insert({ user_id: user!.id, title: form.title, content: form.content, tags });
+      const { error } = await db.from("notes").insert({ user_id: user!.id, title: form.title, content: form.content, tags });
       if (error) throw error;
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); setOpen(false); setForm({ title: "", content: "", tags: "" }); toast.success("✅"); },
@@ -39,7 +39,7 @@ export default function NotesPage() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => { const { error } = await supabase.from("notes").delete().eq("id", id); if (error) throw error; },
+    mutationFn: async (id: string) => { const { error } = await db.from("notes").delete().eq("id", id); if (error) throw error; },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notes"] }),
   });
 

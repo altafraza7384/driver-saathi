@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { db, BACKEND } from "@/lib/backend";
+import { confirmFirebasePasswordReset } from "@/integrations/firebase/adapter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,9 +11,14 @@ import { formatAuthError } from "@/hooks/useAuthActions";
 
 // Handles both: requesting a reset email, and setting a new password after clicking the emailed link.
 export default function ResetPasswordPage() {
-  const [recovery, setRecovery] = useState(
-    () => typeof window !== "undefined" && window.location.hash.includes("type=recovery"),
-  );
+  const [recovery, setRecovery] = useState(() => {
+    if (typeof window === "undefined") return false;
+    if (BACKEND === "firebase") {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("mode") === "resetPassword" && !!params.get("oobCode");
+    }
+    return window.location.hash.includes("type=recovery");
+  });
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -22,7 +28,14 @@ export default function ResetPasswordPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const { data } = supabase.auth.onAuthStateChange((event) => {
+    if (BACKEND === "firebase") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("mode") === "resetPassword" && params.get("oobCode")) {
+        setRecovery(true);
+      }
+      return;
+    }
+    const { data } = db.auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY") setRecovery(true);
     });
     return () => data.subscription.unsubscribe();
@@ -32,7 +45,7 @@ export default function ResetPasswordPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      const { error } = await db.auth.resetPasswordForEmail(email.trim(), {
         redirectTo: `${window.location.origin}/reset-password`,
       });
       if (error) throw error;
@@ -52,10 +65,18 @@ export default function ResetPasswordPage() {
     }
     setLoading(true);
     try {
-      const { error } = await supabase.auth.updateUser({ password });
-      if (error) throw error;
-      toast({ title: "Password updated", description: "You are now signed in." });
-      navigate("/", { replace: true });
+      if (BACKEND === "firebase") {
+        const oobCode = new URLSearchParams(window.location.search).get("oobCode");
+        if (!oobCode) throw new Error("Invalid or expired password reset link.");
+        await confirmFirebasePasswordReset(oobCode, password);
+        toast({ title: "Password updated", description: "Please sign in with your new password." });
+        navigate("/auth", { replace: true });
+      } else {
+        const { error } = await db.auth.updateUser({ password });
+        if (error) throw error;
+        toast({ title: "Password updated", description: "You are now signed in." });
+        navigate("/", { replace: true });
+      }
     } catch (error) {
       toast({ title: "Could not update password", description: formatAuthError(error), variant: "destructive" });
     } finally {

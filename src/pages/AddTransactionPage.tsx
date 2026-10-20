@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,7 +37,7 @@ export default function AddTransactionPage() {
     if (!user || !amount || !category) return;
     setLoading(true);
 
-    const { error } = await supabase.from("transactions").insert({
+    const { error } = await db.from("transactions").insert({
       user_id: user.id,
       type,
       amount: parseFloat(amount),

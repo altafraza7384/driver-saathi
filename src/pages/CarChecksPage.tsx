@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
 import { formatINR } from "@/lib/currency";
@@ -43,7 +43,7 @@ export default function CarChecksPage() {
   const { data: checks = [], isLoading } = useQuery({
     queryKey: ["car_checks"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("car_checks").select("*").order("check_date", { ascending: false });
+      const { data, error } = await db.from("car_checks").select("*").order("check_date", { ascending: false });
       if (error) throw error;
       return data;
     },
@@ -54,7 +54,7 @@ export default function CarChecksPage() {
   const { data: documents = [], isLoading: docsLoading } = useQuery({
     queryKey: ["car_documents"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("car_documents").select("*").order("expiry_date", { ascending: true });
+      const { data, error } = await db.from("car_documents").select("*").order("expiry_date", { ascending: true });
       if (error) throw error;
       return data;
     },
@@ -65,7 +65,7 @@ export default function CarChecksPage() {
   const { data: categories = [] } = useQuery({
     queryKey: ["marketplace_categories"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("marketplace_categories").select("*").eq("is_active", true).order("sort_order");
+      const { data, error } = await db.from("marketplace_categories").select("*").eq("is_active", true).order("sort_order");
       if (error) throw error;
       return data;
     },
@@ -76,7 +76,7 @@ export default function CarChecksPage() {
   const { data: posts = [] } = useQuery({
     queryKey: ["marketplace_posts", selectedCategory],
     queryFn: async () => {
-      let query = supabase.from("marketplace_posts").select("*, marketplace_categories(name, icon)").eq("is_active", true).order("created_at", { ascending: false });
+      let query = db.from("marketplace_posts").select("*, marketplace_categories(name, icon)").eq("is_active", true).order("created_at", { ascending: false });
       if (selectedCategory) query = query.eq("category_id", selectedCategory);
       const { data, error } = await query;
       if (error) throw error;
@@ -90,7 +90,7 @@ export default function CarChecksPage() {
       if (!user) throw new Error("Please sign in again.");
       if (!form.check_type.trim() || !parseDateValue(form.check_date)) throw new Error("Select a type and valid date.");
       const notifyAt = form.notify_date && form.notify_time ? `${form.notify_date}T${form.notify_time}:00` : form.notify_date ? `${form.notify_date}T09:00:00` : null;
-      const { error } = await supabase.from("car_checks").insert({
+      const { error } = await db.from("car_checks").insert({
         user_id: user.id,
         check_type: form.check_type,
         description: form.description || null,
@@ -115,7 +115,7 @@ export default function CarChecksPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("car_checks").delete().eq("id", id);
+      const { error } = await db.from("car_checks").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["car_checks"] }),
@@ -129,7 +129,7 @@ export default function CarChecksPage() {
         ? `${docForm.notify_date}T${docForm.notify_time}:00`
         : docForm.notify_date ? `${docForm.notify_date}T09:00:00`
         : docForm.expiry_date ? `${docForm.expiry_date}T09:00:00` : null;
-      const { error } = await supabase.from("car_documents").insert({
+      const { error } = await db.from("car_documents").insert({
         user_id: user.id,
         document_name: docForm.document_name,
         expiry_date: docForm.expiry_date,
@@ -154,7 +154,7 @@ export default function CarChecksPage() {
         ? `${docForm.notify_date}T${docForm.notify_time}:00`
         : docForm.notify_date ? `${docForm.notify_date}T09:00:00`
         : docForm.expiry_date ? `${docForm.expiry_date}T09:00:00` : null;
-      const { error } = await supabase.from("car_documents").update({
+      const { error } = await db.from("car_documents").update({
         document_name: docForm.document_name,
         expiry_date: docForm.expiry_date,
         notify_at: notifyAt,
@@ -173,7 +173,7 @@ export default function CarChecksPage() {
 
   const deleteDocMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("car_documents").delete().eq("id", id);
+      const { error } = await db.from("car_documents").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
