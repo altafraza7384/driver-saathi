@@ -156,6 +156,9 @@ async function buildSession(u: FirebaseUser | null) {
 /**
  * Mirror of the old Postgres trigger that created a profiles row on signup:
  * create users/{uid} on first sign-in if it does not exist yet.
+ * Callers fire-and-forget this (`void ensureProfile(...)`): sign-in and
+ * session bootstrap must never wait on this Firestore round trip — the UI
+ * unblocks on auth state alone and the profile merges when it lands.
  */
 async function ensureProfile(u: FirebaseUser, fullName?: string) {
   try {
@@ -176,30 +179,63 @@ async function ensureProfile(u: FirebaseUser, fullName?: string) {
   }
 }
 
+// sessionStorage flag set immediately before every signInWithRedirect
+// call. getRedirectResult() waits on the auth-domain redirect handshake,
+// so it must only run when a redirect is actually in flight: awaiting it
+// on every cold start (via readyUser/getSession) stalled auth bootstrap
+// behind a result that was never coming — the "Connecting…" hang. When no
+// redirect is pending, completion resolves immediately.
+const REDIRECT_PENDING_KEY = "ds:redirectPending";
+
+function markRedirectPending() {
+  try {
+    sessionStorage.setItem(REDIRECT_PENDING_KEY, "1");
+  } catch {
+    // sessionStorage unavailable: takeRedirectPending() then defaults to
+    // consuming the redirect result, i.e. the old always-check behavior.
+  }
+}
+
+function takeRedirectPending(): boolean {
+  try {
+    const pending = sessionStorage.getItem(REDIRECT_PENDING_KEY) === "1";
+    if (pending) sessionStorage.removeItem(REDIRECT_PENDING_KEY);
+    return pending;
+  } catch {
+    return true;
+  }
+}
+
 let redirectResultPromise: Promise<unknown> | null = null;
 function completeRedirectOnce() {
   if (!redirectResultPromise) {
-    redirectResultPromise = getRedirectResult(firebaseAuth)
-      .then(async (res) => {
-        if (res?.user) await ensureProfile(res.user);
-        return res;
-      })
-      .catch((e) => {
-        // Do not swallow redirect errors silently: a failed web redirect
-        // sign-in (expired link, unauthorized domain, …) otherwise looks
-        // like "Google login just does nothing".
-        const code = (e as { code?: string })?.code ?? "unknown";
-        console.error(`Redirect sign-in completion failed [${code}]`, e);
-        return null;
-      });
+    if (!takeRedirectPending()) {
+      redirectResultPromise = Promise.resolve(null);
+    } else {
+      redirectResultPromise = getRedirectResult(firebaseAuth)
+        .then((res) => {
+          // Background: bootstrap must not wait on the profile write.
+          if (res?.user) void ensureProfile(res.user);
+          return res;
+        })
+        .catch((e) => {
+          // Do not swallow redirect errors silently: a failed web redirect
+          // sign-in (expired link, unauthorized domain, …) otherwise looks
+          // like "Google login just does nothing".
+          const code = (e as { code?: string })?.code ?? "unknown";
+          console.error(`Redirect sign-in completion failed [${code}]`, e);
+          return null;
+        });
+    }
   }
   return redirectResultPromise;
 }
 
 // Kick off redirect completion at adapter init: if this page load is the
-// return leg of a web signInWithRedirect, consume the result immediately
-// instead of waiting for the first getSession() call. Guarded by the
-// promise singleton above, so it still runs exactly once.
+// return leg of a web signInWithRedirect (flag set), consume the result
+// immediately instead of waiting for the first getSession() call. With no
+// redirect pending this is a no-op. Guarded by the promise singleton
+// above, so it still runs exactly once.
 void completeRedirectOnce();
 
 async function readyUser(): Promise<FirebaseUser | null> {
@@ -242,7 +278,7 @@ const authAdapter = {
   async signInWithPassword(credentials: { email: string; password: string }) {
     try {
       const cred = await signInWithEmailAndPassword(firebaseAuth, credentials.email, credentials.password);
-      await ensureProfile(cred.user);
+      void ensureProfile(cred.user);
       return {
         data: { user: mapUser(cred.user), session: await buildSession(cred.user) },
         error: null,
@@ -263,7 +299,7 @@ const authAdapter = {
       if (fullName) {
         await updateProfile(cred.user, { displayName: fullName }).catch(() => undefined);
       }
-      await ensureProfile(cred.user, fullName);
+      void ensureProfile(cred.user, fullName);
       return {
         data: { user: mapUser(cred.user), session: await buildSession(cred.user) },
         error: null,
@@ -404,7 +440,7 @@ async function signInWithGoogleNative() {
   const credential = GoogleAuthProvider.credential(idToken, result.credential?.accessToken ?? undefined);
   try {
     const cred = await signInWithCredential(firebaseAuth, credential);
-    await ensureProfile(cred.user);
+    void ensureProfile(cred.user);
     return { redirected: false as const, user: mapUser(cred.user) };
   } catch (e) {
     throw toErr(e);
@@ -417,7 +453,7 @@ async function signInWithGoogleWeb() {
   provider.setCustomParameters({ prompt: "select_account" });
   try {
     const cred = await signInWithPopup(firebaseAuth, provider);
-    await ensureProfile(cred.user);
+    void ensureProfile(cred.user);
     return { redirected: false as const, user: mapUser(cred.user) };
   } catch (e) {
     const code = (e as { code?: string })?.code;
@@ -426,6 +462,9 @@ async function signInWithGoogleWeb() {
       code === "auth/cancelled-popup-request" ||
       code === "auth/operation-not-supported-in-this-environment"
     ) {
+      // Flag first: the return leg only awaits getRedirectResult() when a
+      // redirect was actually started (see completeRedirectOnce).
+      markRedirectPending();
       await signInWithRedirect(firebaseAuth, provider);
       return { redirected: true as const };
     }
