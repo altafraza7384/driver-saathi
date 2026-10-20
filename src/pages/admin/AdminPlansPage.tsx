@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { db } from "@/lib/backend";
+import { friendlyErrorMessage } from "@/lib/errors";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -62,7 +63,7 @@ export default function AdminPlansPage() {
       if (error) throw error;
     },
     onSuccess: () => { refresh(); toast.success(edit ? "Plan updated" : "Plan created"); close(); },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
 
   const toggle = useMutation({
@@ -71,7 +72,7 @@ export default function AdminPlansPage() {
       if (error) throw error;
     },
     onSuccess: refresh,
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
 
   const close = () => { setOpen(false); setEdit(null); setForm(emptyForm); };

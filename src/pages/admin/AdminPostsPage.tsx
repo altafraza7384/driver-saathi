@@ -2,6 +2,7 @@ import { useState } from "react";
 import { safeExternalUrl } from "@/lib/url";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { db } from "@/lib/backend";
+import { friendlyErrorMessage } from "@/lib/errors";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -90,7 +91,7 @@ export default function AdminPostsPage() {
       resetForm();
       toast.success(editPost ? "Post updated!" : "Post created!");
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
     onSettled: () => setUploading(false),
   });
 
@@ -174,7 +175,23 @@ export default function AdminPostsPage() {
                   <Input
                     type="file"
                     accept={form.post_type === "image" ? "image/*" : "video/*"}
-                    onChange={(e) => setMediaFile(e.target.files?.[0] || null)}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      if (file) {
+                        const isImage = form.post_type === "image";
+                        if (isImage ? !file.type.startsWith("image/") : !file.type.startsWith("video/")) {
+                          toast.error(isImage ? "Please select an image file" : "Please select a video file");
+                          e.target.value = "";
+                          return;
+                        }
+                        if (file.size > 20 * 1024 * 1024) {
+                          toast.error("File must be less than 20MB");
+                          e.target.value = "";
+                          return;
+                        }
+                      }
+                      setMediaFile(file);
+                    }}
                   />
                   {form.media_url && !mediaFile && (
                     <p className="text-xs text-muted-foreground mt-1">Current media attached. Upload new to replace.</p>
