@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { db } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
-import { formatINR } from "@/lib/currency";
+import { formatINR, toAmount, clampPercent } from "@/lib/currency";
+import { friendlyErrorMessage } from "@/lib/errors";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -97,10 +98,16 @@ export default function DebtsPage() {
     setSaving(true);
 
     const p = parseFloat(principal);
+    if (!Number.isFinite(p) || p <= 0) {
+      toast({ title: "Error", description: "Please enter a valid principal amount.", variant: "destructive" });
+      setSaving(false);
+      return;
+    }
     const r = parseFloat(rate) || 0;
     const m = parseInt(tenure) || 12;
     const calculatedEmi = calculateEMI(p, r, m);
-    const finalEmi = customEmi ? parseFloat(customEmi) : calculatedEmi;
+    const parsedCustom = parseFloat(customEmi);
+    const finalEmi = customEmi && Number.isFinite(parsedCustom) ? parsedCustom : calculatedEmi;
 
     const notifyAt = notifyDate && notifyTime ? `${notifyDate}T${notifyTime}:00` : notifyDate ? `${notifyDate}T09:00:00` : null;
     const { error } = await db.from("debts").insert({
@@ -110,11 +117,17 @@ export default function DebtsPage() {
       interest_rate: r,
       tenure_months: m,
       emi_amount: Math.round(finalEmi * 100) / 100,
+      // Supabase used to default these columns; Firestore stores only what
+      // is sent, and every Paid/Remaining/Home computation reads them —
+      // leaving them out is what produced "₹NaN" and invisible loans.
+      total_paid: 0,
+      is_active: true,
+      start_date: new Date().toISOString().split("T")[0],
       notify_at: notifyAt,
     } as any);
 
     if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Error", description: friendlyErrorMessage(error), variant: "destructive" });
     } else {
       toast({ title: "Loan added!" });
       setShowAdd(false);
@@ -128,15 +141,20 @@ export default function DebtsPage() {
   const openEdit = (debt: Debt) => {
     setEditDebt(debt);
     setEditName(debt.name);
-    setEditPrincipal(String(debt.principal));
-    setEditRate(String(debt.interest_rate));
-    setEditTenure(String(debt.tenure_months));
+    setEditPrincipal(String(toAmount(debt.principal)));
+    setEditRate(String(toAmount(debt.interest_rate)));
+    setEditTenure(String(toAmount(debt.tenure_months)));
   };
 
   const handleUpdate = async () => {
     if (!editDebt) return;
     setSaving(true);
     const p = parseFloat(editPrincipal);
+    if (!Number.isFinite(p) || p <= 0) {
+      toast({ title: "Error", description: "Please enter a valid principal amount.", variant: "destructive" });
+      setSaving(false);
+      return;
+    }
     const r = parseFloat(editRate) || 0;
     const m = parseInt(editTenure) || 12;
     const emi = calculateEMI(p, r, m);
@@ -150,7 +168,7 @@ export default function DebtsPage() {
     }).eq("id", editDebt.id);
 
     if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Error", description: friendlyErrorMessage(error), variant: "destructive" });
     } else {
       toast({ title: "Loan updated!" });
       setEditDebt(null);
@@ -166,21 +184,33 @@ export default function DebtsPage() {
     if (!debt) return;
 
     const amount = parseFloat(payAmount);
-    const newTotalPaid = Number(debt.total_paid) + amount;
-    const isFullyPaid = newTotalPaid >= Number(debt.principal);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast({ title: "Error", description: "Please enter a valid payment amount.", variant: "destructive" });
+      return;
+    }
+    const newTotalPaid = toAmount(debt.total_paid) + amount;
+    const isFullyPaid = newTotalPaid >= toAmount(debt.principal);
 
     // Record payment
-    await db.from("debt_payments").insert({
+    const { error: paymentError } = await db.from("debt_payments").insert({
       user_id: user.id,
       debt_id: payDebtId,
       amount,
     });
+    if (paymentError) {
+      toast({ title: "Error", description: friendlyErrorMessage(paymentError), variant: "destructive" });
+      return;
+    }
 
     // Update debt
-    await db.from("debts").update({
+    const { error: updateError } = await db.from("debts").update({
       total_paid: newTotalPaid,
       is_active: !isFullyPaid,
     }).eq("id", payDebtId);
+    if (updateError) {
+      toast({ title: "Error", description: friendlyErrorMessage(updateError), variant: "destructive" });
+      return;
+    }
 
     toast({ title: isFullyPaid ? "🎉 Loan fully paid!" : `₹${payAmount} payment recorded!` });
     setPayDebtId(null);
@@ -190,14 +220,21 @@ export default function DebtsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    await db.from("debts").delete().eq("id", id);
+    const { error } = await db.from("debts").delete().eq("id", id);
+    if (error) {
+      toast({ title: "Error", description: friendlyErrorMessage(error), variant: "destructive" });
+      return;
+    }
     toast({ title: "Loan deleted" });
     invalidateDebtReaders();
     fetchDebts();
   };
 
-  const totalLiability = debts.reduce((s, d) => s + Number(d.principal) - Number(d.total_paid), 0);
-  const totalEMI = debts.filter(d => d.is_active).reduce((s, d) => s + (Number(d.emi_amount) || 0), 0);
+  const totalLiability = debts.reduce((s, d) => s + toAmount(d.principal) - toAmount(d.total_paid), 0);
+  // Docs created before is_active was written at creation have no flag at
+  // all; Supabase's column default made them active, so only an explicit
+  // false means inactive.
+  const totalEMI = debts.filter(d => d.is_active !== false).reduce((s, d) => s + toAmount(d.emi_amount), 0);
 
   return (
     <div className="space-y-4 p-4 pt-6">
@@ -247,7 +284,7 @@ export default function DebtsPage() {
                   <CardContent className="p-3 space-y-2">
                     <p className="text-xs text-muted-foreground text-center">Estimated Monthly EMI</p>
                     <p className="text-xl font-bold text-primary text-center">
-                      {formatINR(customEmi ? parseFloat(customEmi) : calculateEMI(parseFloat(principal) || 0, parseFloat(rate) || 0, parseInt(tenure) || 12))}
+                      {formatINR(toAmount(customEmi ? parseFloat(customEmi) : calculateEMI(parseFloat(principal) || 0, parseFloat(rate) || 0, parseInt(tenure) || 12)))}
                     </p>
                     <Input
                       type="number"
@@ -295,8 +332,12 @@ export default function DebtsPage() {
       ) : (
         <div className="space-y-3">
           {debts.map((debt, i) => {
-            const remaining = Number(debt.principal) - Number(debt.total_paid);
-            const progress = Number(debt.principal) > 0 ? (Number(debt.total_paid) / Number(debt.principal)) * 100 : 0;
+            // Docs created before creation-time defaults existed can lack
+            // total_paid/principal entirely — coerce so nothing renders NaN.
+            const principalAmt = toAmount(debt.principal);
+            const paidAmt = toAmount(debt.total_paid);
+            const remaining = principalAmt - paidAmt;
+            const progress = principalAmt > 0 ? clampPercent((paidAmt / principalAmt) * 100) : 0;
             return (
               <motion.div key={debt.id} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
                 <Card>
@@ -306,7 +347,7 @@ export default function DebtsPage() {
                         <CreditCard className="h-5 w-5 text-primary" />
                         <div>
                           <p className="font-semibold text-sm">{debt.name}</p>
-                          <p className="text-xs text-muted-foreground">{debt.interest_rate}% • {debt.tenure_months} months</p>
+                          <p className="text-xs text-muted-foreground">{toAmount(debt.interest_rate)}% • {toAmount(debt.tenure_months)} months</p>
                         </div>
                       </div>
                       <div className="flex gap-1">
@@ -319,14 +360,14 @@ export default function DebtsPage() {
                       </div>
                     </div>
                     <div className="flex justify-between text-xs">
-                      <span>Paid: {formatINR(Number(debt.total_paid))}</span>
+                      <span>Paid: {formatINR(paidAmt)}</span>
                       <span>Remaining: {formatINR(remaining)}</span>
                     </div>
                     <Progress value={progress} className="h-2" />
-                    {debt.emi_amount && (
-                      <p className="text-xs text-muted-foreground">EMI: {formatINR(Number(debt.emi_amount))}/month</p>
+                    {toAmount(debt.emi_amount) > 0 && (
+                      <p className="text-xs text-muted-foreground">EMI: {formatINR(toAmount(debt.emi_amount))}/month</p>
                     )}
-                    {debt.is_active && (
+                    {debt.is_active !== false && (
                       <>
                         {payDebtId === debt.id ? (
                           <div className="flex gap-2">

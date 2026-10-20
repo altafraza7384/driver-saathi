@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/lib/i18n";
-import { formatINR } from "@/lib/currency";
+import { formatINR, toAmount, clampPercent } from "@/lib/currency";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { db } from "@/lib/backend";
@@ -114,8 +114,8 @@ export default function HomePage() {
 
   if (isInitialLoading) return <HomeSkeleton />;
 
-  const todayIncome = todayTxTotals.filter((t) => t.type === "income").reduce((s, t) => s + Number(t.amount), 0);
-  const todayExpense = todayTxTotals.filter((t) => t.type === "expense").reduce((s, t) => s + Number(t.amount), 0);
+  const todayIncome = todayTxTotals.filter((t) => t.type === "income").reduce((s, t) => s + toAmount(t.amount), 0);
+  const todayExpense = todayTxTotals.filter((t) => t.type === "expense").reduce((s, t) => s + toAmount(t.amount), 0);
   const driverName = profile?.full_name || t("common.driver");
 
   return (
@@ -178,8 +178,13 @@ export default function HomePage() {
           </div>
           <div className="space-y-2">
             {debts.slice(0, 3).map((debt) => {
-              const paidPercent = debt.principal > 0 ? Math.min((Number(debt.total_paid) / Number(debt.principal)) * 100, 100) : 0;
-              const remaining = Math.max(Number(debt.principal) - Number(debt.total_paid), 0);
+              // Debt docs can lack total_paid (it was a Supabase column
+              // default, never written by the Firestore-era form) — coerce
+              // every operand so the widget can never render ₹NaN.
+              const principalAmt = toAmount(debt.principal);
+              const paidAmt = toAmount(debt.total_paid);
+              const paidPercent = principalAmt > 0 ? clampPercent((paidAmt / principalAmt) * 100) : 0;
+              const remaining = Math.max(principalAmt - paidAmt, 0);
               return (
                 <Card key={debt.id} className="border-0 shadow-sm">
                   <CardContent className="p-3 space-y-2">
@@ -192,7 +197,7 @@ export default function HomePage() {
                     </div>
                     <Progress value={paidPercent} className="h-2" />
                     <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>{t("home.paid")}: {formatINR(debt.total_paid)}</span>
+                      <span>{t("home.paid")}: {formatINR(paidAmt)}</span>
                       <span>{t("home.remaining")}: {formatINR(remaining)}</span>
                     </div>
                   </CardContent>
@@ -213,8 +218,9 @@ export default function HomePage() {
           </div>
           <div className="space-y-2">
             {goals.slice(0, 3).map((goal) => {
-              const savedNum = Number(goal.saved_amount) || 0;
-              const savedPercent = Number(goal.target_amount) > 0 ? Math.min((savedNum / Number(goal.target_amount)) * 100, 100) : 0;
+              const savedNum = toAmount(goal.saved_amount);
+              const targetNum = toAmount(goal.target_amount);
+              const savedPercent = targetNum > 0 ? clampPercent((savedNum / targetNum) * 100) : 0;
               return (
                 <Card key={goal.id} className="border-0 shadow-sm">
                   <CardContent className="p-3 space-y-2">
@@ -228,7 +234,7 @@ export default function HomePage() {
                     <Progress value={savedPercent} className="h-2" />
                     <div className="flex justify-between text-xs text-muted-foreground">
                       <span>{t("home.saved")}: {formatINR(savedNum)}</span>
-                      <span>{t("home.target")}: {formatINR(goal.target_amount)}</span>
+                      <span>{t("home.target")}: {formatINR(targetNum)}</span>
                     </div>
                   </CardContent>
                 </Card>
@@ -262,7 +268,7 @@ export default function HomePage() {
                     </div>
                   </div>
                   <span className={`text-sm font-bold ${tx.type === "income" ? "text-success" : "text-destructive"}`}>
-                    {tx.type === "income" ? "+" : "-"}{formatINR(tx.amount)}
+                    {tx.type === "income" ? "+" : "-"}{formatINR(toAmount(tx.amount))}
                   </span>
                 </CardContent>
               </Card>

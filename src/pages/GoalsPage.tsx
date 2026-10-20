@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { db } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
-import { formatINR } from "@/lib/currency";
+import { formatINR, toAmount, clampPercent } from "@/lib/currency";
+import { friendlyErrorMessage } from "@/lib/errors";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -82,11 +83,18 @@ export default function GoalsPage() {
     if (!user) return;
     setSaving(true);
 
+    const targetAmt = parseFloat(target);
+    if (!Number.isFinite(targetAmt) || targetAmt <= 0) {
+      toast({ title: "Error", description: "Please enter a valid target amount.", variant: "destructive" });
+      setSaving(false);
+      return;
+    }
+
     const notifyAt = notifyDate && notifyTime ? `${notifyDate}T${notifyTime}:00` : notifyDate ? `${notifyDate}T09:00:00` : null;
     const { error } = await db.from("goals").insert({
       user_id: user.id,
       title,
-      target_amount: parseFloat(target),
+      target_amount: targetAmt,
       saved_amount: 0,
       is_completed: false,
       deadline: deadline || null,
@@ -94,7 +102,7 @@ export default function GoalsPage() {
     } as any);
 
     if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Error", description: friendlyErrorMessage(error), variant: "destructive" });
     } else {
       toast({ title: "Goal created! 🎯" });
       setShowAdd(false);
@@ -108,7 +116,7 @@ export default function GoalsPage() {
   const openEdit = (goal: Goal) => {
     setEditGoal(goal);
     setEditTitle(goal.title);
-    setEditTarget(String(goal.target_amount));
+    setEditTarget(String(toAmount(goal.target_amount)));
     setEditDeadline(goal.deadline || "");
   };
 
@@ -116,7 +124,12 @@ export default function GoalsPage() {
     if (!editGoal) return;
     setSaving(true);
     const newTarget = parseFloat(editTarget);
-    const isCompleted = (Number(editGoal.saved_amount) || 0) >= newTarget;
+    if (!Number.isFinite(newTarget) || newTarget <= 0) {
+      toast({ title: "Error", description: "Please enter a valid target amount.", variant: "destructive" });
+      setSaving(false);
+      return;
+    }
+    const isCompleted = toAmount(editGoal.saved_amount) >= newTarget;
 
     const { error } = await db.from("goals").update({
       title: editTitle,
@@ -126,7 +139,7 @@ export default function GoalsPage() {
     }).eq("id", editGoal.id);
 
     if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Error", description: friendlyErrorMessage(error), variant: "destructive" });
     } else {
       toast({ title: "Goal updated!" });
       setEditGoal(null);
@@ -140,13 +153,24 @@ export default function GoalsPage() {
     const goal = goals.find(g => g.id === goalId);
     if (!goal || !addAmount) return;
 
-    const newSaved = (Number(goal.saved_amount) || 0) + parseFloat(addAmount);
-    const isCompleted = newSaved >= Number(goal.target_amount);
+    const amount = parseFloat(addAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast({ title: "Error", description: "Please enter a valid amount.", variant: "destructive" });
+      return;
+    }
 
-    await db.from("goals").update({
+    const newSaved = toAmount(goal.saved_amount) + amount;
+    const isCompleted = newSaved >= toAmount(goal.target_amount);
+
+    const { error } = await db.from("goals").update({
       saved_amount: newSaved,
       is_completed: isCompleted,
     }).eq("id", goalId);
+
+    if (error) {
+      toast({ title: "Error", description: friendlyErrorMessage(error), variant: "destructive" });
+      return;
+    }
 
     if (isCompleted) {
       toast({ title: "🎉 Goal Completed!", description: `You've reached your target for "${goal.title}"!` });
@@ -161,7 +185,11 @@ export default function GoalsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    await db.from("goals").delete().eq("id", id);
+    const { error } = await db.from("goals").delete().eq("id", id);
+    if (error) {
+      toast({ title: "Error", description: friendlyErrorMessage(error), variant: "destructive" });
+      return;
+    }
     toast({ title: "Goal deleted" });
     invalidateGoalReaders();
     fetchGoals();
@@ -221,11 +249,13 @@ export default function GoalsPage() {
       ) : (
         <div className="space-y-3">
           {goals.map((goal, i) => {
-            // saved_amount may be missing on docs created before defaults were set
-            // (Firestore has no column defaults like Supabase) — guard against NaN
-            const savedNum = Number(goal.saved_amount) || 0;
-            const progress = Number(goal.target_amount) > 0
-              ? Math.min((savedNum / Number(goal.target_amount)) * 100, 100)
+            // saved_amount/target_amount may be missing or string-typed on
+            // docs created before defaults were set (Firestore has no column
+            // defaults like Supabase) — coerce so nothing renders NaN.
+            const savedNum = toAmount(goal.saved_amount);
+            const targetNum = toAmount(goal.target_amount);
+            const progress = targetNum > 0
+              ? clampPercent((savedNum / targetNum) * 100)
               : 0;
             return (
               <motion.div key={goal.id} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
@@ -258,7 +288,7 @@ export default function GoalsPage() {
                     </div>
                     <div className="flex justify-between text-xs">
                       <span>Saved: {formatINR(savedNum)}</span>
-                      <span>Target: {formatINR(Number(goal.target_amount))}</span>
+                      <span>Target: {formatINR(targetNum)}</span>
                     </div>
                     <Progress value={progress} className="h-2" />
                     <p className="text-xs font-medium text-center">{Math.round(progress)}% complete</p>

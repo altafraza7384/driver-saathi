@@ -4,7 +4,7 @@ import { db } from "@/lib/backend";
 import { friendlyErrorMessage } from "@/lib/errors";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
-import { formatINR } from "@/lib/currency";
+import { formatINR, toAmount } from "@/lib/currency";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -91,12 +91,13 @@ export default function CarChecksPage() {
       if (!user) throw new Error("Please sign in again.");
       if (!form.check_type.trim() || !parseDateValue(form.check_date)) throw new Error("Select a type and valid date.");
       const notifyAt = form.notify_date && form.notify_time ? `${form.notify_date}T${form.notify_time}:00` : form.notify_date ? `${form.notify_date}T09:00:00` : null;
+      const odometer = Number(form.odometer_reading);
       const { error } = await db.from("car_checks").insert({
         user_id: user.id,
         check_type: form.check_type,
         description: form.description || null,
-        odometer_reading: form.odometer_reading ? Number(form.odometer_reading) : null,
-        cost: form.cost ? Number(form.cost) : 0,
+        odometer_reading: form.odometer_reading && Number.isFinite(odometer) ? odometer : null,
+        cost: form.cost ? toAmount(form.cost) : 0,
         check_date: form.check_date,
         next_due_date: form.next_due_date || null,
         is_completed: true,
@@ -121,6 +122,9 @@ export default function CarChecksPage() {
       if (error) throw error;
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["car_checks"] }); queryClient.invalidateQueries({ queryKey: ["notifications_car_checks"] }); },
+    // Without onError a failed delete was swallowed by react-query and the
+    // user just saw "nothing happened".
+    onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
 
   // Document CRUD
@@ -183,6 +187,7 @@ export default function CarChecksPage() {
       queryClient.invalidateQueries({ queryKey: ["notifications_car_documents"] });
       toast.success("Document deleted");
     },
+    onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
 
   const openEditDoc = (doc: any) => {
@@ -193,7 +198,14 @@ export default function CarChecksPage() {
   };
 
   const getExpiryStatus = (expiryDate: string) => {
-    const days = differenceInDays(parseISO(expiryDate), new Date());
+    // Docs written by other paths can lack a parseable expiry date —
+    // differenceInDays/format on an Invalid Date produce NaN labels and a
+    // thrown RangeError respectively, so guard before doing date math.
+    const expiry = expiryDate ? parseISO(expiryDate) : null;
+    if (!expiry || Number.isNaN(expiry.getTime())) {
+      return { label: "No date", color: "text-muted-foreground", bg: "bg-muted/10" };
+    }
+    const days = differenceInDays(expiry, new Date());
     if (days < 0) return { label: "Expired", color: "text-destructive", bg: "bg-destructive/10" };
     if (days <= 30) return { label: `${days}d left`, color: "text-warning", bg: "bg-warning/10" };
     return { label: `${days}d left`, color: "text-success", bg: "bg-success/10" };
@@ -296,7 +308,7 @@ export default function CarChecksPage() {
                       </div>
                       <div>
                         <p className="text-sm font-medium">{c.check_type}</p>
-                        <p className="text-xs text-muted-foreground">{c.check_date}{c.cost ? ` • ${formatINR(c.cost)}` : ""}</p>
+                        <p className="text-xs text-muted-foreground">{c.check_date}{toAmount(c.cost) ? ` • ${formatINR(toAmount(c.cost))}` : ""}</p>
                       </div>
                     </div>
                     <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(c.id)}><Trash2 className="h-4 w-4 text-muted-foreground" /></Button>
@@ -342,12 +354,14 @@ export default function CarChecksPage() {
             <div className="space-y-2">
               {(documents as any[]).map((doc) => {
                 const status = getExpiryStatus(doc.expiry_date);
+                const expiry = doc.expiry_date ? parseISO(doc.expiry_date) : null;
+                const expiryValid = !!expiry && !Number.isNaN(expiry.getTime());
                 return (
                   <Card key={doc.id}>
                     <CardContent className="flex items-center justify-between p-3">
                       <div className="flex items-center gap-3">
                         <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${status.bg}`}>
-                          {differenceInDays(parseISO(doc.expiry_date), new Date()) < 0 ? (
+                          {expiryValid && differenceInDays(expiry!, new Date()) < 0 ? (
                             <AlertTriangle className="h-4 w-4 text-destructive" />
                           ) : (
                             <FileText className={`h-4 w-4 ${status.color}`} />
@@ -356,7 +370,7 @@ export default function CarChecksPage() {
                         <div>
                           <p className="text-sm font-medium">{doc.document_name}</p>
                           <p className="text-xs text-muted-foreground">
-                            Expires: {format(parseISO(doc.expiry_date), "dd MMM yyyy")}
+                            Expires: {expiryValid ? format(expiry!, "dd MMM yyyy") : "—"}
                             <span className={`ml-2 font-semibold ${status.color}`}>• {status.label}</span>
                           </p>
                         </div>
