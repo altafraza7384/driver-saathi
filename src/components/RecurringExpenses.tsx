@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { db } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
-import { formatINR } from "@/lib/currency";
+import { formatINR, toAmount } from "@/lib/currency";
+import { friendlyErrorMessage } from "@/lib/errors";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -97,7 +98,7 @@ export default function RecurringExpenses() {
     setEditing(it);
     setName(it.name);
     setCategory(it.category);
-    setAmount(String(it.amount));
+    setAmount(String(toAmount(it.amount)));
     setDueDay(String(it.due_day));
     setNote(it.note || "");
     setShowAdd(true);
@@ -108,11 +109,18 @@ export default function RecurringExpenses() {
     if (!user) return;
     setSaving(true);
 
+    const amt = parseFloat(amount);
+    if (!Number.isFinite(amt) || amt < 0) {
+      toast({ title: "Error", description: "Please enter a valid amount.", variant: "destructive" });
+      setSaving(false);
+      return;
+    }
+
     const payload = {
       user_id: user.id,
       name,
       category,
-      amount: parseFloat(amount),
+      amount: amt,
       due_day: Math.min(31, Math.max(1, parseInt(dueDay) || 1)),
       notify_at: nextNotifyDate(parseInt(dueDay) || 1),
       note: note || null,
@@ -123,7 +131,7 @@ export default function RecurringExpenses() {
       : await db.from("recurring_expenses").insert(payload);
 
     if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Error", description: friendlyErrorMessage(error), variant: "destructive" });
     } else {
       toast({ title: editing ? "Expense updated!" : "Expense added!" });
       setShowAdd(false);
@@ -134,39 +142,56 @@ export default function RecurringExpenses() {
   };
 
   const handleDelete = async (id: string) => {
-    await db.from("recurring_expenses").delete().eq("id", id);
+    const { error } = await db.from("recurring_expenses").delete().eq("id", id);
+    if (error) {
+      toast({ title: "Error", description: friendlyErrorMessage(error), variant: "destructive" });
+      return;
+    }
     toast({ title: "Expense removed" });
     fetchItems();
   };
 
   const handleMarkPaid = async (it: RecurringExpense) => {
     if (!user) return;
-    await db.from("recurring_expense_payments").insert({
+    const paidAmount = toAmount(it.amount);
+    const { error: paymentError } = await db.from("recurring_expense_payments").insert({
       user_id: user.id,
       expense_id: it.id,
-      amount: it.amount,
+      amount: paidAmount,
     });
+    if (paymentError) {
+      toast({ title: "Error", description: friendlyErrorMessage(paymentError), variant: "destructive" });
+      return;
+    }
     // also create a regular transaction record so it shows in finance
-    await db.from("transactions").insert({
+    const { error: txError } = await db.from("transactions").insert({
       user_id: user.id,
       type: "expense",
       category: it.category,
-      amount: it.amount,
+      amount: paidAmount,
       description: it.name,
     });
-    await db
+    if (txError) {
+      toast({ title: "Error", description: friendlyErrorMessage(txError), variant: "destructive" });
+      return;
+    }
+    const { error: updateError } = await db
       .from("recurring_expenses")
       .update({ last_paid_date: new Date().toISOString().slice(0, 10) })
       .eq("id", it.id);
+    if (updateError) {
+      toast({ title: "Error", description: friendlyErrorMessage(updateError), variant: "destructive" });
+      return;
+    }
     // The payment also created a transaction: refresh Home's summary.
     queryClient.invalidateQueries({ queryKey: ["transactions_today"] });
-    toast({ title: `✅ Paid ${formatINR(it.amount)}` });
+    toast({ title: `✅ Paid ${formatINR(paidAmount)}` });
     fetchItems();
   };
 
   const totalMonthly = items
     .filter((i) => i.is_active)
-    .reduce((s, i) => s + Number(i.amount), 0);
+    .reduce((s, i) => s + toAmount(i.amount), 0);
 
   return (
     <div className="space-y-3">
@@ -302,7 +327,7 @@ export default function RecurringExpenses() {
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-base font-bold">{formatINR(Number(it.amount))}</span>
+                    <span className="text-base font-bold">{formatINR(toAmount(it.amount))}</span>
                     {it.last_paid_date && (
                       <span className="text-[10px] text-muted-foreground">
                         Last: {new Date(it.last_paid_date).toLocaleDateString("en-IN")}

@@ -152,8 +152,13 @@ export function NotificationBell() {
         return;
       }
     }
-    // Fallback: day-of-month match
-    const startDay = parseISO(debt.start_date).getDate();
+    // Fallback: day-of-month match. Debts written before start_date was
+    // set at creation may not have one — parseISO on a missing/invalid
+    // value yields an Invalid Date (NaN day), which must not match.
+    if (!debt.start_date) return;
+    const startDate = parseISO(debt.start_date);
+    if (Number.isNaN(startDate.getTime())) return;
+    const startDay = startDate.getDate();
     const today = now.getDate();
     const tomorrow = addDays(now, 1).getDate();
     if (startDay === today || startDay === tomorrow) {
