@@ -492,7 +492,7 @@ async function signInWithGoogleWeb() {
 
 /* ------------------------------ query builder ------------------------------ */
 
-const TOP_LEVEL_TABLES = new Set(["marketplace_posts", "marketplace_categories", "subscription_plans", "roles", "sos_requests", "sos_request_details", "mechanics", "users", "offers", "config"]);
+const TOP_LEVEL_TABLES = new Set(["marketplace_posts", "marketplace_categories", "subscription_plans", "roles", "sos_requests", "sos_request_details", "mechanics", "users", "offers", "config", "insurance_leads"]);
 
 type Filter = { col: string; op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte"; val: unknown };
 type Embed = { key: string; fields: string[] };
