@@ -49,6 +49,19 @@ billing is pending on Google's side), so they currently fail gracefully.
   partner's actual name + licence no., and update the Privacy Policy to
   name the partner and the shared fields. Phase 2 (after Blaze) automates
   forwarding via a Cloud Function webhook; Phase 1 forwarding is manual.
+  Announcements (2026-10-22, user-approved): admin page
+  `/admin/announcements` (English only) creates `announcements` (title,
+  message, type news|offer, audience all|non_subscribers, is_active,
+  expires_at); signed-in users read, only admins write. Home shows the
+  banner (X hides it per user) + a once-per-announcement popup dialog
+  (Close X/Close button; offer popups link to /more plans). Non-subscriber
+  = users/{uid}.subscription_plan_id empty; audience filtering is
+  client-side and NOT a security boundary (content is public to signed-in
+  users by design). Closed-app native push: `sendAnnouncementPush` in
+  firebase/functions (onCreate, active-only, FCM via Admin SDK, audience
+  filter, dead-token cleanup) is STAGED ONLY — it deploys only after
+  Blaze, because Functions cannot deploy on Spark. Never put an FCM
+  server key in client code to work around this.
 
 ## Rules
 
@@ -138,7 +151,8 @@ billing is pending on Google's side), so they currently fail gracefully.
   push_subscriptions, chat_messages, recurring_expenses,
   recurring_expense_payments). Top-level collections: marketplace_posts,
   marketplace_categories, subscription_plans, offers, config, roles,
-  sos_requests, sos_request_details, mechanics, insurance_leads.
+  sos_requests, sos_request_details, mechanics, insurance_leads,
+  announcements.
 - Car SOS privacy model: `sos_requests` is public but carries ONLY approx
   coords (~1.1 km rounding) + geohash — no phone, no exact location.
   `sos_request_details` holds the phone + exact coords, readable only by the
