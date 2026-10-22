@@ -49,6 +49,17 @@ billing is pending on Google's side), so they currently fail gracefully.
   partner's actual name + licence no., and update the Privacy Policy to
   name the partner and the shared fields. Phase 2 (after Blaze) automates
   forwarding via a Cloud Function webhook; Phase 1 forwarding is manual.
+  Play pipeline (2026-10-22, user-approved, Actions unparked):
+  `.github/workflows/android-play-release.yml` builds a signed AAB from
+  main on app-code pushes (and on manual dispatch) and uploads it to Play
+  (default track internal; production only via manual dispatch or by
+  promoting an Internal release in Play Console). android/ is generated
+  in the runner, never committed; versionCode = GitHub run number.
+  Secrets are owner-added only (keystore + Play service account +
+  google-services.json, see docs/PLAY_PIPELINE.md) — never in code, chat
+  or logs. The first Play listing + review cannot be automated and must
+  be done in Play Console first. Web changes still go live via Lovable
+  publish, not via this workflow.
   Announcements (2026-10-22, user-approved): admin page
   `/admin/announcements` (English only) creates `announcements` (title,
   message, type news|offer, audience all|non_subscribers, is_active,
