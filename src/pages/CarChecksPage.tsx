@@ -411,6 +411,21 @@ export default function CarChecksPage() {
         <>
           <h1 className="text-2xl font-bold">{t("market.title")}</h1>
 
+          {/* Insurance lead card — NOT a marketplace post: tapping it opens
+              the private lead form. Driver Saathi does not sell insurance;
+              the licensed partner handles quotes and sales. */}
+          <Card className="cursor-pointer hover:bg-accent/40" onClick={() => navigate("/insurance")}>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Shield className="h-5 w-5" /></div>
+                <div className="min-w-0">
+                  <p className="font-bold text-sm">{t("insurance.cardTitle")}</p>
+                  <p className="text-xs text-muted-foreground">{t("insurance.cardDesc")}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Category pills */}
           <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
             <button
