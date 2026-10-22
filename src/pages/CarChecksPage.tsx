@@ -111,7 +111,7 @@ export default function CarChecksPage() {
       setOpen(false);
       setForm({ check_type: "", description: "", odometer_reading: "", cost: "", check_date: format(new Date(), "yyyy-MM-dd"), next_due_date: "", notify_date: "", notify_time: "" });
       setCustomType(""); setShowCustomType(false);
-      toast.success("Car check added!");
+      toast.success(t("car.checkAdded"));
     },
     onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
@@ -148,7 +148,7 @@ export default function CarChecksPage() {
       queryClient.invalidateQueries({ queryKey: ["notifications_car_documents"] });
       setDocOpen(false);
       setDocForm({ document_name: "", expiry_date: "", notify_date: "", notify_time: "" });
-      toast.success("Document added!");
+      toast.success(t("car.documentAdded"));
     },
     onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
@@ -172,7 +172,7 @@ export default function CarChecksPage() {
       queryClient.invalidateQueries({ queryKey: ["notifications_car_documents"] });
       setEditDoc(null);
       setDocForm({ document_name: "", expiry_date: "", notify_date: "", notify_time: "" });
-      toast.success("Document updated!");
+      toast.success(t("car.documentUpdated"));
     },
     onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
@@ -185,7 +185,7 @@ export default function CarChecksPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["car_documents"] });
       queryClient.invalidateQueries({ queryKey: ["notifications_car_documents"] });
-      toast.success("Document deleted");
+      toast.success(t("car.documentDeleted"));
     },
     onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
@@ -229,19 +229,19 @@ export default function CarChecksPage() {
             className={`flex-1 rounded-md py-2 text-xs font-medium transition-all ${activeTab === "checks" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}
             onClick={() => setActiveTab("checks")}
           >
-            <Wrench className="h-3.5 w-3.5 inline mr-1" /> Car Checks
+            <Wrench className="h-3.5 w-3.5 inline mr-1" /> {t("more.carChecks")}
           </button>
           <button
             className={`flex-1 rounded-md py-2 text-xs font-medium transition-all ${activeTab === "documents" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}
             onClick={() => setActiveTab("documents")}
           >
-            <FileText className="h-3.5 w-3.5 inline mr-1" /> Documents
+            <FileText className="h-3.5 w-3.5 inline mr-1" /> {t("car.documents")}
           </button>
           <button
             className={`flex-1 rounded-md py-2 text-xs font-medium transition-all ${activeTab === "marketplace" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}
             onClick={() => setActiveTab("marketplace")}
           >
-            <Store className="h-3.5 w-3.5 inline mr-1" /> Marketplace
+            <Store className="h-3.5 w-3.5 inline mr-1" /> {t("market.title")}
           </button>
         </div>
       </div>
@@ -253,40 +253,40 @@ export default function CarChecksPage() {
             <h1 className="text-2xl font-bold">{t("car.title")}</h1>
             <Dialog open={open} onOpenChange={setOpen}>
               <DialogTrigger asChild>
-                <Button size="sm" className="gap-1"><Plus className="h-4 w-4" /> Add</Button>
+                <Button size="sm" className="gap-1"><Plus className="h-4 w-4" /> {t("common.add")}</Button>
               </DialogTrigger>
               <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-1rem)] overflow-y-auto overscroll-contain">
                 <DialogHeader><DialogTitle>{t("car.addCheck")}</DialogTitle></DialogHeader>
                 <div className="space-y-3">
                   <div>
-                    <Label>Type</Label>
+                    <Label>{t("car.type")}</Label>
                     <Select value={showCustomType ? "__custom__" : form.check_type} onValueChange={(v) => {
                       if (v === "__custom__") { setShowCustomType(true); setForm({ ...form, check_type: "" }); }
                       else { setShowCustomType(false); setCustomType(""); setForm({ ...form, check_type: v }); }
                     }}>
-                      <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
+                      <SelectTrigger><SelectValue placeholder={t("form.selectType")} /></SelectTrigger>
                       <SelectContent>
                         {DEFAULT_CHECK_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                        <SelectItem value="__custom__">+ Custom</SelectItem>
+                        <SelectItem value="__custom__">{t("car.customType")}</SelectItem>
                       </SelectContent>
                     </Select>
-                    {showCustomType && <Input className="mt-1" placeholder="Enter custom type" value={customType} onChange={(e) => { setCustomType(e.target.value); setForm({ ...form, check_type: e.target.value }); }} />}
+                    {showCustomType && <Input className="mt-1" placeholder={t("car.enterCustomType")} value={customType} onChange={(e) => { setCustomType(e.target.value); setForm({ ...form, check_type: e.target.value }); }} />}
                   </div>
-                  <div><Label>Description</Label><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
+                  <div><Label>{t("common.description")}</Label><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
                   <div className="grid grid-cols-2 gap-3">
-                    <div><Label>Odometer</Label><Input type="number" value={form.odometer_reading} onChange={(e) => setForm({ ...form, odometer_reading: e.target.value })} /></div>
-                    <div><Label>Cost (₹)</Label><Input type="number" value={form.cost} onChange={(e) => setForm({ ...form, cost: e.target.value })} /></div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div><Label htmlFor="car-form-check_date-1">Date</Label><DatePicker id="car-form-check_date-1" label="Date" value={form.check_date} onChange={(value) => setForm((prev) => ({ ...prev, check_date: value }))} required /></div>
-                    <div><Label htmlFor="car-form-next_due_date-1">Next Due</Label><DatePicker id="car-form-next_due_date-1" label="Next Due" value={form.next_due_date} onChange={(value) => setForm((prev) => ({ ...prev, next_due_date: value }))} /></div>
+                    <div><Label>{t("car.odometer")}</Label><Input type="number" value={form.odometer_reading} onChange={(e) => setForm({ ...form, odometer_reading: e.target.value })} /></div>
+                    <div><Label>{t("car.cost")}</Label><Input type="number" value={form.cost} onChange={(e) => setForm({ ...form, cost: e.target.value })} /></div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    <div><Label htmlFor="car-form-notify_date-1">Notify Date</Label><DatePicker id="car-form-notify_date-1" label="Notify Date" value={form.notify_date} onChange={(value) => setForm((prev) => ({ ...prev, notify_date: value }))} /></div>
-                    <div><Label htmlFor="car-form-notify_time-1">Notify Time</Label><TimePicker id="car-form-notify_time-1" label="Notify Time" value={form.notify_time} onChange={(value) => setForm((prev) => ({ ...prev, notify_time: value }))} /></div>
+                    <div><Label htmlFor="car-form-check_date-1">{t("common.date")}</Label><DatePicker id="car-form-check_date-1" label={t("common.date")} value={form.check_date} onChange={(value) => setForm((prev) => ({ ...prev, check_date: value }))} required /></div>
+                    <div><Label htmlFor="car-form-next_due_date-1">{t("car.nextDue")}</Label><DatePicker id="car-form-next_due_date-1" label={t("car.nextDue")} value={form.next_due_date} onChange={(value) => setForm((prev) => ({ ...prev, next_due_date: value }))} /></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><Label htmlFor="car-form-notify_date-1">{t("reminder.notifyDate")}</Label><DatePicker id="car-form-notify_date-1" label={t("reminder.notifyDate")} value={form.notify_date} onChange={(value) => setForm((prev) => ({ ...prev, notify_date: value }))} /></div>
+                    <div><Label htmlFor="car-form-notify_time-1">{t("reminder.notifyTime")}</Label><TimePicker id="car-form-notify_time-1" label={t("reminder.notifyTime")} value={form.notify_time} onChange={(value) => setForm((prev) => ({ ...prev, notify_time: value }))} /></div>
                   </div>
                   <Button className="w-full" onClick={() => addMutation.mutate()} disabled={!form.check_type.trim() || !parseDateValue(form.check_date) || addMutation.isPending}>
-                    {addMutation.isPending ? "Saving..." : "Save"}
+                    {addMutation.isPending ? t("common.saving") : t("common.save")}
                   </Button>
                 </div>
               </DialogContent>
@@ -324,22 +324,22 @@ export default function CarChecksPage() {
       {activeTab === "documents" && (
         <>
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold">Vehicle Documents</h1>
+            <h1 className="text-2xl font-bold">{t("car.documents")}</h1>
             <Dialog open={docOpen} onOpenChange={setDocOpen}>
               <DialogTrigger asChild>
-                <Button size="sm" className="gap-1"><Plus className="h-4 w-4" /> Add</Button>
+                <Button size="sm" className="gap-1"><Plus className="h-4 w-4" /> {t("common.add")}</Button>
               </DialogTrigger>
               <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-1rem)] overflow-y-auto overscroll-contain">
-                <DialogHeader><DialogTitle>Add Document</DialogTitle></DialogHeader>
+                <DialogHeader><DialogTitle>{t("car.addDocument")}</DialogTitle></DialogHeader>
                 <div className="space-y-3">
-                  <div><Label>Document Name</Label><Input placeholder="e.g. PUC Certificate, Insurance" value={docForm.document_name} onChange={(e) => setDocForm({ ...docForm, document_name: e.target.value })} /></div>
-                  <div><Label htmlFor="car-docForm-expiry_date-1">Expiry Date</Label><DatePicker id="car-docForm-expiry_date-1" label="Expiry Date" value={docForm.expiry_date} onChange={(value) => setDocForm((prev) => ({ ...prev, expiry_date: value }))} required /></div>
+                  <div><Label>{t("car.documentName")}</Label><Input placeholder="e.g. PUC Certificate, Insurance" value={docForm.document_name} onChange={(e) => setDocForm({ ...docForm, document_name: e.target.value })} /></div>
+                  <div><Label htmlFor="car-docForm-expiry_date-1">{t("car.expiryDate")}</Label><DatePicker id="car-docForm-expiry_date-1" label={t("car.expiryDate")} value={docForm.expiry_date} onChange={(value) => setDocForm((prev) => ({ ...prev, expiry_date: value }))} required /></div>
                   <div className="grid grid-cols-2 gap-3">
-                    <div><Label htmlFor="car-docForm-notify_date-1">Notify Date</Label><DatePicker id="car-docForm-notify_date-1" label="Notify Date" value={docForm.notify_date} onChange={(value) => setDocForm((prev) => ({ ...prev, notify_date: value }))} /></div>
-                    <div><Label htmlFor="car-docForm-notify_time-1">Notify Time</Label><TimePicker id="car-docForm-notify_time-1" label="Notify Time" value={docForm.notify_time} onChange={(value) => setDocForm((prev) => ({ ...prev, notify_time: value }))} /></div>
+                    <div><Label htmlFor="car-docForm-notify_date-1">{t("reminder.notifyDate")}</Label><DatePicker id="car-docForm-notify_date-1" label={t("reminder.notifyDate")} value={docForm.notify_date} onChange={(value) => setDocForm((prev) => ({ ...prev, notify_date: value }))} /></div>
+                    <div><Label htmlFor="car-docForm-notify_time-1">{t("reminder.notifyTime")}</Label><TimePicker id="car-docForm-notify_time-1" label={t("reminder.notifyTime")} value={docForm.notify_time} onChange={(value) => setDocForm((prev) => ({ ...prev, notify_time: value }))} /></div>
                   </div>
                   <Button className="w-full" onClick={() => addDocMutation.mutate()} disabled={!docForm.document_name || !docForm.expiry_date || addDocMutation.isPending}>
-                    {addDocMutation.isPending ? "Saving..." : "Save Document"}
+                    {addDocMutation.isPending ? t("common.saving") : t("car.saveDocument")}
                   </Button>
                 </div>
               </DialogContent>
@@ -349,7 +349,7 @@ export default function CarChecksPage() {
           {docsLoading ? (
             <div className="flex justify-center py-10"><div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>
           ) : documents.length === 0 ? (
-            <Card><CardContent className="p-6 text-center text-muted-foreground">No documents added yet. Track your vehicle documents!</CardContent></Card>
+            <Card><CardContent className="p-6 text-center text-muted-foreground">{t("car.noDocuments")}</CardContent></Card>
           ) : (
             <div className="space-y-2">
               {(documents as any[]).map((doc) => {
@@ -389,16 +389,16 @@ export default function CarChecksPage() {
           {/* Edit Document Dialog */}
           <Dialog open={!!editDoc} onOpenChange={(o) => { if (!o) setEditDoc(null); }}>
             <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-1rem)] overflow-y-auto overscroll-contain">
-              <DialogHeader><DialogTitle>Edit Document</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{t("car.editDocument")}</DialogTitle></DialogHeader>
               <div className="space-y-3">
-                <div><Label>Document Name</Label><Input value={docForm.document_name} onChange={(e) => setDocForm({ ...docForm, document_name: e.target.value })} /></div>
-                <div><Label htmlFor="car-docForm-expiry_date-2">Expiry Date</Label><DatePicker id="car-docForm-expiry_date-2" label="Expiry Date" value={docForm.expiry_date} onChange={(value) => setDocForm((prev) => ({ ...prev, expiry_date: value }))} required /></div>
+                <div><Label>{t("car.documentName")}</Label><Input value={docForm.document_name} onChange={(e) => setDocForm({ ...docForm, document_name: e.target.value })} /></div>
+                <div><Label htmlFor="car-docForm-expiry_date-2">{t("car.expiryDate")}</Label><DatePicker id="car-docForm-expiry_date-2" label={t("car.expiryDate")} value={docForm.expiry_date} onChange={(value) => setDocForm((prev) => ({ ...prev, expiry_date: value }))} required /></div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div><Label htmlFor="car-docForm-notify_date-2">Notify Date</Label><DatePicker id="car-docForm-notify_date-2" label="Notify Date" value={docForm.notify_date} onChange={(value) => setDocForm((prev) => ({ ...prev, notify_date: value }))} /></div>
-                  <div><Label htmlFor="car-docForm-notify_time-2">Notify Time</Label><TimePicker id="car-docForm-notify_time-2" label="Notify Time" value={docForm.notify_time} onChange={(value) => setDocForm((prev) => ({ ...prev, notify_time: value }))} /></div>
+                  <div><Label htmlFor="car-docForm-notify_date-2">{t("reminder.notifyDate")}</Label><DatePicker id="car-docForm-notify_date-2" label={t("reminder.notifyDate")} value={docForm.notify_date} onChange={(value) => setDocForm((prev) => ({ ...prev, notify_date: value }))} /></div>
+                  <div><Label htmlFor="car-docForm-notify_time-2">{t("reminder.notifyTime")}</Label><TimePicker id="car-docForm-notify_time-2" label={t("reminder.notifyTime")} value={docForm.notify_time} onChange={(value) => setDocForm((prev) => ({ ...prev, notify_time: value }))} /></div>
                 </div>
                 <Button className="w-full" onClick={() => updateDocMutation.mutate()} disabled={!docForm.document_name || !docForm.expiry_date || updateDocMutation.isPending}>
-                  {updateDocMutation.isPending ? "Saving..." : "Update Document"}
+                  {updateDocMutation.isPending ? t("common.saving") : t("car.updateDocument")}
                 </Button>
               </div>
             </DialogContent>
@@ -409,7 +409,7 @@ export default function CarChecksPage() {
       {/* ===== MARKETPLACE TAB ===== */}
       {activeTab === "marketplace" && (
         <>
-          <h1 className="text-2xl font-bold">Marketplace</h1>
+          <h1 className="text-2xl font-bold">{t("market.title")}</h1>
 
           {/* Category pills */}
           <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
@@ -417,7 +417,7 @@ export default function CarChecksPage() {
               onClick={() => setSelectedCategory(null)}
               className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-medium transition-all ${!selectedCategory ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
             >
-              All
+              {t("common.all")}
             </button>
             {(categories as any[]).map((cat) => (
               <button
@@ -433,7 +433,7 @@ export default function CarChecksPage() {
 
           {/* Posts */}
           {(posts as any[]).length === 0 ? (
-            <Card><CardContent className="p-6 text-center text-muted-foreground">No listings yet. Check back soon!</CardContent></Card>
+            <Card><CardContent className="p-6 text-center text-muted-foreground">{t("market.noListings")}</CardContent></Card>
           ) : (
             <div className="space-y-3">
               {(posts as any[]).map((post) => (
@@ -463,12 +463,12 @@ export default function CarChecksPage() {
                       <div className="flex gap-2 pt-1">
                         {post.contact_phone && (
                           <a href={`tel:${post.contact_phone}`} className="flex items-center gap-1 text-xs bg-primary/10 text-primary rounded-full px-3 py-1 font-medium">
-                            <Phone className="h-3 w-3" /> Call
+                            <Phone className="h-3 w-3" /> {t("carSos.call")}
                           </a>
                         )}
                         {safeExternalUrl(post.contact_link) && (
                           <a href={safeExternalUrl(post.contact_link)!} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs bg-muted text-foreground rounded-full px-3 py-1 font-medium">
-                            <ExternalLink className="h-3 w-3" /> Visit
+                            <ExternalLink className="h-3 w-3" /> {t("market.visit")}
                           </a>
                         )}
                       </div>
