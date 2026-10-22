@@ -1,5 +1,8 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { getMessaging } from "firebase-admin/messaging";
+import { announcementMatchesAudience, extractFcmToken, chunkTokens } from "./announcements";
 import { defineSecret } from "firebase-functions/params";
 import webpush from "web-push";
 import { db, auth, requireUser, requireAdmin, deleteUserData } from "./shared";
@@ -81,6 +84,72 @@ export const sendNotifications = onSchedule(
       if (ok) await sentRef.update({ sent_at: new Date().toISOString() }); else await sentRef.delete(); // allow retry
     }
   });
+
+// ---------------------------------------------------------------------------
+// Admin announcements -> closed-app native push (STAGED, NOT DEPLOYED).
+// Deploy gate: Cloud Functions cannot deploy on Spark. This trigger does
+// NOTHING live until Blaze billing is active and `firebase deploy --only
+// functions` runs. The in-app banner + popup (AnnouncementBanner) is the
+// live path until then; do not promise closed-app push before that deploy.
+// Behaviour: fires ONCE, on announcement creation, and only when the
+// announcement is active at creation time. Editing an announcement or
+// toggling it active later does NOT re-push (avoids duplicate pushes).
+// Audience: "all" -> every user with a stored FCM token; "non_subscribers"
+// -> only users whose users/{uid} doc has no subscription_plan_id.
+// Tap action: the native client opens data.url — "/more" for offers (the
+// plans card lives on MorePage), "/" for news. Invalid/expired tokens are
+// deleted best-effort so the token list does not rot.
+// NOTE: the existing sendNotifications scheduler deliberately skips
+// fcm:// tokens; this trigger is the native-FCM path it refers to.
+// ---------------------------------------------------------------------------
+export const sendAnnouncementPush = onDocumentCreated(
+  { document: "announcements/{announcementId}", region: REGION },
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+    const a = snap.data() as Record<string, unknown>;
+    if (a.is_active !== true) return;
+    const title = typeof a.title === "string" && a.title ? a.title : "Driver Saathi";
+    const body = typeof a.message === "string" ? a.message : "";
+    const url = a.type === "offer" ? "/more" : "/";
+
+    // Collect (token, subscription doc ref) pairs, filtered by audience.
+    const tokenDocs: Array<{ token: string; ref: { delete: () => Promise<unknown> } }> = [];
+    const usersSnap = await db.collection("users").get();
+    for (const userDoc of usersSnap.docs) {
+      if (!announcementMatchesAudience(a.audience, userDoc.get("subscription_plan_id"))) continue;
+      const subsSnap = await db.collection(`users/${userDoc.id}/push_subscriptions`).get();
+      for (const subDoc of subsSnap.docs) {
+        const token = extractFcmToken(subDoc.get("endpoint"));
+        if (token) tokenDocs.push({ token, ref: subDoc.ref });
+      }
+    }
+    if (tokenDocs.length === 0) return;
+
+    // Dedupe tokens (a user may have several devices); keep the first ref
+    // for each token so invalid-token cleanup deletes the right doc.
+    const byToken = new Map<string, { delete: () => Promise<unknown> }>();
+    for (const t of tokenDocs) if (!byToken.has(t.token)) byToken.set(t.token, t.ref);
+    const messaging = getMessaging();
+    for (const batch of chunkTokens([...byToken.entries()])) {
+      const res = await messaging.sendEach(
+        batch.map(([token]) => ({
+          token,
+          notification: { title, body },
+          data: { url, announcementId: event.params.announcementId, type: typeof a.type === "string" ? a.type : "news" },
+          android: { priority: "high" },
+        }))
+      );
+      // Best-effort cleanup of dead tokens, one doc per failed token.
+      for (let i = 0; i < batch.length; i++) {
+        const r = res.responses[i];
+        if (!r.success && (r.error?.code === "messaging/registration-token-not-registered" || r.error?.code === "messaging/invalid-registration-token")) {
+          await batch[i][1].delete().catch(() => undefined);
+        }
+      }
+    }
+  }
+);
 
 export const cleanupTransactions = onSchedule({ schedule: "0 3 * * *", timeZone: "Asia/Kolkata", region: REGION }, async () => {
   const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
