@@ -30,7 +30,7 @@ export default function AuthPage() {
   const { signInWithPassword, signUpWithPassword, signInWithGoogle } = useAuthActions();
 
   const handleRetry = (attempt: number, maxRetries: number) => {
-    setRetryInfo(`Slow connection detected. Retrying... (${attempt}/${maxRetries})`);
+    setRetryInfo(t("auth.slowRetry", { attempt, maxRetries }));
   };
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
@@ -96,7 +96,7 @@ export default function AuthPage() {
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary">
             <Car className="h-8 w-8 text-primary-foreground" />
           </div>
-          <h1 className="font-heading text-2xl font-bold text-foreground">Driver Helper</h1>
+          <h1 className="font-heading text-2xl font-bold text-foreground">{t("auth.appTitle")}</h1>
           <p className="text-sm text-muted-foreground">{t("auth.subtitle")}</p>
         </div>
 
@@ -165,7 +165,7 @@ export default function AuthPage() {
                   <div className="text-right">
                     <button type="button" onClick={() => navigate("/reset-password")}
                       className="text-sm font-medium text-primary hover:underline">
-                      Forgot password?
+                      {t("auth.forgotPassword")}
                     </button>
                   </div>
                 )}
@@ -183,7 +183,7 @@ export default function AuthPage() {
                 {loading ? (
                   <span className="flex items-center gap-2">
                     <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
-                    {retryInfo ? "Retrying..." : "Connecting..."}
+                    {retryInfo ? t("auth.retrying") : t("auth.connecting")}
                   </span>
                 ) : (
                   isLogin ? t("auth.loginButton") : t("auth.signupButton")
@@ -196,7 +196,7 @@ export default function AuthPage() {
                 <span className="w-full border-t border-border" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-card px-2 text-muted-foreground">or</span>
+                <span className="bg-card px-2 text-muted-foreground">{t("common.or")}</span>
               </div>
             </div>
 
@@ -225,7 +225,7 @@ export default function AuthPage() {
                   fill="#EA4335"
                 />
               </svg>
-              Continue with Google
+              {t("auth.continueGoogle")}
             </Button>
 
             <div className="mt-4 text-center text-sm">
