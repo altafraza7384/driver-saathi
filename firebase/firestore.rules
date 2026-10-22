@@ -67,6 +67,26 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // Insurance leads (Phase 1, 2026-10-22): PRIVATE by design. A user
+    // creates only their own lead, and only with consent == true; a user
+    // reads only their own leads; ONLY an admin may update status /
+    // commission (a user must never mark their own lead converted or set
+    // their own commission). Leads are never readable by other users and
+    // never appear in a public marketplace post. Partner forwarding is
+    // manual in Phase 1; an automated webhook comes after Blaze.
+    match /insurance_leads/{id} {
+      allow create: if signedIn()
+        && request.resource.data.user_id == request.auth.uid
+        && request.resource.data.consent == true
+        && request.resource.data.status == 'new'
+        && !request.resource.data.keys().hasAny(['commission_amount', 'commission_note']);
+      allow read: if signedIn()
+        && (resource.data.user_id == request.auth.uid || isAdmin());
+      allow update: if isAdmin()
+        && !request.resource.data.keys().hasAny(['user_id', 'phone', 'consent']);
+      allow delete: if false;
+    }
+
     match /marketplace_categories/{id} { allow read: if signedIn(); allow write: if isAdmin(); }
     match /marketplace_posts/{id} {
       allow read: if signedIn();
