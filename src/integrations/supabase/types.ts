@@ -426,6 +426,60 @@ export type Database = {
           },
         ]
       }
+      insurance_leads: {
+        Row: {
+          city: string
+          commission_amount: number | null
+          commission_note: string | null
+          consent: boolean
+          created_at: string
+          id: string
+          name: string
+          phone: string
+          policy_expiry: string | null
+          status: string
+          updated_at: string
+          user_id: string
+          vehicle_model: string
+          vehicle_number: string | null
+          vehicle_year: string | null
+        }
+        Insert: {
+          city: string
+          commission_amount?: number | null
+          commission_note?: string | null
+          consent: boolean
+          created_at?: string
+          id?: string
+          name: string
+          phone: string
+          policy_expiry?: string | null
+          status: string
+          updated_at?: string
+          user_id: string
+          vehicle_model: string
+          vehicle_number?: string | null
+          vehicle_year?: string | null
+        }
+        Update: {
+          city?: string
+          commission_amount?: number | null
+          commission_note?: string | null
+          consent?: boolean
+          created_at?: string
+          id?: string
+          name?: string
+          phone?: string
+          policy_expiry?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+          vehicle_model?: string
+          vehicle_number?: string | null
+          vehicle_year?: string | null
+        }
+        Relationships: []
+      }
       sos_requests: {
         Row: {
           approxLat: number | null
