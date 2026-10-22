@@ -2,9 +2,10 @@ import { lazy, Suspense, useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { I18nProvider } from "@/lib/i18n";
+import { db } from "@/lib/backend";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { ThemeProvider } from "next-themes";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -35,6 +36,9 @@ const AdminPostsPage = lazy(() => import("./pages/admin/AdminPostsPage"));
 const AdminCategoriesPage = lazy(() => import("./pages/admin/AdminCategoriesPage"));
 const AdminUsersPage = lazy(() => import("./pages/admin/AdminUsersPage"));
 const AdminPlansPage = lazy(() => import("./pages/admin/AdminPlansPage"));
+const AdminOffersPage = lazy(() => import("./pages/admin/AdminOffersPage"));
+const AdminMechanicsPage = lazy(() => import("./pages/admin/AdminMechanicsPage"));
+const AdminSosPage = lazy(() => import("./pages/admin/AdminSosPage"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -55,8 +59,44 @@ function RouteLoader() {
   );
 }
 
+function BlockedScreen() {
+  const { signOut } = useAuth();
+  const navigate = useNavigate();
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+      <div className="max-w-sm text-center space-y-4">
+        <h1 className="text-2xl font-bold text-destructive">{"Account Blocked"}</h1>
+        <p className="text-sm text-muted-foreground">{"Your account has been blocked by the admin. Please contact support if you think this is a mistake."}</p>
+        <button
+          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+          onClick={() => { signOut(); navigate("/auth"); }}
+        >
+          {"Log out"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ProtectedRoutes() {
   const { user, loading } = useAuth();
+
+  // Block gate: a profile flagged is_blocked by an admin cannot use the app.
+  // Query errors or a missing profile are treated as NOT blocked, so a read
+  // failure can never lock a legitimate user out.
+  const { data: blockedProfile } = useQuery({
+    queryKey: ["blocked_gate", user?.id],
+    queryFn: async () => {
+      try {
+        const { data, error } = await db.from("profiles").select("is_blocked").eq("user_id", user!.id).single();
+        if (error) return null;
+        return data as { is_blocked?: boolean } | null;
+      } catch {
+        return null;
+      }
+    },
+    enabled: !!user,
+  });
 
   useEffect(() => {
     const handler = (e: PromiseRejectionEvent) => {
@@ -71,6 +111,10 @@ function ProtectedRoutes() {
 
   if (!user) {
     return <Navigate to="/auth" replace />;
+  }
+
+  if (blockedProfile?.is_blocked === true) {
+    return <BlockedScreen />;
   }
 
   return <AppLayout />;
@@ -115,6 +159,9 @@ const App = () => (
                       <Route path="/admin/categories" element={<AdminCategoriesPage />} />
                       <Route path="/admin/users" element={<AdminUsersPage />} />
                       <Route path="/admin/plans" element={<AdminPlansPage />} />
+                      <Route path="/admin/offers" element={<AdminOffersPage />} />
+                      <Route path="/admin/mechanics" element={<AdminMechanicsPage />} />
+                      <Route path="/admin/sos" element={<AdminSosPage />} />
                     </Route>
                   </Route>
                   <Route path="*" element={<NotFound />} />
