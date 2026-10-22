@@ -887,6 +887,111 @@ export type Database = {
         }
         Relationships: []
       }
+      users: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          email: string | null
+          full_name: string | null
+          id: string
+          is_blocked: boolean
+          license_number: string | null
+          phone: string | null
+          preferred_language: string | null
+          subscription_plan_id: string | null
+          updated_at: string
+          user_id: string
+          vehicle_number: string | null
+          vehicle_type: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          is_blocked?: boolean
+          license_number?: string | null
+          phone?: string | null
+          preferred_language?: string | null
+          subscription_plan_id?: string | null
+          updated_at?: string
+          user_id?: string
+          vehicle_number?: string | null
+          vehicle_type?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          is_blocked?: boolean
+          license_number?: string | null
+          phone?: string | null
+          preferred_language?: string | null
+          subscription_plan_id?: string | null
+          updated_at?: string
+          user_id?: string
+          vehicle_number?: string | null
+          vehicle_type?: string | null
+        }
+        Relationships: []
+      }
+      offers: {
+        Row: {
+          created_at: string
+          description: string
+          discount_percent: number
+          id: string
+          is_active: boolean
+          plan_id: string | null
+          sort_order: number
+          title: string
+          updated_at: string
+          valid_until: string | null
+        }
+        Insert: {
+          created_at?: string
+          description?: string
+          discount_percent?: number
+          id?: string
+          is_active?: boolean
+          plan_id?: string | null
+          sort_order?: number
+          title: string
+          updated_at?: string
+          valid_until?: string | null
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          discount_percent?: number
+          id?: string
+          is_active?: boolean
+          plan_id?: string | null
+          sort_order?: number
+          title?: string
+          updated_at?: string
+          valid_until?: string | null
+        }
+        Relationships: []
+      }
+      config: {
+        Row: {
+          id: string
+          mechanic_strike_limit: number
+        }
+        Insert: {
+          id?: string
+          mechanic_strike_limit?: number
+        }
+        Update: {
+          id?: string
+          mechanic_strike_limit?: number
+        }
+        Relationships: []
+      }
       transactions: {
         Row: {
           amount: number
