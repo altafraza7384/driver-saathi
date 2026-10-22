@@ -66,7 +66,7 @@ export default function AddTransactionPage() {
   return (
     <div className="p-4 pt-6">
       <button onClick={() => navigate(-1)} className="mb-4 flex items-center gap-1 text-sm text-muted-foreground">
-        <ArrowLeft className="h-4 w-4" /> Back
+        <ArrowLeft className="h-4 w-4" /> {t("common.back")}
       </button>
 
       <Card>
@@ -94,7 +94,7 @@ export default function AddTransactionPage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label>Amount (₹)</Label>
+              <Label>{t("common.amount")} (₹)</Label>
               <Input
                 type="number"
                 placeholder="0"
@@ -108,9 +108,9 @@ export default function AddTransactionPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Category</Label>
+              <Label>{t("common.category")}</Label>
               <Select value={category} onValueChange={setCategory} required>
-                <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder={t("form.selectCategory")} /></SelectTrigger>
                 <SelectContent>
                   {categories.map((c) => (
                     <SelectItem key={c} value={c}>{c}</SelectItem>
@@ -121,9 +121,9 @@ export default function AddTransactionPage() {
 
             {type === "income" && (
               <div className="space-y-2">
-                <Label>Platform</Label>
+                <Label>{t("tx.platform")}</Label>
                 <Select value={platform} onValueChange={setPlatform}>
-                  <SelectTrigger><SelectValue placeholder="Select platform (optional)" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder={t("form.selectPlatform")} /></SelectTrigger>
                   <SelectContent>
                     {PLATFORMS.map((p) => (
                       <SelectItem key={p} value={p}>{p}</SelectItem>
@@ -134,14 +134,14 @@ export default function AddTransactionPage() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="tx-date">Date</Label>
-              <DatePicker id="tx-date" label="Date" value={date} onChange={setDate} required />
+              <Label htmlFor="tx-date">{t("common.date")}</Label>
+              <DatePicker id="tx-date" label={t("common.date")} value={date} onChange={setDate} required />
             </div>
 
             <div className="space-y-2">
-              <Label>Description (optional)</Label>
+              <Label>{t("common.description")} ({t("common.optional")})</Label>
               <Input
-                placeholder="Add a note..."
+                placeholder={t("tx.addNote")}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />
