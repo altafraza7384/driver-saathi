@@ -52,6 +52,62 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Car SOS — public request doc carries NO phone number and NO exact
+    // location (approx coords + geohash only). Any signed-in user may read
+    // pending requests (mechanics list them); names/phones/exact location
+    // live in sos_request_details, readable only by the driver and the
+    // assigned mechanic.
+    match /sos_requests/{requestId} {
+      allow create: if signedIn()
+        && request.resource.data.driverId == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.category in ['tyre', 'mechanic', 'battery', 'other'];
+      allow read: if signedIn()
+        && (resource.data.driverId == request.auth.uid
+          || resource.data.status == 'pending');
+      allow update: if signedIn() && (
+        // Driver: cancel or complete their own request.
+        (resource.data.driverId == request.auth.uid
+          && request.resource.data.driverId == request.auth.uid
+          && request.resource.data.status in ['cancelled', 'completed'])
+        // Assigned mechanic: accept a pending request.
+        || (resource.data.status == 'pending'
+          && request.resource.data.status == 'accepted'
+          && request.resource.data.mechanicId == request.auth.uid
+          && request.resource.data.driverId == resource.data.driverId)
+        // Assigned mechanic: move the job forward.
+        || (resource.data.mechanicId == request.auth.uid
+          && request.resource.data.mechanicId == request.auth.uid
+          && request.resource.data.driverId == resource.data.driverId
+          && request.resource.data.status in ['onway', 'completed'])
+      );
+      allow delete: if false;
+    }
+
+    match /sos_request_details/{requestId} {
+      allow create: if signedIn()
+        && request.resource.data.driverId == request.auth.uid
+        && request.resource.data.requestId == requestId;
+      // Driver reads own details; a mechanic reads them only after being
+      // assigned (the mechanic app claims the doc right after accepting).
+      allow read: if signedIn()
+        && (resource.data.driverId == request.auth.uid
+          || resource.data.mechanicId == request.auth.uid);
+      allow update: if signedIn()
+        && get(/databases/$(database)/documents/sos_requests/$(requestId)).data.mechanicId == request.auth.uid
+        && request.resource.data.mechanicId == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // Mechanic profiles (Mechanic Saathi app). A mechanic owns exactly one
+    // doc, keyed by their Firebase Auth uid.
+    match /mechanics/{mechanicId} {
+      allow create: if signedIn() && mechanicId == request.auth.uid;
+      allow read: if signedIn() && mechanicId == request.auth.uid;
+      allow update: if signedIn() && mechanicId == request.auth.uid;
+      allow delete: if false;
+    }
+
     match /{document=**} { allow read, write: if false; }
   }
 }
