@@ -52,8 +52,8 @@ export default function SettingsPage() {
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
-    if (!file.type.startsWith("image/")) { toast.error("Please select an image file"); return; }
-    if (file.size > 2 * 1024 * 1024) { toast.error("Image must be less than 2MB"); return; }
+    if (!file.type.startsWith("image/")) { toast.error(t("settings.imageFile")); return; }
+    if (file.size > 2 * 1024 * 1024) { toast.error(t("settings.imageSize")); return; }
     setUploading(true);
     try {
       const ext = file.name.split(".").pop();
@@ -90,7 +90,7 @@ export default function SettingsPage() {
 
       if (response.error) throw new Error(response.error.message || "Failed to delete account");
       
-      toast.success("Account deleted successfully");
+      toast.success(t("settings.accountDeleted"));
       await signOut();
       navigate("/auth");
     } catch (err: any) {
@@ -186,13 +186,13 @@ export default function SettingsPage() {
         <CardContent className="p-4">
           <div className="flex items-center gap-2 mb-2">
             <Trash2 className="h-4 w-4 text-destructive" />
-            <span className="font-semibold text-destructive">Delete Account</span>
+            <span className="font-semibold text-destructive">{t("settings.deleteAccount")}</span>
           </div>
           <p className="text-muted-foreground text-sm mb-3">
-            Permanently delete your account and all associated data. This action cannot be undone.
+            {t("settings.deleteDesc")}
           </p>
           <Button variant="outline" className="w-full border-destructive/50 text-destructive hover:bg-destructive hover:text-destructive-foreground" onClick={() => setDeleteOpen(true)}>
-            <Trash2 className="h-4 w-4 mr-2" /> Delete My Account
+            <Trash2 className="h-4 w-4 mr-2" /> {t("settings.deleteMyAccount")}
           </Button>
         </CardContent>
       </Card>
@@ -201,23 +201,23 @@ export default function SettingsPage() {
       <AlertDialog open={deleteOpen} onOpenChange={(open) => { setDeleteOpen(open); if (!open) setDeleteConfirm(""); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogTitle>{t("settings.deleteSure")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete your account and all your data including transactions, notes, goals, debts, and more. This action cannot be undone.
+              {t("settings.deleteWarning")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="py-2">
-            <Label className="text-sm">Type <strong>DELETE</strong> to confirm:</Label>
+            <Label className="text-sm">{t("settings.typeDelete")} <strong>DELETE</strong></Label>
             <Input value={deleteConfirm} onChange={(e) => setDeleteConfirm(e.target.value)} placeholder="DELETE" className="mt-1" />
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               disabled={deleteConfirm !== "DELETE" || deleting}
               onClick={(e) => { e.preventDefault(); handleDeleteAccount(); }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deleting ? "Deleting..." : "Delete Forever"}
+              {deleting ? t("settings.deleting") : t("settings.deleteForever")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
