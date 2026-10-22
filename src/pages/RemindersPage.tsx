@@ -21,6 +21,17 @@ export default function RemindersPage() {
   const { user } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
+
+  // Preset categories are stored as English keys; show the translated
+  // label. Custom categories typed by the user stay as-is.
+  const categoryLabel = (c: string) =>
+    c === "insurance" ? t("notif.catInsurance")
+    : c === "puc" ? t("notif.catPuc")
+    : c === "license" ? t("notif.catLicense")
+    : c === "emi" ? t("notif.catEmi")
+    : c === "maintenance" ? t("notif.catMaintenance")
+    : c === "general" ? t("notif.catGeneral")
+    : c;
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ title: "", description: "", reminder_date: "", category: "general", notify_date: "", notify_time: "" });
@@ -79,11 +90,11 @@ export default function RemindersPage() {
                   }}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {DEFAULT_CATEGORIES.map((c) => <SelectItem key={c} value={c} className="capitalize">{c}</SelectItem>)}
+                      {DEFAULT_CATEGORIES.map((c) => <SelectItem key={c} value={c} className="capitalize">{categoryLabel(c)}</SelectItem>)}
                       <SelectItem value="__custom__">+ Custom</SelectItem>
                     </SelectContent>
                   </Select>
-                  {showCustomCategory && <Input className="mt-1" placeholder="Enter custom category" value={customCategory} onChange={(e) => { setCustomCategory(e.target.value); setForm({ ...form, category: e.target.value }); }} />}
+                  {showCustomCategory && <Input className="mt-1" placeholder={t("reminder.enterCustomCategory")} value={customCategory} onChange={(e) => { setCustomCategory(e.target.value); setForm({ ...form, category: e.target.value }); }} />}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -108,7 +119,7 @@ export default function RemindersPage() {
                   <Card key={r.id} className="border-warning/20"><CardContent className="flex items-center justify-between p-3">
                     <div className="flex items-center gap-3">
                       <button onClick={() => toggleMutation.mutate({ id: r.id, completed: true })} className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-warning text-warning hover:bg-warning/10"><Bell className="h-4 w-4" /></button>
-                      <div><p className="text-sm font-medium">{r.title}</p><p className="text-xs text-muted-foreground">{r.reminder_date} • <span className="capitalize">{r.category}</span></p></div>
+                      <div><p className="text-sm font-medium">{r.title}</p><p className="text-xs text-muted-foreground">{r.reminder_date} • <span className="capitalize">{categoryLabel(r.category)}</span></p></div>
                     </div>
                     <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(r.id)}><Trash2 className="h-4 w-4 text-muted-foreground" /></Button>
                   </CardContent></Card>
