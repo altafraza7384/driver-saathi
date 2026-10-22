@@ -426,6 +426,42 @@ export type Database = {
           },
         ]
       }
+      announcements: {
+        Row: {
+          audience: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          is_active: boolean
+          message: string
+          title: string
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          audience: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          is_active: boolean
+          message: string
+          title: string
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          audience?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          message?: string
+          title?: string
+          type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       insurance_leads: {
         Row: {
           city: string
