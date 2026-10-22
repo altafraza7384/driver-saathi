@@ -21,6 +21,7 @@ const CarChecksPage = lazy(() => import("./pages/CarChecksPage"));
 const RemindersPage = lazy(() => import("./pages/RemindersPage"));
 const NotesPage = lazy(() => import("./pages/NotesPage"));
 const SOSPage = lazy(() => import("./pages/SOSPage"));
+const CarSosPage = lazy(() => import("./pages/CarSosPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const DataBackupPage = lazy(() => import("./pages/DataBackupPage"));
 const FinanceAIPage = lazy(() => import("./pages/FinanceAIPage"));
@@ -102,6 +103,7 @@ const App = () => (
                     <Route path="/reminders" element={<RemindersPage />} />
                     <Route path="/notes" element={<NotesPage />} />
                     <Route path="/sos" element={<SOSPage />} />
+                    <Route path="/car-sos" element={<CarSosPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/data-backup" element={<DataBackupPage />} />
                     <Route path="/finance-ai" element={<FinanceAIPage />} />
