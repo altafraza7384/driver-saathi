@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
-import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { I18nProvider } from "@/lib/i18n";
 import { db } from "@/lib/backend";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
@@ -80,6 +80,7 @@ function BlockedScreen() {
 
 function ProtectedRoutes() {
   const { user, loading } = useAuth();
+  const location = useLocation();
 
   // Block gate: a profile flagged is_blocked by an admin cannot use the app.
   // Query errors or a missing profile are treated as NOT blocked, so a read
@@ -115,6 +116,12 @@ function ProtectedRoutes() {
 
   if (blockedProfile?.is_blocked === true) {
     return <BlockedScreen />;
+  }
+
+  // Admin pages render without the main app's bottom navigation: the
+  // admin panel has its own Back buttons and dashboard links.
+  if (location.pathname.startsWith("/admin")) {
+    return <Outlet />;
   }
 
   return <AppLayout />;
