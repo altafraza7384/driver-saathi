@@ -62,6 +62,18 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Admin announcements (2026-10-22): in-app banner + popup for all
+    // signed-in users; audience filtering (all vs non-subscribers) happens
+    // client-side in AnnouncementBanner, never as a security boundary —
+    // announcement content is public to signed-in users by design, so a
+    // subscriber reading an offer is harmless. Only admins may create,
+    // edit or delete. Closed-app push for these announcements is the
+    // staged sendAnnouncementPush function (Blaze-gated, not deployed).
+    match /announcements/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
     // Admin-managed app config (e.g. the mechanic strike limit).
     match /config/{docId} {
       allow read, write: if isAdmin();
