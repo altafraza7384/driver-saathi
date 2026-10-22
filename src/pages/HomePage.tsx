@@ -11,6 +11,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { db } from "@/lib/backend";
 import { NotificationBell } from "@/components/NotificationBell";
+import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 
 function getGreetingKey(): string {
   const hour = new Date().getHours();
@@ -132,6 +133,7 @@ export default function HomePage() {
       </div>
 
       <div className="space-y-5 p-4 pt-0">
+        <AnnouncementBanner />
 
       <div className="animate-in fade-in duration-300">
         <Card className="overflow-hidden border-0 bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg">
