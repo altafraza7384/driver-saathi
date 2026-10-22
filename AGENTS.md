@@ -33,6 +33,22 @@ billing is pending on Google's side), so they currently fail gracefully.
   only when AI features are used) + AdMob ads. AdMob primary app "Driver
   saathi", banner unit ending …/7524617781; `app-ads.txt` is live. Payments
   (Razorpay) are NOT integrated yet; plans shown in-app are display-only.
+  Insurance leads (Phase 1, 2026-10-22, user-approved): Driver Saathi does
+  NOT sell insurance or collect premiums. A marketplace insurance card opens
+  `/insurance`, where the user shares contact details ONCE with explicit
+  consent for a quote from a licensed insurance partner; the partner does
+  solicitation/quoting/sale and pays a lead/marketing fee under a written
+  agreement (per-policy commission in Driver Saathi's own name would need
+  a POSP licence — not held). Leads live in private `insurance_leads`
+  (owner + admin read only; admin-only status/commission updates; user
+  create requires consent == true and status == 'new' and forbids
+  commission fields). Admin page `/admin/insurance-leads` (English only)
+  tracks status + commission for monthly reconciliation against the
+  partner's statement by lead ID. BEFORE GOING LIVE with a real partner:
+  replace the generic "licensed insurance partner" wording with the
+  partner's actual name + licence no., and update the Privacy Policy to
+  name the partner and the shared fields. Phase 2 (after Blaze) automates
+  forwarding via a Cloud Function webhook; Phase 1 forwarding is manual.
 
 ## Rules
 
@@ -122,7 +138,7 @@ billing is pending on Google's side), so they currently fail gracefully.
   push_subscriptions, chat_messages, recurring_expenses,
   recurring_expense_payments). Top-level collections: marketplace_posts,
   marketplace_categories, subscription_plans, offers, config, roles,
-  sos_requests, sos_request_details, mechanics.
+  sos_requests, sos_request_details, mechanics, insurance_leads.
 - Car SOS privacy model: `sos_requests` is public but carries ONLY approx
   coords (~1.1 km rounding) + geohash — no phone, no exact location.
   `sos_request_details` holds the phone + exact coords, readable only by the
