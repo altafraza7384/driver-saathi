@@ -426,6 +426,147 @@ export type Database = {
           },
         ]
       }
+      sos_requests: {
+        Row: {
+          approxLat: number | null
+          approxLng: number | null
+          areaText: string | null
+          category: string
+          chargesAgreed: number | null
+          created_at: string
+          description: string | null
+          driverId: string
+          geohash: string | null
+          id: string
+          mechanicId: string | null
+          mechanicName: string | null
+          mechanicPhone: string | null
+          rating: number | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          approxLat?: number | null
+          approxLng?: number | null
+          areaText?: string | null
+          category: string
+          chargesAgreed?: number | null
+          created_at?: string
+          description?: string | null
+          driverId: string
+          geohash?: string | null
+          id?: string
+          mechanicId?: string | null
+          mechanicName?: string | null
+          mechanicPhone?: string | null
+          rating?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          approxLat?: number | null
+          approxLng?: number | null
+          areaText?: string | null
+          category?: string
+          chargesAgreed?: number | null
+          created_at?: string
+          description?: string | null
+          driverId?: string
+          geohash?: string | null
+          id?: string
+          mechanicId?: string | null
+          mechanicName?: string | null
+          mechanicPhone?: string | null
+          rating?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      sos_request_details: {
+        Row: {
+          created_at: string
+          driverId: string
+          driverPhone: string
+          exactLat: number | null
+          exactLng: number | null
+          id: string
+          mechanicId: string | null
+          requestId: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          driverId: string
+          driverPhone: string
+          exactLat?: number | null
+          exactLng?: number | null
+          id?: string
+          mechanicId?: string | null
+          requestId: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          driverId?: string
+          driverPhone?: string
+          exactLat?: number | null
+          exactLng?: number | null
+          id?: string
+          mechanicId?: string | null
+          requestId?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      mechanics: {
+        Row: {
+          categories: string[]
+          charges: string | null
+          created_at: string
+          id: string
+          isOnline: boolean
+          isVerified: boolean
+          name: string
+          phone: string
+          rating: number | null
+          shopName: string
+          totalJobs: number
+          updated_at: string
+          workingHours: string | null
+        }
+        Insert: {
+          categories: string[]
+          charges?: string | null
+          created_at?: string
+          id?: string
+          isOnline?: boolean
+          isVerified?: boolean
+          name: string
+          phone: string
+          rating?: number | null
+          shopName: string
+          totalJobs?: number
+          updated_at?: string
+          workingHours?: string | null
+        }
+        Update: {
+          categories?: string[]
+          charges?: string | null
+          created_at?: string
+          id?: string
+          isOnline?: boolean
+          isVerified?: boolean
+          name?: string
+          phone?: string
+          rating?: number | null
+          shopName?: string
+          totalJobs?: number
+          updated_at?: string
+          workingHours?: string | null
+        }
+        Relationships: []
+      }
       notes: {
         Row: {
           audio_url: string | null
