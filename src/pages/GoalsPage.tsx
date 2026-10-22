@@ -198,42 +198,42 @@ export default function GoalsPage() {
   return (
     <div className="space-y-4 p-4 pt-6">
       <button onClick={() => navigate("/more")} className="flex items-center gap-1 text-sm text-muted-foreground">
-        <ArrowLeft className="h-4 w-4" /> Back
+        <ArrowLeft className="h-4 w-4" /> {t("common.back")}
       </button>
 
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Goals & Savings</h1>
+        <h1 className="text-2xl font-bold">{t("goal.title")}</h1>
         <Dialog open={showAdd} onOpenChange={setShowAdd}>
           <DialogTrigger asChild>
-            <Button size="sm" className="gap-1"><Plus className="h-4 w-4" /> New Goal</Button>
+            <Button size="sm" className="gap-1"><Plus className="h-4 w-4" /> {t("goal.newGoal")}</Button>
           </DialogTrigger>
           <DialogContent>
-            <DialogHeader><DialogTitle>Create Savings Goal</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle>{t("goal.createGoal")}</DialogTitle></DialogHeader>
             <form onSubmit={handleAdd} className="space-y-4">
               <div className="space-y-2">
-                <Label>Goal Title</Label>
+                <Label>{t("goal.goalTitle")}</Label>
                 <Input placeholder="e.g. New Tires" value={title} onChange={(e) => setTitle(e.target.value)} required />
               </div>
               <div className="space-y-2">
-                <Label>Target Amount (₹)</Label>
+                <Label>{t("goal.targetAmount")}</Label>
                 <Input type="number" placeholder="50000" value={target} onChange={(e) => setTarget(e.target.value)} min="1" required />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="goal-deadline">Deadline (optional)</Label>
-                <DatePicker id="goal-deadline" label="Deadline" value={deadline} onChange={setDeadline} />
+                <Label htmlFor="goal-deadline">{t("goal.deadline")} ({t("common.optional")})</Label>
+                <DatePicker id="goal-deadline" label={t("goal.deadline")} value={deadline} onChange={setDeadline} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label htmlFor="goal-notify-date">Notify Date</Label>
-                  <DatePicker id="goal-notify-date" label="Notify Date" value={notifyDate} onChange={setNotifyDate} />
+                  <Label htmlFor="goal-notify-date">{t("reminder.notifyDate")}</Label>
+                  <DatePicker id="goal-notify-date" label={t("reminder.notifyDate")} value={notifyDate} onChange={setNotifyDate} />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="goal-notify-time">Notify Time</Label>
-                  <TimePicker id="goal-notify-time" label="Notify Time" value={notifyTime} onChange={setNotifyTime} />
+                  <Label htmlFor="goal-notify-time">{t("reminder.notifyTime")}</Label>
+                  <TimePicker id="goal-notify-time" label={t("reminder.notifyTime")} value={notifyTime} onChange={setNotifyTime} />
                 </div>
               </div>
               <Button type="submit" className="w-full" disabled={saving}>
-                {saving ? "Creating..." : "Create Goal"}
+                {saving ? t("goal.creating") : t("goal.createGoalBtn")}
               </Button>
             </form>
           </DialogContent>
@@ -245,7 +245,7 @@ export default function GoalsPage() {
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
         </div>
       ) : goals.length === 0 ? (
-        <Card><CardContent className="p-6 text-center text-muted-foreground">No goals yet. Start saving!</CardContent></Card>
+        <Card><CardContent className="p-6 text-center text-muted-foreground">{t("goal.noGoals")}</CardContent></Card>
       ) : (
         <div className="space-y-3">
           {goals.map((goal, i) => {
@@ -299,18 +299,18 @@ export default function GoalsPage() {
                           <div className="flex gap-2">
                             <Input
                               type="number"
-                              placeholder="Amount"
+                              placeholder={t("common.amount")}
                               value={addAmount}
                               onChange={(e) => setAddAmount(e.target.value)}
                               min="1"
                               className="flex-1"
                             />
-                            <Button size="sm" onClick={() => handleAddSavings(goal.id)}>Save</Button>
+                            <Button size="sm" onClick={() => handleAddSavings(goal.id)}>{t("common.save")}</Button>
                             <Button size="sm" variant="ghost" onClick={() => { setShowAddSavings(null); setAddAmount(""); }}>✕</Button>
                           </div>
                         ) : (
                           <Button size="sm" variant="outline" className="w-full" onClick={() => setShowAddSavings(goal.id)}>
-                            <Plus className="h-4 w-4 mr-1" /> Add Savings
+                            <Plus className="h-4 w-4 mr-1" /> {t("goal.addSavings")}
                           </Button>
                         )}
                       </>
@@ -326,22 +326,22 @@ export default function GoalsPage() {
       {/* Edit Dialog */}
       <Dialog open={!!editGoal} onOpenChange={(open) => !open && setEditGoal(null)}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Edit Goal</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("goal.editGoal")}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Goal Title</Label>
+              <Label>{t("goal.goalTitle")}</Label>
               <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>Target Amount (₹)</Label>
+              <Label>{t("goal.targetAmount")}</Label>
               <Input type="number" value={editTarget} onChange={(e) => setEditTarget(e.target.value)} min="1" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="goal-edit-deadline">Deadline (optional)</Label>
-              <DatePicker id="goal-edit-deadline" label="Deadline" value={editDeadline} onChange={setEditDeadline} />
+              <Label htmlFor="goal-edit-deadline">{t("goal.deadline")} ({t("common.optional")})</Label>
+              <DatePicker id="goal-edit-deadline" label={t("goal.deadline")} value={editDeadline} onChange={setEditDeadline} />
             </div>
             <Button className="w-full" onClick={handleUpdate} disabled={saving}>
-              {saving ? "Saving..." : "Update Goal"}
+              {saving ? t("common.saving") : t("goal.updateGoal")}
             </Button>
           </div>
         </DialogContent>
