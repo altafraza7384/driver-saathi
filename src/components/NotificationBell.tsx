@@ -3,6 +3,7 @@ import { Bell } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { db } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
+import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format, isToday, isTomorrow, parseISO, isBefore, addDays } from "date-fns";
@@ -18,6 +19,7 @@ interface Notification {
 
 export function NotificationBell() {
   const { user } = useAuth();
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const todayKey = format(new Date(), "yyyy-MM-dd");
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => {
@@ -119,7 +121,18 @@ export function NotificationBell() {
   const notifications: Notification[] = [];
 
   const formatDueLabel = (d: Date) =>
-    isToday(d) ? "Due today" : isTomorrow(d) ? "Due tomorrow" : `Due ${format(d, "MMM dd")}`;
+    isToday(d) ? t("notif.dueToday") : isTomorrow(d) ? t("notif.dueTomorrow") : t("notif.dueOn", { date: format(d, "MMM dd") });
+
+  // Preset reminder categories are stored as English keys; show the
+  // translated label. Custom categories typed by the user stay as-is.
+  const categoryLabel = (c: string) =>
+    c === "insurance" ? t("notif.catInsurance")
+    : c === "puc" ? t("notif.catPuc")
+    : c === "license" ? t("notif.catLicense")
+    : c === "emi" ? t("notif.catEmi")
+    : c === "maintenance" ? t("notif.catMaintenance")
+    : c === "general" ? t("notif.catGeneral")
+    : c;
 
   // Reminders with notify_at
   reminders.forEach((r: any) => {
@@ -129,7 +142,7 @@ export function NotificationBell() {
       notifications.push({
         id: `rem-${r.id}`,
         title: r.title,
-        description: `${formatDueLabel(notifyAt)} • Due: ${dueDate} • ${r.category}${r.notify_at ? ` • ${format(notifyAt, "hh:mm a")}` : ""}`,
+        description: t("notif.reminderDesc", { due: formatDueLabel(notifyAt), date: dueDate, category: categoryLabel(r.category) }) + (r.notify_at ? ` • ${format(notifyAt, "hh:mm a")}` : ""),
         type: "reminder",
         date: r.reminder_date,
       });
@@ -144,8 +157,8 @@ export function NotificationBell() {
         const emiDueDate = format(notifyAt, "dd MMM yyyy");
         notifications.push({
           id: `emi-${debt.id}`,
-          title: `${debt.name} EMI Due`,
-          description: `Due: ${emiDueDate} • ₹${Number(debt.emi_amount || 0).toLocaleString("en-IN")} • ${format(notifyAt, "hh:mm a")}`,
+          title: t("notif.emiDueTitle", { name: debt.name }),
+          description: t("notif.emiDesc", { date: emiDueDate, amount: Number(debt.emi_amount || 0).toLocaleString("en-IN"), time: format(notifyAt, "hh:mm a") }),
           type: "emi",
           date: format(notifyAt, "yyyy-MM-dd"),
         });
@@ -165,8 +178,10 @@ export function NotificationBell() {
       const dueLabel = startDay === today ? format(now, "dd MMM yyyy") : format(addDays(now, 1), "dd MMM yyyy");
       notifications.push({
         id: `emi-day-${debt.id}`,
-        title: `${debt.name} EMI Due`,
-        description: `Due: ${dueLabel} • EMI ₹${Number(debt.emi_amount || 0).toLocaleString("en-IN")} is due ${startDay === today ? "today" : "tomorrow"}`,
+        title: t("notif.emiDueTitle", { name: debt.name }),
+        description: startDay === today
+          ? t("notif.emiDueTodayDesc", { date: dueLabel, amount: Number(debt.emi_amount || 0).toLocaleString("en-IN") })
+          : t("notif.emiDueTomorrowDesc", { date: dueLabel, amount: Number(debt.emi_amount || 0).toLocaleString("en-IN") }),
         type: "emi",
         date: format(now, "yyyy-MM-dd"),
       });
@@ -182,7 +197,7 @@ export function NotificationBell() {
       notifications.push({
         id: `car-${cc.id}`,
         title: cc.check_type,
-        description: `Due: ${carDueDate} • Car maintenance${cc.notify_at ? ` • ${format(notifyAt, "hh:mm a")}` : ""}`,
+        description: t("notif.carDesc", { date: carDueDate, maintenance: t("notif.carMaintenance") }) + (cc.notify_at ? ` • ${format(notifyAt, "hh:mm a")}` : ""),
         type: "car_check",
         date: cc.next_due_date || format(notifyAt, "yyyy-MM-dd"),
       });
@@ -198,7 +213,7 @@ export function NotificationBell() {
       notifications.push({
         id: `goal-${g.id}`,
         title: g.title,
-        description: `Due: ${goalDueDate} • Goal deadline • ${format(notifyAt, "hh:mm a")}`,
+        description: t("notif.goalDesc", { date: goalDueDate, deadline: t("notif.goalDeadline"), time: format(notifyAt, "hh:mm a") }),
         type: "goal",
         date: format(notifyAt, "yyyy-MM-dd"),
       });
@@ -210,11 +225,11 @@ export function NotificationBell() {
     const expiryDate = parseISO(doc.expiry_date);
     const daysLeft = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     if (daysLeft <= 30) {
-      const label = daysLeft < 0 ? "EXPIRED" : daysLeft === 0 ? "Expires today" : `Expires in ${daysLeft} days`;
+      const label = daysLeft < 0 ? t("notif.expired") : daysLeft === 0 ? t("notif.expiresToday") : t("notif.expiresIn", { days: daysLeft });
       notifications.push({
         id: `doc-${doc.id}`,
         title: `📄 ${doc.document_name}`,
-        description: `${label} • Expiry: ${format(expiryDate, "dd MMM yyyy")}`,
+        description: t("notif.expiryDesc", { label, date: format(expiryDate, "dd MMM yyyy") }),
         type: "car_document",
         date: doc.expiry_date,
       });
@@ -229,8 +244,8 @@ export function NotificationBell() {
   if (waterCount < 8) {
     notifications.push({
       id: "health-water",
-      title: "💧 Drink Water",
-      description: `You've had ${waterCount}/8 glasses today. Stay hydrated!`,
+      title: t("notif.drinkWater"),
+      description: t("notif.waterDesc", { count: waterCount }),
       type: "health",
       date: todayStr,
     });
@@ -238,8 +253,8 @@ export function NotificationBell() {
   if (breaksCount < 4) {
     notifications.push({
       id: "health-break",
-      title: "☕ Take a Break",
-      description: `${breaksCount}/4 breaks taken today. Rest your eyes & stretch!`,
+      title: t("notif.takeBreak"),
+      description: t("notif.breakDesc", { count: breaksCount }),
       type: "health",
       date: todayStr,
     });
@@ -247,8 +262,8 @@ export function NotificationBell() {
   if (sleepHours === 0 && !healthLog) {
     notifications.push({
       id: "health-sleep",
-      title: "😴 Log Your Sleep",
-      description: "Don't forget to log last night's sleep hours!",
+      title: t("notif.logSleep"),
+      description: t("notif.sleepDesc"),
       type: "health",
       date: todayStr,
     });
@@ -286,12 +301,12 @@ export function NotificationBell() {
 
   const typeLabel = (type: Notification["type"]) => {
     switch (type) {
-      case "emi": return "EMI";
-      case "reminder": return "Reminder";
-      case "car_check": return "Car Check";
-      case "car_document": return "Document";
-      case "goal": return "Goal";
-      case "health": return "Health";
+      case "emi": return t("notif.emi");
+      case "reminder": return t("notif.reminder");
+      case "car_check": return t("notif.carCheck");
+      case "car_document": return t("notif.document");
+      case "goal": return t("notif.goal");
+      case "health": return t("notif.health");
     }
   };
 
@@ -309,17 +324,17 @@ export function NotificationBell() {
       </PopoverTrigger>
       <PopoverContent className="w-80 p-0" align="end">
         <div className="border-b p-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold">Notifications</h3>
+          <h3 className="text-sm font-semibold">{t("notif.title")}</h3>
           {visibleNotifications.length > 0 && (
             <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground gap-1" onClick={clearAll}>
-              <CheckCheck className="h-3.5 w-3.5" /> Clear All
+              <CheckCheck className="h-3.5 w-3.5" /> {t("notif.clearAll")}
             </Button>
           )}
         </div>
         <div className="max-h-72 overflow-y-auto">
           {visibleNotifications.length === 0 ? (
             <div className="p-4 text-center text-sm text-muted-foreground">
-              No upcoming notifications
+              {t("notif.none")}
             </div>
           ) : (
             visibleNotifications.map((n) => (
@@ -334,7 +349,7 @@ export function NotificationBell() {
                 <button
                   onClick={() => dismissOne(n.id)}
                   className="opacity-0 group-hover:opacity-100 transition-opacity mt-0.5 p-0.5 rounded hover:bg-muted"
-                  aria-label="Dismiss notification"
+                  aria-label={t("notif.dismiss")}
                 >
                   <X className="h-3.5 w-3.5 text-muted-foreground" />
                 </button>
