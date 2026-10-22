@@ -70,7 +70,7 @@ export default function MorePage() {
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
               <Mail className="h-5 w-5 text-foreground" />
             </div>
-            <span className="text-base font-bold">Contact Us</span>
+            <span className="text-base font-bold">{t("more.contactUs")}</span>
           </div>
           <ChevronRight className="h-5 w-5 text-muted-foreground" />
         </button>
@@ -107,14 +107,14 @@ export default function MorePage() {
             <div className="border-t pt-3 space-y-2">
               <h4 className="font-bold">{t("more.privacyPolicy")}</h4>
               <Button variant="link" className="p-0 h-auto text-primary text-xs" onClick={() => { setAboutOpen(false); navigate("/privacy-policy"); }}>
-                Read Full Privacy Policy →
+                {t("more.readFullPrivacy")}
               </Button>
             </div>
             <div className="border-t pt-3 space-y-2">
               <h4 className="font-bold">{t("more.termsOfUse")}</h4>
               <p className="text-muted-foreground text-xs leading-relaxed">{t("more.termsText")}</p>
             </div>
-            <p className="text-center text-xs text-muted-foreground pt-2">© 2026 Driver-saathi. All rights reserved.</p>
+            <p className="text-center text-xs text-muted-foreground pt-2">{t("more.copyright")}</p>
           </div>
         </DialogContent>
       </Dialog>
@@ -123,8 +123,8 @@ export default function MorePage() {
       <Dialog open={contactOpen} onOpenChange={setContactOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Contact Us</DialogTitle>
-            <DialogDescription>We're here to help! Reach out to our support team.</DialogDescription>
+            <DialogTitle>{t("more.contactUs")}</DialogTitle>
+            <DialogDescription>{t("more.supportDesc")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 pt-2">
             <a href="mailto:razakhan.chino@gmail.com" className="flex items-center gap-4 rounded-xl border p-4 hover:bg-muted transition-colors">
@@ -132,7 +132,7 @@ export default function MorePage() {
                 <Mail className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <p className="text-sm font-extrabold">Email Support</p>
+                <p className="text-sm font-extrabold">{t("more.emailSupport")}</p>
                 <p className="text-xs text-muted-foreground">razakhan.chino@gmail.com</p>
               </div>
             </a>
@@ -141,7 +141,7 @@ export default function MorePage() {
                 <Phone className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <p className="text-sm font-extrabold">Phone Support</p>
+                <p className="text-sm font-extrabold">{t("more.phoneSupport")}</p>
                 <p className="text-xs text-muted-foreground">+91 7718012850</p>
               </div>
             </a>
@@ -150,11 +150,11 @@ export default function MorePage() {
                 <MessageCircle className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <p className="text-sm font-extrabold">WhatsApp</p>
-                <p className="text-xs text-muted-foreground">Chat with us on WhatsApp</p>
+                <p className="text-sm font-extrabold">{t("more.whatsapp")}</p>
+                <p className="text-xs text-muted-foreground">{t("more.chatWhatsapp")}</p>
               </div>
             </a>
-            <p className="text-center text-xs text-muted-foreground pt-2">Support hours: Mon–Sat, 9 AM – 6 PM IST</p>
+            <p className="text-center text-xs text-muted-foreground pt-2">{t("more.supportHours")}</p>
           </div>
         </DialogContent>
       </Dialog>
