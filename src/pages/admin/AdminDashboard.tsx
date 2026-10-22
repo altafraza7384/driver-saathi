@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { db, BACKEND } from "@/lib/backend";
+import { db } from "@/lib/backend";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
-import { Store, FileText, Users, LayoutDashboard, LogOut, CreditCard } from "lucide-react";
+import { Store, FileText, Users, LayoutDashboard, LogOut, CreditCard, Tag, Wrench, Siren } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
 export default function AdminDashboard() {
@@ -31,19 +31,36 @@ export default function AdminDashboard() {
   const { data: userCount = 0 } = useQuery({
     queryKey: ["admin_user_count"],
     queryFn: async () => {
-      if (BACKEND === "firebase") {
-        try {
-          const { data, error } = await db.functions.invoke("admin-list-users");
-          if (error) return 0;
-          const users = (data as { users?: unknown[] } | null)?.users;
-          return Array.isArray(users) ? users.length : 0;
-        } catch {
-          return 0;
-        }
-      }
-      const { count, error } = await db.from("profiles").select("*", { count: "exact", head: true });
+      const { count, error } = await db.from("users").select("*", { count: "exact", head: true });
       if (error) throw error;
       return count || 0;
+    },
+  });
+
+  const { data: mechanicCount = 0 } = useQuery({
+    queryKey: ["admin_mechanic_count"],
+    queryFn: async () => {
+      const { count, error } = await db.from("mechanics").select("*", { count: "exact", head: true });
+      if (error) throw error;
+      return count || 0;
+    },
+  });
+
+  const { data: pendingSosCount = 0 } = useQuery({
+    queryKey: ["admin_pending_sos_count"],
+    queryFn: async () => {
+      const { count, error } = await db.from("sos_requests").select("*", { count: "exact", head: true }).eq("status", "pending");
+      if (error) throw error;
+      return count || 0;
+    },
+  });
+
+  const { data: heldMechanicCount = 0 } = useQuery({
+    queryKey: ["admin_held_mechanic_count"],
+    queryFn: async () => {
+      const { data, error } = await db.from("mechanics").select("status");
+      if (error) throw error;
+      return (data as { status?: string }[]).filter((m) => m.status === "held").length;
     },
   });
 
@@ -51,6 +68,9 @@ export default function AdminDashboard() {
     { label: "Total Posts", value: postCount, icon: FileText, color: "bg-primary/10 text-primary" },
     { label: "Categories", value: categoryCount, icon: Store, color: "bg-warning/10 text-warning" },
     { label: "Users", value: userCount, icon: Users, color: "bg-success/10 text-success" },
+    { label: "Mechanics", value: mechanicCount, icon: Wrench, color: "bg-primary/10 text-primary" },
+    { label: "Pending SOS", value: pendingSosCount, icon: Siren, color: "bg-warning/10 text-warning" },
+    { label: "Held Mechanics", value: heldMechanicCount, icon: Wrench, color: "bg-destructive/10 text-destructive" },
   ];
 
   return (
@@ -106,6 +126,27 @@ export default function AdminDashboard() {
           <div className="text-left">
             <p className="font-bold text-sm">Subscription Plans</p>
             <p className="text-xs text-muted-foreground">Create & edit plans (payments later)</p>
+          </div>
+        </Button>
+        <Button className="w-full justify-start gap-3 h-14" variant="outline" onClick={() => navigate("/admin/offers")}>
+          <Tag className="h-5 w-5 text-primary" />
+          <div className="text-left">
+            <p className="font-bold text-sm">{"Manage Offers"}</p>
+            <p className="text-xs text-muted-foreground">{"Discount offers for subscription plans"}</p>
+          </div>
+        </Button>
+        <Button className="w-full justify-start gap-3 h-14" variant="outline" onClick={() => navigate("/admin/mechanics")}>
+          <Wrench className="h-5 w-5 text-success" />
+          <div className="text-left">
+            <p className="font-bold text-sm">{"Manage Mechanics"}</p>
+            <p className="text-xs text-muted-foreground">{"Warnings, holds and mechanic performance"}</p>
+          </div>
+        </Button>
+        <Button className="w-full justify-start gap-3 h-14" variant="outline" onClick={() => navigate("/admin/sos")}>
+          <Siren className="h-5 w-5 text-warning" />
+          <div className="text-left">
+            <p className="font-bold text-sm">{"SOS Requests"}</p>
+            <p className="text-xs text-muted-foreground">{"All Car SOS requests and their status"}</p>
           </div>
         </Button>
       </div>
