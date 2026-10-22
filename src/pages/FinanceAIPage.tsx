@@ -38,7 +38,7 @@ export default function FinanceAIPage() {
   const send = useCallback(async (text?: string) => {
     const msgText = text || input.trim();
     if (!msgText || isLoading) return;
-    if (!session?.access_token) { toast.error("Please sign in to use Finance AI"); return; }
+    if (!session?.access_token) { toast.error(t("ai.signInFinance")); return; }
     const userMsg: Msg = { role: "user", content: msgText };
     if (!text) setInput("");
     setMessages((prev) => [...prev, userMsg]);
@@ -66,8 +66,8 @@ export default function FinanceAIPage() {
       });
 
       if (!resp.ok) {
-        if (resp.status === 429) { toast.error("Rate limit exceeded, try again later."); return; }
-        if (resp.status === 402) { toast.error("Usage limit reached."); return; }
+        if (resp.status === 429) { toast.error(t("ai.rateLimit")); return; }
+        if (resp.status === 402) { toast.error(t("ai.usageLimit")); return; }
         throw new Error("Failed to get response");
       }
 
@@ -120,7 +120,7 @@ export default function FinanceAIPage() {
       }
     } catch (e) {
       console.error(e);
-      toast.error("Failed to get response");
+      toast.error(t("ai.failedResponse"));
     } finally {
       setIsLoading(false);
     }
@@ -133,7 +133,7 @@ export default function FinanceAIPage() {
       return;
     }
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) { toast.error("Voice not supported on this browser"); return; }
+    if (!SpeechRecognition) { toast.error(t("ai.voiceUnsupported")); return; }
     const recognition = new SpeechRecognition();
     recognition.lang = "hi-IN";
     recognition.interimResults = true;
@@ -168,8 +168,8 @@ export default function FinanceAIPage() {
             <TrendingUp className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-lg font-extrabold leading-tight">Finance AI Agent</h1>
-            <p className="text-xs text-muted-foreground">Investment • Debt • Goals • Savings</p>
+            <h1 className="text-lg font-extrabold leading-tight">{t("financeAi.agent")}</h1>
+            <p className="text-xs text-muted-foreground">{t("financeAi.tagline")}</p>
           </div>
         </div>
         {messages.length > 0 && (
@@ -187,8 +187,8 @@ export default function FinanceAIPage() {
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 mb-3">
                 <TrendingUp className="h-8 w-8 text-primary" />
               </div>
-              <p className="font-extrabold text-foreground text-base">Your Personal Finance AI</p>
-              <p className="text-sm mt-1 max-w-xs">Ask me anything about your finances — investments, debt management, savings goals, and more!</p>
+              <p className="font-extrabold text-foreground text-base">{t("financeAi.intro")}</p>
+              <p className="text-sm mt-1 max-w-xs">{t("financeAi.askHint")}</p>
             </div>
           </div>
         )}
@@ -239,7 +239,7 @@ export default function FinanceAIPage() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && send()}
-          placeholder="Ask about investments, debt, goals..."
+          placeholder={t("financeAi.askPlaceholder")}
           className="flex-1 font-bold"
           disabled={isLoading}
         />
