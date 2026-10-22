@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { AlertTriangle, Phone, Plus, Trash2, MapPin, ArrowLeft, MessageCircle } from "lucide-react";
+import { AlertTriangle, Phone, Plus, Trash2, MapPin, ArrowLeft, MessageCircle, Wrench } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -108,6 +108,15 @@ export default function SOSPage() {
       >
         <MessageCircle className="h-5 w-5" />
         Share Location on WhatsApp
+      </button>
+
+      {/* Car SOS Button — mechanic help */}
+      <button
+        onClick={() => navigate("/car-sos")}
+        className="flex w-full items-center justify-center gap-2 rounded-xl bg-orange-600 text-white p-3 font-extrabold shadow-md active:scale-95 transition-transform"
+      >
+        <Wrench className="h-5 w-5" />
+        {t("carSos.button")}
       </button>
 
       {sosTriggered && (
