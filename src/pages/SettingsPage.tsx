@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { db, BACKEND } from "@/lib/backend";
 import { friendlyErrorMessage } from "@/lib/errors";
@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Globe, User, Car, LogOut, Save, ArrowLeft, Pencil, Camera, Trash2 } from "lucide-react";
+import { Globe, User, Car, LogOut, Save, ArrowLeft, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import {
@@ -22,9 +22,7 @@ export default function SettingsPage() {
   const { t, language, setLanguage } = useI18n();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [editing, setEditing] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [form, setForm] = useState({ full_name: "", phone: "", vehicle_type: "", vehicle_number: "", license_number: "" });
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState("");
@@ -49,29 +47,13 @@ export default function SettingsPage() {
     onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
 
-  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !user) return;
-    if (!file.type.startsWith("image/")) { toast.error(t("settings.imageFile")); return; }
-    if (file.size > 2 * 1024 * 1024) { toast.error(t("settings.imageSize")); return; }
-    setUploading(true);
-    try {
-      const ext = file.name.split(".").pop();
-      const path = `${user.id}/avatar.${ext}`;
-      const { error: uploadError } = await db.storage.from("avatars").upload(path, file, { upsert: true });
-      if (uploadError) throw uploadError;
-      const { data: urlData } = await db.storage.from("avatars").getPublicUrl(path);
-      if (!urlData.publicUrl) throw new Error("Avatar storage is not available yet");
-      const sep = urlData.publicUrl.includes("?") ? "&" : "?";
-      const avatarUrl = `${urlData.publicUrl}${sep}t=${Date.now()}`;
-      const { error: updateError } = await db.from("profiles").update({ avatar_url: avatarUrl }).eq("user_id", user.id);
-      if (updateError) throw updateError;
-      queryClient.invalidateQueries({ queryKey: ["profile"] });
-      toast.success("✅");
-    } catch (err: any) { toast.error(friendlyErrorMessage(err, "Upload failed")); }
-    finally { setUploading(false); }
-  };
-
+  // Profile photo upload REMOVED 2026-10-22 (user decision): nobody uploads
+  // their own photo, and every 2MB avatar would grow Storage usage for no
+  // benefit. The avatar circle below now shows initials only as its
+  // fallback; any previously stored avatar_url / Google photoURL still
+  // displays if present, but no new file can be uploaded from the app.
+  // (Firebase Storage itself is still Blaze-gated, so this upload path
+  // was not even live on the Firebase backend.)
   const handleDeleteAccount = async () => {
     if (deleteConfirm !== "DELETE") return;
     setDeleting(true);
@@ -117,18 +99,13 @@ export default function SettingsPage() {
       <Card>
         <CardContent className="p-5">
           <div className="flex items-center gap-4">
-            <div className="relative">
-              <Avatar className="h-20 w-20 border-2 border-border"><AvatarImage src={profile?.avatar_url || undefined} alt="Profile" /><AvatarFallback className="text-lg font-semibold bg-muted">{initials}</AvatarFallback></Avatar>
-              <button onClick={() => fileInputRef.current?.click()} disabled={uploading} className="absolute -bottom-1 -right-1 rounded-full bg-primary p-1.5 text-primary-foreground shadow-md hover:opacity-90 transition-opacity"><Camera className="h-4 w-4" /></button>
-              <input ref={fileInputRef} type="file" accept="image/*" onChange={handleAvatarUpload} className="hidden" />
-            </div>
+            <Avatar className="h-20 w-20 border-2 border-border"><AvatarImage src={profile?.avatar_url || undefined} alt="Profile" /><AvatarFallback className="text-lg font-semibold bg-muted">{initials}</AvatarFallback></Avatar>
             <div className="flex-1 min-w-0">
               <p className="font-bold text-lg truncate">{profile?.full_name || t("settings.setName")}</p>
               <p className="text-muted-foreground truncate">{user?.email}</p>
               {profile?.phone && <p className="text-muted-foreground truncate">{profile.phone}</p>}
             </div>
           </div>
-          {uploading && <p className="text-muted-foreground mt-2 text-center">{t("settings.uploading")}</p>}
         </CardContent>
       </Card>
 
