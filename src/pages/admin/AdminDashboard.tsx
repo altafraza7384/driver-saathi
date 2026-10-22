@@ -3,7 +3,7 @@ import { db } from "@/lib/backend";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
-import { Store, FileText, Users, LayoutDashboard, LogOut, CreditCard, Tag, Wrench, Siren } from "lucide-react";
+import { Store, FileText, Users, LayoutDashboard, LogOut, CreditCard, Tag, Wrench, Siren, Shield } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
 export default function AdminDashboard() {
@@ -64,7 +64,17 @@ export default function AdminDashboard() {
     },
   });
 
+  const { data: insuranceLeadCount = 0 } = useQuery({
+    queryKey: ["admin_insurance_lead_count"],
+    queryFn: async () => {
+      const { count, error } = await db.from("insurance_leads").select("*", { count: "exact", head: true });
+      if (error) throw error;
+      return count || 0;
+    },
+  });
+
   const stats = [
+    { label: "Insurance Leads", value: insuranceLeadCount, icon: Shield, color: "bg-success/10 text-success" },
     { label: "Total Posts", value: postCount, icon: FileText, color: "bg-primary/10 text-primary" },
     { label: "Categories", value: categoryCount, icon: Store, color: "bg-warning/10 text-warning" },
     { label: "Users", value: userCount, icon: Users, color: "bg-success/10 text-success" },
@@ -140,6 +150,13 @@ export default function AdminDashboard() {
           <div className="text-left">
             <p className="font-bold text-sm">{"Manage Mechanics"}</p>
             <p className="text-xs text-muted-foreground">{"Warnings, holds and mechanic performance"}</p>
+          </div>
+        </Button>
+        <Button className="w-full justify-start gap-3 h-14" variant="outline" onClick={() => navigate("/admin/insurance-leads")}>
+          <Shield className="h-5 w-5 text-success" />
+          <div className="text-left">
+            <p className="font-bold text-sm">{"Insurance Leads"}</p>
+            <p className="text-xs text-muted-foreground">{"Private leads, status and commission tracking"}</p>
           </div>
         </Button>
         <Button className="w-full justify-start gap-3 h-14" variant="outline" onClick={() => navigate("/admin/sos")}>
