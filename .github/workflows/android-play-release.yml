@@ -1,0 +1,203 @@
+# Driver Saathi — Android Play Store pipeline (unparked 2026-10-22, user-approved).
+#
+# What it does, on every push to main that touches app code (and on manual
+# dispatch): build the web bundle, generate the Capacitor Android platform
+# (android/ is NOT committed to this repo), sign a release AAB, upload the
+# AAB as a workflow artifact, and — only when the Play secrets exist —
+# upload it to Google Play. Play's auto-update then delivers it to users
+# who enabled auto-update; everyone else sees an Update button in Play
+# (and the in-app UpdatePrompt banner, which already checks Play).
+#
+# What it does NOT do:
+#  - It cannot create the Play Store listing. The app must first be created
+#    in Play Console by the owner (store listing, content rating, privacy
+#    policy, $25 developer account) and the FIRST release must be reviewed
+#    there. This workflow automates every release AFTER that.
+#  - It cannot invent a keystore or a Play service account. Both live ONLY
+#    as GitHub Secrets added by the owner (see docs/PLAY_PIPELINE.md).
+#    Secrets are NEVER committed, NEVER sent in chat, NEVER printed in logs.
+#  - It does not deploy the web site. Web changes still go live via the
+#    Lovable publish step, and the installed app loads them on next open
+#    through server.url — a new AAB is only needed for NATIVE changes
+#    (icon, permissions, plugins) or for Play distribution itself.
+#
+# Secrets (Repository Settings > Secrets and variables > Actions):
+#  ANDROID_KEYSTORE_BASE64  — base64 of the upload keystore (.jks) file.
+#  ANDROID_KEYSTORE_PASSWORD — keystore (store) password.
+#  ANDROID_KEY_ALIAS         — key alias inside the keystore.
+#  ANDROID_KEY_PASSWORD      — key password.
+#  PLAY_SERVICE_ACCOUNT_JSON — service-account JSON (plain text) with
+#                              Play Console "Release manager" access.
+#  GOOGLE_SERVICES_JSON_BASE64 (optional but strongly recommended) —
+#                              base64 of google-services.json for
+#                              com.driversaathi.app. Without it the AAB
+#                              still builds, but native Google sign-in and
+#                              FCM push will not work until it is added.
+# If the keystore secrets are missing, the job FAILS with a clear message
+# instead of producing an unsigned bundle Play would reject anyway.
+# If only the Play secret is missing, the signed AAB is still uploaded as
+# an artifact and the Play step is skipped, so a manual Play upload stays
+# possible from that exact file.
+
+name: Android Play Release
+
+"on":
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "public/**"
+      - "package.json"
+      - "package-lock.json"
+      - "capacitor.config.ts"
+      - "vite.config.ts"
+      - ".github/workflows/android-play-release.yml"
+  workflow_dispatch:
+    inputs:
+      track:
+        description: "Play track to upload to"
+        required: true
+        default: "internal"
+        type: choice
+        options:
+          - internal
+          - production
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    env:
+      PLAY_TRACK: ${{ inputs.track || 'internal' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build web bundle
+        run: npm run build
+
+      - name: Generate Android platform and sync plugins
+        run: |
+          npx cap add android
+          npx cap sync android
+
+      - name: Bump versionCode / versionName
+        # Play rejects a re-uploaded versionCode, so every run gets a
+        # unique one from the run number (monotonic per workflow).
+        run: |
+          python3 - << 'PY'
+          import re, os
+          p = "android/app/build.gradle"
+          s = open(p).read()
+          run = os.environ["GITHUB_RUN_NUMBER"]
+          s = re.sub(r"versionCode \d+", f"versionCode {run}", s)
+          s = re.sub(r'versionName "[^"]+"', f'versionName "1.0.{run}"', s)
+          open(p, "w").write(s)
+          print(f"versionCode={run} versionName=1.0.{run}")
+          PY
+
+      - name: Inject AdMob App ID into AndroidManifest
+        # The AdMob plugin does not add this itself; without it the app
+        # crashed on launch in an earlier build. Idempotent: skips when
+        # the meta-data is already present. This ID is public (it is in
+        # app-ads.txt and src/lib/admob.ts), not a secret.
+        run: |
+          python3 - << 'PY'
+          p = "android/app/src/main/AndroidManifest.xml"
+          s = open(p).read()
+          if "com.google.android.gms.ads.APPLICATION_ID" not in s:
+              meta = ('        <meta-data\n'
+                      '            android:name="com.google.android.gms.ads.APPLICATION_ID"\n'
+                      '            android:value="ca-app-pub-1994214977986364~6230883263" />\n')
+              s = s.replace("</application>", meta + "    </application>", 1)
+              open(p, "w").write(s)
+              print("AdMob App ID injected")
+          else:
+              print("AdMob App ID already present, skipped")
+          PY
+
+      - name: Add google-services.json if secret exists, else warn
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON_BASE64" ]; then
+            echo "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > android/app/google-services.json
+            echo "google-services.json written (native Google sign-in + FCM enabled)"
+          else
+            echo "::warning::GOOGLE_SERVICES_JSON_BASE64 is not set. The AAB will still build, but native Google sign-in and FCM push will not work until it is added. See docs/PLAY_PIPELINE.md."
+          fi
+
+      - name: Check keystore secrets
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_ALIAS" ] || [ -z "$ANDROID_KEY_PASSWORD" ]; then
+            echo "::error::Keystore secrets are missing. Add ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD in Repository Settings > Secrets and variables > Actions. See docs/PLAY_PIPELINE.md. Never send a keystore or password in chat."
+            exit 1
+          fi
+          echo "Keystore secrets present (values are never printed)"
+
+      - name: Write keystore and key.properties
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/upload-keystore.jks
+          cat > android/key.properties << EOF
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyPassword=$ANDROID_KEY_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          storeFile=app/upload-keystore.jks
+          EOF
+          echo "key.properties written (not committed, runner-only)"
+
+      - name: Build signed release AAB
+        working-directory: android
+        run: ./gradlew bundleRelease --no-daemon
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: driver-saathi-release-aab
+          path: android/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+
+      - name: Upload to Google Play
+        if: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.driversaathi.app
+          releaseFiles: android/app/build/outputs/bundle/release/app-release.aab
+          track: ${{ env.PLAY_TRACK }}
+          status: completed
+
+      - name: Note when Play upload is skipped
+        if: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON == '' }}
+        run: |
+          echo "::notice::PLAY_SERVICE_ACCOUNT_JSON is not set, so the signed AAB was kept as an artifact only and NOT uploaded to Play. Add the Play service-account secret (see docs/PLAY_PIPELINE.md) to make uploads automatic, or upload the artifact manually in Play Console."
