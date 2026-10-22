@@ -112,7 +112,7 @@ export default function AssistantPage() {
   const send = useCallback(async (text?: string) => {
     const msgText = text || input.trim();
     if (!msgText || isLoading) return;
-    if (!session?.access_token) { toast.error("Please sign in to use AI assistant"); return; }
+    if (!session?.access_token) { toast.error(t("ai.signInAssistant")); return; }
     const userMsg: Msg = { role: "user", content: msgText };
     if (!text) setInput("");
     setMessages((prev) => [...prev, userMsg]);
@@ -140,8 +140,8 @@ export default function AssistantPage() {
       });
 
       if (!resp.ok) {
-        if (resp.status === 429) { toast.error("Rate limit exceeded, try again later."); return; }
-        if (resp.status === 402) { toast.error("Usage limit reached."); return; }
+        if (resp.status === 429) { toast.error(t("ai.rateLimit")); return; }
+        if (resp.status === 402) { toast.error(t("ai.usageLimit")); return; }
         try {
           const json = await resp.json();
           if (json.choices?.[0]?.message?.content) {
@@ -204,7 +204,7 @@ export default function AssistantPage() {
       }
     } catch (e) {
       console.error(e);
-      toast.error("Failed to get response");
+      toast.error(t("ai.failedResponse"));
     } finally {
       setIsLoading(false);
       // Speak response, then auto-restart mic in driving mode
@@ -225,7 +225,7 @@ export default function AssistantPage() {
   const startListening = useCallback(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      toast.error("Speech recognition not supported on this browser");
+      toast.error(t("ai.speechUnsupported"));
       return;
     }
 
@@ -282,7 +282,7 @@ export default function AssistantPage() {
       if (silenceTimer) clearTimeout(silenceTimer);
       setIsListening(false);
       if (event.error !== "no-speech" && event.error !== "aborted") {
-        toast.error(`Voice error: ${event.error}`);
+        toast.error(t("ai.voiceError", { error: event.error }));
       }
       // Retry in driving mode on no-speech
       if (drivingModeRef.current && (event.error === "no-speech" || event.error === "aborted")) {
@@ -315,12 +315,12 @@ export default function AssistantPage() {
       recognitionRef.current?.stop();
       setIsListening(false);
       window.speechSynthesis.cancel();
-      toast("🚗 Driving mode off");
+      toast(t("assistant.drivingOff"));
     } else {
       // Turn on driving mode
       setDrivingMode(true);
       setSpeakEnabled(true);
-      toast("🚗 Driving mode ON — just talk, I'm listening!");
+      toast(t("assistant.drivingOn"));
       startListening();
     }
   }, [drivingMode, startListening]);
@@ -344,13 +344,13 @@ export default function AssistantPage() {
               onClick={() => setActiveTab("assistant")}
               className="flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-extrabold transition-all text-muted-foreground"
             >
-              <Bot className="h-4 w-4" /> Assistant
+              <Bot className="h-4 w-4" /> {t("nav.assistant")}
             </button>
             <button
               onClick={() => setActiveTab("finance")}
               className="flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-extrabold transition-all bg-primary text-primary-foreground shadow-md"
             >
-              <TrendingUp className="h-4 w-4" /> Finance AI
+              <TrendingUp className="h-4 w-4" /> {t("home.financeAI")}
             </button>
           </div>
         </div>
@@ -377,7 +377,7 @@ export default function AssistantPage() {
             <div className="flex flex-col items-center gap-6 w-full max-w-sm">
               <div className="flex items-center gap-2">
                 <Headphones className="h-6 w-6 text-primary" />
-                <h2 className="text-xl font-bold">Driving Mode</h2>
+                <h2 className="text-xl font-bold">{t("assistant.drivingMode")}</h2>
               </div>
 
               <p className="text-center text-muted-foreground">
@@ -407,7 +407,7 @@ export default function AssistantPage() {
               {input && (
                 <Card className="w-full">
                   <CardContent className="p-3 text-center">
-                    <p className="text-muted-foreground text-xs mb-1">Heard:</p>
+                    <p className="text-muted-foreground text-xs mb-1">{t("assistant.heard")}</p>
                     <p className="font-medium">{input}</p>
                   </CardContent>
                 </Card>
@@ -417,7 +417,7 @@ export default function AssistantPage() {
               {messages.length > 0 && messages[messages.length - 1].role === "assistant" && (
                 <Card className="w-full">
                   <CardContent className="p-3">
-                    <p className="text-muted-foreground text-xs mb-1">Response:</p>
+                    <p className="text-muted-foreground text-xs mb-1">{t("assistant.response")}</p>
                     <p className="whitespace-pre-wrap">{messages[messages.length - 1].content}</p>
                   </CardContent>
                 </Card>
@@ -428,7 +428,7 @@ export default function AssistantPage() {
                 className="w-full gap-2 mt-4"
                 onClick={toggleDrivingMode}
               >
-                <Square className="h-4 w-4" /> Exit Driving Mode
+                <Square className="h-4 w-4" /> {t("assistant.exitDrivingMode")}
               </Button>
             </div>
           </motion.div>
@@ -443,13 +443,13 @@ export default function AssistantPage() {
               onClick={() => setActiveTab("assistant")}
               className="flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-extrabold transition-all bg-primary text-primary-foreground shadow-md"
             >
-              <Bot className="h-4 w-4" /> Assistant
+              <Bot className="h-4 w-4" /> {t("nav.assistant")}
             </button>
             <button
               onClick={() => setActiveTab("finance")}
               className="flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-extrabold transition-all text-muted-foreground"
             >
-              <TrendingUp className="h-4 w-4" /> Finance AI
+              <TrendingUp className="h-4 w-4" /> {t("home.financeAI")}
             </button>
           </div>
         </div>
@@ -461,10 +461,10 @@ export default function AssistantPage() {
               size="sm"
               className="gap-1"
               onClick={toggleDrivingMode}
-              title="Driving Mode — hands-free voice control"
+              title={t("assistant.drivingModeTip")}
             >
               <Headphones className="h-4 w-4" />
-              <span className="hidden sm:inline">Drive</span>
+              <span className="hidden sm:inline">{t("assistant.drive")}</span>
             </Button>
             <Button
               variant="ghost"
@@ -490,8 +490,8 @@ export default function AssistantPage() {
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
             <Bot className="h-12 w-12 mb-3 opacity-50" />
-            <p className="font-medium">Hi! I'm your driving assistant 🚗</p>
-            <p className="text-muted-foreground mt-1">Mic dabao ya Driving Mode on karo — Hindi, Hinglish, English sab samjhta hoon!</p>
+            <p className="font-medium">{t("assistant.intro")}</p>
+            <p className="text-muted-foreground mt-1">{t("assistant.introHint")}</p>
           </div>
         )}
         <AnimatePresence>
@@ -520,7 +520,7 @@ export default function AssistantPage() {
               <Bot className="h-4 w-4" />
             </div>
             <Card>
-              <CardContent className="p-3 text-muted-foreground">Thinking...</CardContent>
+              <CardContent className="p-3 text-muted-foreground">{t("assistant.thinking")}</CardContent>
             </Card>
           </div>
         )}
