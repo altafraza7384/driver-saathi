@@ -3,7 +3,7 @@ import { db } from "@/lib/backend";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
-import { Store, FileText, Users, LayoutDashboard, LogOut, CreditCard, Tag, Wrench, Siren, Shield } from "lucide-react";
+import { Store, FileText, Users, LayoutDashboard, LogOut, CreditCard, Tag, Wrench, Siren, Shield, Megaphone } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
 export default function AdminDashboard() {
@@ -157,6 +157,13 @@ export default function AdminDashboard() {
           <div className="text-left">
             <p className="font-bold text-sm">{"Insurance Leads"}</p>
             <p className="text-xs text-muted-foreground">{"Private leads, status and commission tracking"}</p>
+          </div>
+        </Button>
+        <Button className="w-full justify-start gap-3 h-14" variant="outline" onClick={() => navigate("/admin/announcements")}>
+          <Megaphone className="h-5 w-5 text-primary" />
+          <div className="text-left">
+            <p className="font-bold text-sm">{"Announcements"}</p>
+            <p className="text-xs text-muted-foreground">{"Custom news and subscription offers — banner + popup, push staged"}</p>
           </div>
         </Button>
         <Button className="w-full justify-start gap-3 h-14" variant="outline" onClick={() => navigate("/admin/sos")}>
