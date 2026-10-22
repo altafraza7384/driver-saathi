@@ -239,62 +239,62 @@ export default function DebtsPage() {
   return (
     <div className="space-y-4 p-4 pt-6">
       <button onClick={() => navigate("/more")} className="flex items-center gap-1 text-sm text-muted-foreground">
-        <ArrowLeft className="h-4 w-4" /> Back
+        <ArrowLeft className="h-4 w-4" /> {t("common.back")}
       </button>
 
       <div className="flex items-center justify-between gap-2">
-        <h1 className="text-xl font-bold sm:text-2xl">Debt & EMI</h1>
+        <h1 className="text-xl font-bold sm:text-2xl">{t("debt.title")}</h1>
         <Dialog open={showAdd} onOpenChange={setShowAdd}>
           <DialogTrigger asChild>
-            <Button size="sm" className="gap-1"><Plus className="h-4 w-4" /> Add Loan</Button>
+            <Button size="sm" className="gap-1"><Plus className="h-4 w-4" /> {t("debt.addLoan")}</Button>
           </DialogTrigger>
           <DialogContent>
-            <DialogHeader><DialogTitle>Add New Loan</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle>{t("debt.newLoan")}</DialogTitle></DialogHeader>
             <form onSubmit={handleAdd} className="space-y-4">
               <div className="space-y-2">
-                <Label>Loan Name</Label>
+                <Label>{t("debt.loanName")}</Label>
                 <Input placeholder="e.g. Car Loan" value={name} onChange={(e) => setName(e.target.value)} required />
               </div>
               <div className="space-y-2">
-                <Label>Principal Amount (₹)</Label>
+                <Label>{t("debt.principalAmount")}</Label>
                 <Input type="number" placeholder="500000" value={principal} onChange={(e) => setPrincipal(e.target.value)} min="1" required />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label>Interest Rate (%)</Label>
+                  <Label>{t("debt.interestRate")}</Label>
                   <Input type="number" placeholder="10" value={rate} onChange={(e) => setRate(e.target.value)} min="0" step="0.1" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Tenure (months)</Label>
+                  <Label>{t("debt.tenure")}</Label>
                   <Input type="number" placeholder="36" value={tenure} onChange={(e) => setTenure(e.target.value)} min="1" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label htmlFor="debt-notify-date">Notify Date</Label>
-                  <DatePicker id="debt-notify-date" label="Notify Date" value={notifyDate} onChange={setNotifyDate} />
+                  <Label htmlFor="debt-notify-date">{t("reminder.notifyDate")}</Label>
+                  <DatePicker id="debt-notify-date" label={t("reminder.notifyDate")} value={notifyDate} onChange={setNotifyDate} />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="debt-notify-time">Notify Time</Label>
-                  <TimePicker id="debt-notify-time" label="Notify Time" value={notifyTime} onChange={setNotifyTime} />
+                  <Label htmlFor="debt-notify-time">{t("reminder.notifyTime")}</Label>
+                  <TimePicker id="debt-notify-time" label={t("reminder.notifyTime")} value={notifyTime} onChange={setNotifyTime} />
                 </div>
               </div>
               {principal && tenure && (
                 <Card className="border-primary/20 bg-primary/5">
                   <CardContent className="p-3 space-y-2">
-                    <p className="text-xs text-muted-foreground text-center">Estimated Monthly EMI</p>
+                    <p className="text-xs text-muted-foreground text-center">{t("debt.estimatedEmi")}</p>
                     <p className="text-xl font-bold text-primary text-center">
                       {formatINR(toAmount(customEmi ? parseFloat(customEmi) : calculateEMI(parseFloat(principal) || 0, parseFloat(rate) || 0, parseInt(tenure) || 12)))}
                     </p>
                     <Input
                       type="number"
-                      placeholder="Edit EMI amount"
+                      placeholder={t("form.editEmiAmount")}
                       value={customEmi}
                       onChange={(e) => setCustomEmi(e.target.value)}
                       className="text-center"
                       min="1"
                     />
-                    <p className="text-[10px] text-muted-foreground text-center">Leave blank to use calculated EMI</p>
+                    <p className="text-[10px] text-muted-foreground text-center">{t("form.leaveBlankEmi")}</p>
                   </CardContent>
                 </Card>
               )}
@@ -310,13 +310,13 @@ export default function DebtsPage() {
       <div className="grid grid-cols-2 gap-3">
         <Card className="bg-destructive/5 border-destructive/20">
           <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">Total Outstanding</p>
+            <p className="text-xs text-muted-foreground">{t("debt.totalOutstanding")}</p>
             <p className="text-lg font-bold text-destructive">{formatINR(totalLiability)}</p>
           </CardContent>
         </Card>
         <Card className="bg-warning/5 border-warning/20">
           <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">Monthly EMI</p>
+            <p className="text-xs text-muted-foreground">{t("debt.monthlyEmi")}</p>
             <p className="text-lg font-bold text-warning">{formatINR(totalEMI)}</p>
           </CardContent>
         </Card>
@@ -328,7 +328,7 @@ export default function DebtsPage() {
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
         </div>
       ) : debts.length === 0 ? (
-        <Card><CardContent className="p-6 text-center text-muted-foreground">No loans added yet</CardContent></Card>
+        <Card><CardContent className="p-6 text-center text-muted-foreground">{t("debt.noLoans")}</CardContent></Card>
       ) : (
         <div className="space-y-3">
           {debts.map((debt, i) => {
@@ -373,18 +373,18 @@ export default function DebtsPage() {
                           <div className="flex gap-2">
                             <Input
                               type="number"
-                              placeholder="Payment amount"
+                              placeholder={t("debt.paymentAmount")}
                               value={payAmount}
                               onChange={(e) => setPayAmount(e.target.value)}
                               min="1"
                               className="flex-1"
                             />
-                            <Button size="sm" onClick={handlePayEMI}>Pay</Button>
+                            <Button size="sm" onClick={handlePayEMI}>{t("common.pay")}</Button>
                             <Button size="sm" variant="ghost" onClick={() => { setPayDebtId(null); setPayAmount(""); }}>✕</Button>
                           </div>
                         ) : (
                           <Button size="sm" variant="outline" className="w-full" onClick={() => { setPayDebtId(debt.id); setPayAmount(String(debt.emi_amount || "")); }}>
-                            <Banknote className="h-4 w-4 mr-1" /> Record Payment
+                            <Banknote className="h-4 w-4 mr-1" /> {t("debt.recordPayment")}
                           </Button>
                         )}
                       </>
@@ -405,28 +405,28 @@ export default function DebtsPage() {
       {/* Edit Dialog */}
       <Dialog open={!!editDebt} onOpenChange={(open) => !open && setEditDebt(null)}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Edit Loan</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("debt.editLoan")}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Loan Name</Label>
+              <Label>{t("debt.loanName")}</Label>
               <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>Principal Amount (₹)</Label>
+              <Label>{t("debt.principalAmount")}</Label>
               <Input type="number" value={editPrincipal} onChange={(e) => setEditPrincipal(e.target.value)} min="1" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label>Interest Rate (%)</Label>
+                <Label>{t("debt.interestRate")}</Label>
                 <Input type="number" value={editRate} onChange={(e) => setEditRate(e.target.value)} min="0" step="0.1" />
               </div>
               <div className="space-y-2">
-                <Label>Tenure (months)</Label>
+                <Label>{t("debt.tenure")}</Label>
                 <Input type="number" value={editTenure} onChange={(e) => setEditTenure(e.target.value)} min="1" />
               </div>
             </div>
             <Button className="w-full" onClick={handleUpdate} disabled={saving}>
-              {saving ? "Saving..." : "Update Loan"}
+              {saving ? t("common.saving") : t("debt.updateLoan")}
             </Button>
           </div>
         </DialogContent>
