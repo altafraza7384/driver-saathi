@@ -39,6 +39,8 @@ const AdminPlansPage = lazy(() => import("./pages/admin/AdminPlansPage"));
 const AdminOffersPage = lazy(() => import("./pages/admin/AdminOffersPage"));
 const AdminMechanicsPage = lazy(() => import("./pages/admin/AdminMechanicsPage"));
 const AdminSosPage = lazy(() => import("./pages/admin/AdminSosPage"));
+const AdminInsuranceLeadsPage = lazy(() => import("./pages/admin/AdminInsuranceLeadsPage"));
+const InsuranceLeadPage = lazy(() => import("./pages/InsuranceLeadPage"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -155,6 +157,7 @@ const App = () => (
                     <Route path="/notes" element={<NotesPage />} />
                     <Route path="/sos" element={<SOSPage />} />
                     <Route path="/car-sos" element={<CarSosPage />} />
+                    <Route path="/insurance" element={<InsuranceLeadPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/data-backup" element={<DataBackupPage />} />
                     <Route path="/finance-ai" element={<FinanceAIPage />} />
@@ -169,6 +172,7 @@ const App = () => (
                       <Route path="/admin/offers" element={<AdminOffersPage />} />
                       <Route path="/admin/mechanics" element={<AdminMechanicsPage />} />
                       <Route path="/admin/sos" element={<AdminSosPage />} />
+                      <Route path="/admin/insurance-leads" element={<AdminInsuranceLeadsPage />} />
                     </Route>
                   </Route>
                   <Route path="*" element={<NotFound />} />
