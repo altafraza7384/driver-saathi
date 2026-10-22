@@ -76,6 +76,14 @@ export default function CarSosPage() {
   const { user } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
+
+  const statusLabel = (s: string) =>
+    s === "pending" ? t("common.pending")
+    : s === "accepted" ? t("common.accepted")
+    : s === "onway" ? t("common.onTheWay")
+    : s === "completed" ? t("common.completed")
+    : s === "cancelled" ? t("common.cancelled")
+    : s;
   const queryClient = useQueryClient();
 
   const [category, setCategory] = useState<CarSosCategory | null>(null);
@@ -417,7 +425,7 @@ export default function CarSosPage() {
                     {t(`carSos.${r.category}`)}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {r.status} •{" "}
+                    {statusLabel(r.status)} •{" "}
                     {new Date(r.created_at).toLocaleDateString()}
                   </p>
                 </div>
