@@ -41,8 +41,8 @@ export default function SOSPage() {
   });
 
   const shareWhatsApp = () => {
-    if (!navigator.geolocation) { toast.error("Geolocation not supported"); return; }
-    toast.info("Getting location...");
+    if (!navigator.geolocation) { toast.error(t("sos.geoUnsupported")); return; }
+    toast.info(t("sos.locating"));
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude } = pos.coords;
@@ -53,39 +53,39 @@ export default function SOSPage() {
           const phone = firstContact.phone.replace(/\D/g, "");
           const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
           window.open(waUrl, "_blank");
-          toast.success(`Opening WhatsApp for ${firstContact.name}`);
+          toast.success(t("sos.openingWhatsappFor", { name: firstContact.name }));
         } else {
           const waUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
           window.open(waUrl, "_blank");
-          toast.success("Opening WhatsApp to share location");
+          toast.success(t("sos.openingWhatsapp"));
         }
       },
-      () => { toast.error("Could not get location. Please enable GPS."); },
+      () => { toast.error(t("sos.locFailed")); },
       { enableHighAccuracy: true, timeout: 10000 }
     );
   };
 
   const triggerSOS = () => {
     setSosTriggered(true);
-    if (!navigator.geolocation) { toast.error("Geolocation not supported"); setSosTriggered(false); return; }
+    if (!navigator.geolocation) { toast.error(t("sos.geoUnsupported")); setSosTriggered(false); return; }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude } = pos.coords;
         const mapsUrl = `https://maps.google.com/maps?q=${latitude},${longitude}`;
         const message = `🚨 SOS EMERGENCY! I need help! My live location: ${mapsUrl}`;
-        toast.success(`Location captured: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
+        toast.success(t("sos.locationCaptured", { coords: `${latitude.toFixed(4)}, ${longitude.toFixed(4)}` }));
         if (contacts.length > 0) {
           const phones = contacts.map((c) => c.phone.replace(/\s+/g, "")).join(",");
           const smsUrl = `sms:${phones}?body=${encodeURIComponent(message)}`;
           window.open(smsUrl, "_self");
-          toast.info(`Opening SMS to ${contacts.length} contact(s)`);
+          toast.info(t("sos.openingSms", { count: contacts.length }));
         } else {
           if (navigator.share) navigator.share({ title: "🚨 SOS Emergency", text: message, url: mapsUrl }).catch(() => {});
-          else { navigator.clipboard.writeText(message); toast.info("Location copied!"); }
+          else { navigator.clipboard.writeText(message); toast.info(t("sos.locCopied")); }
         }
         setTimeout(() => setSosTriggered(false), 3000);
       },
-      () => { toast.error("Could not get location. Please enable GPS."); setSosTriggered(false); },
+      () => { toast.error(t("sos.locFailed")); setSosTriggered(false); },
       { enableHighAccuracy: true, timeout: 10000 }
     );
   };
@@ -107,7 +107,7 @@ export default function SOSPage() {
         className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary text-primary-foreground p-3 font-extrabold shadow-md active:scale-95 transition-transform"
       >
         <MessageCircle className="h-5 w-5" />
-        Share Location on WhatsApp
+        {t("sos.shareWhatsapp")}
       </button>
 
       {/* Car SOS Button — mechanic help */}
