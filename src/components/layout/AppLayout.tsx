@@ -5,6 +5,7 @@ import { UpdatePrompt } from "@/components/UpdatePrompt";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { initAdMob, showBannerAd } from "@/lib/admob";
 import { requestAllPermissions } from "@/lib/native-permissions";
+import { prefetchRoutes } from "@/lib/prefetchRoutes";
 import { isNativeContext } from "@/lib/platform";
 
 export function AppLayout() {
@@ -13,6 +14,9 @@ export function AppLayout() {
   useEffect(() => {
     // Request all native permissions on first launch
     requestAllPermissions();
+    // Warm the cache for daily-use pages while idle, so later taps open
+    // instantly instead of downloading their chunk on the spot.
+    prefetchRoutes();
     // Initialize AdMob
     initAdMob().then(() => showBannerAd());
 
