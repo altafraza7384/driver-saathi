@@ -39,17 +39,20 @@ const COUNT_COLLECTIONS = [
   "car_documents", "notes", "health_logs", "emergency_contacts", "platform_affiliations",
 ] as const;
 
+// Admin pages are English-only by rule, so these are plain English labels,
+// not i18n keys. (A previous version rendered them through t(), which was
+// never defined in this file, so the page crashed to a white screen.)
 const COUNT_KEYS: Record<(typeof COUNT_COLLECTIONS)[number], string> = {
-  transactions: "admin.countTransactions",
-  debts: "admin.countDebts",
-  goals: "admin.countGoals",
-  reminders: "admin.countReminders",
-  car_checks: "admin.countCarChecks",
-  car_documents: "admin.countCarDocs",
-  notes: "admin.countNotes",
-  health_logs: "admin.countHealthLogs",
-  emergency_contacts: "admin.countEmergencyContacts",
-  platform_affiliations: "admin.countPlatforms",
+  transactions: "Transactions",
+  debts: "Debts",
+  goals: "Goals",
+  reminders: "Reminders",
+  car_checks: "Car Checks",
+  car_documents: "Car Documents",
+  notes: "Notes",
+  health_logs: "Health Logs",
+  emergency_contacts: "Emergency Contacts",
+  platform_affiliations: "Platforms",
 };
 
 export default function AdminUsersPage() {
@@ -255,7 +258,7 @@ export default function AdminUsersPage() {
                   <div className="grid grid-cols-2 gap-2">
                     {COUNT_COLLECTIONS.map((key) => (
                       <div key={key} className="rounded-lg border p-2">
-                        <p className="text-[10px] text-muted-foreground">{t(COUNT_KEYS[key])}</p>
+                        <p className="text-[10px] text-muted-foreground">{COUNT_KEYS[key]}</p>
                         <p className="text-lg font-bold">{counts?.[key] ?? 0}</p>
                       </div>
                     ))}
