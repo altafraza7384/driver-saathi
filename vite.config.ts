@@ -54,6 +54,17 @@ export default defineConfig(({ mode }) => ({
           }
           if (id.includes("node_modules/@supabase")) return "vendor-supabase";
           if (
+            id.includes("node_modules/@radix-ui") ||
+            id.includes("node_modules/lucide-react") ||
+            id.includes("node_modules/date-fns") ||
+            id.includes("node_modules/sonner")
+          ) {
+            return "vendor-ui";
+          }
+          if (id.includes("node_modules/framer-motion")) {
+            return "vendor-motion";
+          }
+          if (
             id.includes("node_modules/@capacitor") ||
             id.includes("node_modules/@capawesome") ||
             id.includes("node_modules/@lovable.dev")

@@ -23,12 +23,16 @@ billing is pending on Google's side), so they currently fail gracefully.
   account delete) are STAGED in `firebase/` but NOT deployed — Blaze-gated.
 - Android: Capacitor, appId `com.driversaathi.app`, appName "Driver Saathi".
   `capacitor.config.ts` uses **remote-load**: `server.url` is
-  `https://driver-saathi.lovable.app`, so published WEB changes reach the
+  `https://driver-saathi-app.web.app` (Firebase Hosting, since 2026-10-24;
+  was driver-saathi.lovable.app), so published WEB changes reach the
   installed app on next open. Only NATIVE changes (icon, name, permissions,
   plugins, server.url) need a new AAB.
-- Hosting: Lovable — live site `https://driver-saathi.lovable.app`. The Lovable
-  project is owned by a separate account (razakhan.chino@proton.me), NOT the
-  GitHub/Google account (altafraza7384@gmail.com).
+- Hosting: Firebase Hosting — live site `https://driver-saathi-app.web.app`
+  (auto-deployed from GitHub main by `.github/workflows/firebase-hosting.yml`
+  via keyless Workload Identity Federation; Lovable publish is RETIRED as
+  the web path since 2026-10-24, though Lovable edits still sync to GitHub).
+  The Lovable project is owned by a separate account (razakhan.chino@proton.me),
+  NOT the GitHub/Google account (altafraza7384@gmail.com).
 - Monetization (planned, not live): paid subscription (monthly + yearly, charged
   only when AI features are used) + AdMob ads. AdMob primary app "Driver
   saathi", banner unit ending …/7524617781; `app-ads.txt` is live. Payments
@@ -137,11 +141,12 @@ billing is pending on Google's side), so they currently fail gracefully.
   All GitHub writes go through the **GitHub web UI in the signed-in browser**,
   one file per commit, direct to `main` (keep each browser task to ~7 files;
   a 12-file task died on output limits).
-- **Every GitHub upload is followed by a Lovable publish** so the live site
-  updates (user's explicit standing instruction). Publish is a separate manual
-  step in Lovable after it syncs from GitHub.
-- **GitHub Actions cloud builds are PARKED.** The user said "bolunga tabhi
-  karna" — do NOT start or unpark them until he explicitly says so.
+- **Every GitHub push to main auto-deploys to Firebase Hosting** so the
+  live site updates (supersedes the old Lovable-publish step, retired
+  2026-10-24). No manual publish step remains for web changes.
+- **GitHub Actions are UNPARKED since 2026-10-22** (user: "Poora Play
+  pipeline banao, Actions unpark karo"). The Hosting workflow deploys web
+  pushes; the Play workflow builds AABs on native-only pushes.
 - Firestore rules live in `firebase/firestore.rules` AND must be published
   separately in the Firebase console (repo copy alone changes nothing live).
   Same for Firestore indexes (10 exist live).
@@ -171,11 +176,13 @@ billing is pending on Google's side), so they currently fail gracefully.
 - Mechanic Saathi is a SEPARATE app + repo (not a Lovable edit), same Firebase
   project, launch area Mumbai first. It reads/writes the shared `mechanics`,
   `sos_requests`, `sos_request_details` collections.
-- Custom domain: DECIDED 2026-10-22 — keep `driver-saathi.lovable.app`. No
-  domain switch (it would force an APK/AAB rebuild + Firebase authorized-domain
-  + app-ads.txt changes).
+- Custom domain: SUPERSEDED 2026-10-24 by the Firebase Hosting migration —
+  the live address is now `https://driver-saathi-app.web.app` (server.url
+  updated in the same change; a new APK/AAB is needed for the installed app
+  to load web.app — the old lovable.app load still works).
 - Known leftovers (do not "fix" without asking): `src/lib/backend.ts`
   statically imports both backends, so vendor-supabase (~172 KB) ships in
-  Firebase builds; signup still shows the old "check your email" toast without
-  auto-entering the app (login right after works); App Check is off; minimum
+  Firebase builds; signup toast FIXED 2026-10-24 (A-Z audit): signup now switches the form
+  to Login with an honest "Account created" message instead of the false
+  "check your email" toast; App Check is off; minimum
   password is 6 chars; account delete is Blaze-gated.
