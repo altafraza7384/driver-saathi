@@ -81,7 +81,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
 
       - name: Setup JDK 17
         uses: actions/setup-java@v4
@@ -92,11 +94,15 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      # This repo's package manager is bun (bun.lock is the source of
+      # truth); package-lock.json is stale, so npm ci fails on it
+      # (same failure the Hosting workflow hit 2026-10-24). Node is
+      # kept only so the `npx cap` steps below can run.
       - name: Install dependencies
-        run: npm ci --no-audit --no-fund
+        run: bun install
 
       - name: Build web bundle
-        run: npm run build
+        run: bun run build
 
       - name: Generate Android platform and sync plugins
         run: |
