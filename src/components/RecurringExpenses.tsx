@@ -2,7 +2,9 @@ import { useState, useEffect } from "react";
 import { db } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
 import { formatINR, toAmount } from "@/lib/currency";
+import { localToday, currentMonth } from "@/lib/budgets";
 import { friendlyErrorMessage } from "@/lib/errors";
+import { useI18n } from "@/lib/i18n";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,27 +41,47 @@ type RecurringExpense = {
 };
 
 const CATEGORIES = [
-  { value: "rent", label: "Room Rent" },
-  { value: "electricity", label: "Electricity" },
-  { value: "water", label: "Water" },
-  { value: "internet", label: "Internet" },
-  { value: "mobile", label: "Mobile/Recharge" },
-  { value: "gas", label: "Gas/LPG" },
-  { value: "subscription", label: "Subscription" },
-  { value: "insurance", label: "Insurance" },
-  { value: "other", label: "Other" },
+  { value: "rent", key: "recurring.catRent" },
+  { value: "electricity", key: "recurring.catElectricity" },
+  { value: "water", key: "recurring.catWater" },
+  { value: "internet", key: "recurring.catInternet" },
+  { value: "mobile", key: "recurring.catMobile" },
+  { value: "gas", key: "recurring.catGas" },
+  { value: "subscription", key: "recurring.catSubscription" },
+  { value: "insurance", key: "recurring.catInsurance" },
+  { value: "other", key: "recurring.catOther" },
 ];
+
+// Recurring-bill categories are stored lowercase, but transaction and
+// budget categories are capitalised (TransactionsPage EXPENSE_CATEGORIES).
+// Map at insert time so a paid Subscription/Insurance/Phone bill actually
+// counts toward that budget (audit 2026-10-24: "subscription" !==
+// "Subscription" meant budget spent never moved). The bill's own name is
+// kept in the transaction description, so no detail is lost.
+const TX_CATEGORY_MAP: Record<string, string> = {
+  subscription: "Subscription",
+  insurance: "Insurance",
+  mobile: "Phone",
+};
 
 function nextNotifyDate(dueDay: number): string {
   const now = new Date();
-  const target = new Date(now.getFullYear(), now.getMonth(), dueDay, 9, 0, 0);
+  // Clamp the day to the month's length: a 31st bill must notify on
+  // 28 Feb, not roll over to 3 Mar (audit 2026-10-24).
+  const daysInMonth = (y: number, m: number) => new Date(y, m + 1, 0).getDate();
+  const day = Math.min(dueDay, daysInMonth(now.getFullYear(), now.getMonth()));
+  const target = new Date(now.getFullYear(), now.getMonth(), day, 9, 0, 0);
   if (target.getTime() <= now.getTime()) {
-    target.setMonth(target.getMonth() + 1);
+    const ny = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
+    const nm = (now.getMonth() + 1) % 12;
+    target.setFullYear(ny, nm, Math.min(dueDay, daysInMonth(ny, nm)));
+    target.setHours(9, 0, 0, 0);
   }
   return target.toISOString();
 }
 
 export default function RecurringExpenses() {
+  const { t } = useI18n();
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -67,6 +89,7 @@ export default function RecurringExpenses() {
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [payingId, setPayingId] = useState<string | null>(null);
 
   // form
   const [editing, setEditing] = useState<RecurringExpense | null>(null);
@@ -152,7 +175,15 @@ export default function RecurringExpenses() {
   };
 
   const handleMarkPaid = async (it: RecurringExpense) => {
-    if (!user) return;
+    if (!user || payingId) return;
+    // One payment per bill per month: without this guard a double-tap
+    // created two payment docs + two transactions (audit 2026-10-24).
+    const thisMonth = currentMonth();
+    if (it.last_paid_date?.slice(0, 7) === thisMonth) {
+      toast({ title: "Already paid this month" });
+      return;
+    }
+    setPayingId(it.id);
     const paidAmount = toAmount(it.amount);
     const { error: paymentError } = await db.from("recurring_expense_payments").insert({
       user_id: user.id,
@@ -161,31 +192,42 @@ export default function RecurringExpenses() {
     });
     if (paymentError) {
       toast({ title: "Error", description: friendlyErrorMessage(paymentError), variant: "destructive" });
+      setPayingId(null);
       return;
     }
-    // also create a regular transaction record so it shows in finance
+    // Also create a regular transaction record so it shows in finance.
+    // transaction_date is REQUIRED: without it the payment was excluded
+    // from every date-filtered view (Home today, Transactions, Budgets)
+    // and the money silently vanished from finance (audit 2026-10-24).
     const { error: txError } = await db.from("transactions").insert({
       user_id: user.id,
       type: "expense",
-      category: it.category,
+      category: TX_CATEGORY_MAP[it.category] ?? "Other",
       amount: paidAmount,
       description: it.name,
+      transaction_date: localToday(),
     });
     if (txError) {
       toast({ title: "Error", description: friendlyErrorMessage(txError), variant: "destructive" });
+      setPayingId(null);
       return;
     }
     const { error: updateError } = await db
       .from("recurring_expenses")
-      .update({ last_paid_date: new Date().toISOString().slice(0, 10) })
+      .update({ last_paid_date: localToday() })
       .eq("id", it.id);
     if (updateError) {
       toast({ title: "Error", description: friendlyErrorMessage(updateError), variant: "destructive" });
+      setPayingId(null);
       return;
     }
-    // The payment also created a transaction: refresh Home's summary.
+    // The payment also created a transaction: refresh Home's summary
+    // and the Home budget widget (it reads budgets_month_tx).
     queryClient.invalidateQueries({ queryKey: ["transactions_today"] });
+    queryClient.invalidateQueries({ queryKey: ["budgets_month_tx"] });
+    queryClient.invalidateQueries({ queryKey: ["budgets_month"] });
     toast({ title: `✅ Paid ${formatINR(paidAmount)}` });
+    setPayingId(null);
     fetchItems();
   };
 
@@ -197,8 +239,8 @@ export default function RecurringExpenses() {
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2 pt-2">
         <div>
-          <h2 className="text-base font-bold sm:text-lg">Monthly Bills</h2>
-          <p className="text-xs text-muted-foreground">Rent, utilities & subscriptions</p>
+          <h2 className="text-base font-bold sm:text-lg">{t("recurring.title")}</h2>
+          <p className="text-xs text-muted-foreground">{t("recurring.subtitle")}</p>
         </div>
         <Dialog
           open={showAdd}
@@ -209,16 +251,16 @@ export default function RecurringExpenses() {
         >
           <DialogTrigger asChild>
             <Button size="sm" variant="outline" className="gap-1">
-              <Plus className="h-4 w-4" /> Add Bill
+              <Plus className="h-4 w-4" /> {t("recurring.addBill")}
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>{editing ? "Edit Bill" : "Add Recurring Bill"}</DialogTitle>
+              <DialogTitle>{editing ? t("recurring.editBill") : t("recurring.addRecurringBill")}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSave} className="space-y-4">
               <div className="space-y-2">
-                <Label>Name</Label>
+                <Label>{t("recurring.name")}</Label>
                 <Input
                   placeholder="e.g. Room Rent"
                   value={name}
@@ -228,18 +270,18 @@ export default function RecurringExpenses() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label>Category</Label>
+                  <Label>{t("recurring.category")}</Label>
                   <Select value={category} onValueChange={setCategory}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {CATEGORIES.map((c) => (
-                        <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                        <SelectItem key={c.value} value={c.value}>{t(c.key)}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Amount (₹)</Label>
+                  <Label>{t("recurring.amount")}</Label>
                   <Input
                     type="number"
                     placeholder="8000"
@@ -251,7 +293,7 @@ export default function RecurringExpenses() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Due Day of Month (1-31)</Label>
+                <Label>{t("recurring.dueDay")}</Label>
                 <Input
                   type="number"
                   placeholder="5"
@@ -262,11 +304,11 @@ export default function RecurringExpenses() {
                   required
                 />
                 <p className="text-[10px] text-muted-foreground">
-                  You'll get a notification every month on this day at 9 AM.
+                  {t("recurring.dueNote")}
                 </p>
               </div>
               <div className="space-y-2">
-                <Label>Note (optional)</Label>
+                <Label>{t("recurring.note")}</Label>
                 <Input
                   placeholder="Landlord name, account no, etc."
                   value={note}
@@ -274,7 +316,7 @@ export default function RecurringExpenses() {
                 />
               </div>
               <Button type="submit" className="w-full" disabled={saving}>
-                {saving ? "Saving..." : editing ? "Update Bill" : "Add Bill"}
+                {saving ? t("common.saving") : editing ? t("recurring.updateBill") : t("recurring.addBill")}
               </Button>
             </form>
           </DialogContent>
@@ -284,7 +326,7 @@ export default function RecurringExpenses() {
       {items.length > 0 && (
         <Card className="bg-accent/30 border-accent/40">
           <CardContent className="p-3 flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">Total Monthly Bills</span>
+            <span className="text-xs text-muted-foreground">{t("recurring.totalMonthly")}</span>
             <span className="text-base font-bold">{formatINR(totalMonthly)}</span>
           </CardContent>
         </Card>
@@ -339,8 +381,9 @@ export default function RecurringExpenses() {
                     variant="outline"
                     className="w-full h-8"
                     onClick={() => handleMarkPaid(it)}
+                    disabled={payingId === it.id || it.last_paid_date?.slice(0, 7) === currentMonth()}
                   >
-                    <Banknote className="h-3.5 w-3.5 mr-1" /> Mark Paid This Month
+                    <Banknote className="h-3.5 w-3.5 mr-1" /> {it.last_paid_date?.slice(0, 7) === currentMonth() ? t("recurring.paidThisMonth") : t("recurring.markPaid")}
                   </Button>
                 </CardContent>
               </Card>

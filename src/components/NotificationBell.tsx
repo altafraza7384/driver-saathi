@@ -58,14 +58,15 @@ export function NotificationBell() {
 
   // Same query (and queryFn) as HomePage's ["debts_active"]: sharing the
   // key lets react-query dedupe the identical Firestore read on Home.
+  // Legacy debts without an is_active flag count as active (same rule
+  // as DebtsPage/HomePage, audit 2026-10-24).
   const { data: debts = [] } = useQuery({
     queryKey: ["debts_active"],
     queryFn: async () => {
       const { data } = await db
         .from("debts")
-        .select("*")
-        .eq("is_active", true);
-      return data ?? [];
+        .select("*");
+      return (data ?? []).filter((d: any) => d.is_active !== false);
     },
     enabled: !!user,
   });
@@ -134,10 +135,13 @@ export function NotificationBell() {
     : c === "general" ? t("notif.catGeneral")
     : c;
 
-  // Reminders with notify_at
+  // Reminders with notify_at — include ALL past-due pending reminders,
+  // not just the last day's: a 3-day-overdue reminder used to vanish
+  // from the bell entirely (audit 2026-10-24). The query already
+  // filters is_completed == false, so this only surfaces pending ones.
   reminders.forEach((r: any) => {
     const notifyAt = r.notify_at ? parseISO(r.notify_at) : parseISO(r.reminder_date);
-    if (isBefore(notifyAt, twoDaysLater) && !isBefore(notifyAt, addDays(now, -1))) {
+    if (isBefore(notifyAt, twoDaysLater)) {
       const dueDate = format(parseISO(r.reminder_date), "dd MMM yyyy");
       notifications.push({
         id: `rem-${r.id}`,
@@ -168,18 +172,24 @@ export function NotificationBell() {
     // Fallback: day-of-month match. Debts written before start_date was
     // set at creation may not have one — parseISO on a missing/invalid
     // value yields an Invalid Date (NaN day), which must not match.
+    // Clamp the due day to the month's length: a debt started on the
+    // 31st must notify on 28 Feb / 30 Apr, not never (audit 2026-10-24).
     if (!debt.start_date) return;
     const startDate = parseISO(debt.start_date);
     if (Number.isNaN(startDate.getTime())) return;
     const startDay = startDate.getDate();
+    const daysInMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
     const today = now.getDate();
-    const tomorrow = addDays(now, 1).getDate();
-    if (startDay === today || startDay === tomorrow) {
-      const dueLabel = startDay === today ? format(now, "dd MMM yyyy") : format(addDays(now, 1), "dd MMM yyyy");
+    const tomorrowDate = addDays(now, 1);
+    const tomorrow = tomorrowDate.getDate();
+    const dueToday = Math.min(startDay, daysInMonth(now)) === today;
+    const dueTomorrow = Math.min(startDay, daysInMonth(tomorrowDate)) === tomorrow;
+    if (dueToday || dueTomorrow) {
+      const dueLabel = dueToday ? format(now, "dd MMM yyyy") : format(addDays(now, 1), "dd MMM yyyy");
       notifications.push({
         id: `emi-day-${debt.id}`,
         title: t("notif.emiDueTitle", { name: debt.name }),
-        description: startDay === today
+        description: dueToday
           ? t("notif.emiDueTodayDesc", { date: dueLabel, amount: Number(debt.emi_amount || 0).toLocaleString("en-IN") })
           : t("notif.emiDueTomorrowDesc", { date: dueLabel, amount: Number(debt.emi_amount || 0).toLocaleString("en-IN") }),
         type: "emi",

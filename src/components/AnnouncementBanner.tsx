@@ -63,7 +63,7 @@ export function AnnouncementBanner() {
   const { data: announcements = [] } = useQuery({
     queryKey: ["announcements"],
     queryFn: async () => {
-      const { data, error } = await db.from("announcements").select("*").order("created_at", { ascending: false });
+      const { data, error } = await db.from("announcements").select("*").eq("is_active", true).order("created_at", { ascending: false }).limit(20);
       if (error) throw error;
       return data as Announcement[];
     },
