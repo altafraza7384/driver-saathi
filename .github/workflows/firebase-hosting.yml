@@ -85,6 +85,23 @@ jobs:
       - name: Install dependencies (bun)
         run: bun install
 
+      # Typecheck gate (audit 2026-10-24): vite build does NOT
+      # typecheck, so the 2026-10-23 Finance white-screen (a missing
+      # useI18n that tsc catches) shipped straight to production.
+      # This step fails the deploy on type errors.
+      - name: Typecheck
+        run: bun x tsc --noEmit
+
+      # .env is tracked in this repo (Lovable builds read it). Its keys
+      # must all be publishable VITE_* client keys — a non-VITE_ secret
+      # added later would be committed silently (audit 2026-10-24).
+      - name: Guard tracked .env (no non-VITE_ secrets)
+        run: |
+          if grep -Eq '^[A-Z][A-Z0-9_]*=' .env | grep -v '^VITE_'; then
+            echo "ERROR: non-VITE_ key found in tracked .env" >&2
+            exit 1
+          fi
+
       - name: Build web bundle
         run: bun run build
 
@@ -111,7 +128,17 @@ jobs:
             "hosting": {
               "public": "dist",
               "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-              "rewrites": [{ "source": "**", "destination": "/index.html" }]
+              "rewrites": [{ "source": "**", "destination": "/index.html" }],
+              "headers": [
+                { "source": "/index.html", "headers": [
+                  { "key": "Cache-Control", "value": "no-cache" },
+                  { "key": "X-Content-Type-Options", "value": "nosniff" },
+                  { "key": "X-Frame-Options", "value": "DENY" }
+                ] },
+                { "source": "/assets/**", "headers": [
+                  { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+                ] }
+              ]
             }
           }
           EOF
