@@ -42,6 +42,7 @@ const AdminSosPage = lazy(() => import("./pages/admin/AdminSosPage"));
 const AdminInsuranceLeadsPage = lazy(() => import("./pages/admin/AdminInsuranceLeadsPage"));
 const AdminAnnouncementsPage = lazy(() => import("./pages/admin/AdminAnnouncementsPage"));
 const InsuranceLeadPage = lazy(() => import("./pages/InsuranceLeadPage"));
+const BudgetsPage = lazy(() => import("./pages/BudgetsPage"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -159,6 +160,7 @@ const App = () => (
                     <Route path="/sos" element={<SOSPage />} />
                     <Route path="/car-sos" element={<CarSosPage />} />
                     <Route path="/insurance" element={<InsuranceLeadPage />} />
+                    <Route path="/budgets" element={<BudgetsPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/data-backup" element={<DataBackupPage />} />
                     <Route path="/finance-ai" element={<FinanceAIPage />} />
