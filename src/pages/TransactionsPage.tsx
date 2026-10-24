@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { db } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
-import { formatINR } from "@/lib/currency";
+import { formatINR, toAmount } from "@/lib/currency";
+import { friendlyErrorMessage } from "@/lib/errors";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,10 +35,18 @@ export default function TransactionsPage() {
 
   // Home's today-summary reads transactions through react-query; keep it
   // in sync with edits/deletes made here.
-  const invalidateHomeTransactions = () =>
+  const invalidateHomeTransactions = () => {
     queryClient.invalidateQueries({ queryKey: ["transactions_today"] });
+    queryClient.invalidateQueries({ queryKey: ["budgets_month_tx"] });
+    queryClient.invalidateQueries({ queryKey: ["budgets_month"] });
+  };
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [filter, setFilter] = useState<"all" | "income" | "expense">("all");
+  // All-time totals (no cap): the old totals summed only the 50-row
+  // list, so users with 60+ transactions saw wrong totals and could
+  // never see their oldest rows (audit 2026-10-24).
+  const [allTotals, setAllTotals] = useState({ income: 0, expense: 0 });
+  const [limit, setLimit] = useState(50);
   const [loading, setLoading] = useState(true);
   const [editTx, setEditTx] = useState<Transaction | null>(null);
   const [editAmount, setEditAmount] = useState("");
@@ -47,7 +56,18 @@ export default function TransactionsPage() {
   const [saving, setSaving] = useState(false);
   const [weeklyTx, setWeeklyTx] = useState<Transaction[]>([]);
 
-  useEffect(() => { if (user) { fetchTransactions(); fetchWeeklyData(); } }, [user, filter]);
+  useEffect(() => { if (user) { fetchTransactions(); fetchWeeklyData(); fetchTotals(); } }, [user, filter, limit]);
+
+  const fetchTotals = async () => {
+    let query = db.from("transactions").select("*");
+    if (filter !== "all") query = query.eq("type", filter);
+    const { data } = await query;
+    const list = (data as Transaction[]) || [];
+    setAllTotals({
+      income: list.filter((t) => t.type === "income").reduce((s, t) => s + toAmount(t.amount), 0),
+      expense: list.filter((t) => t.type !== "income").reduce((s, t) => s + toAmount(t.amount), 0),
+    });
+  };
 
   const fetchWeeklyData = async () => {
     const weekStart = format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd");
@@ -57,7 +77,7 @@ export default function TransactionsPage() {
   };
 
   const fetchTransactions = async () => {
-    let query = db.from("transactions").select("*").order("transaction_date", { ascending: false }).limit(50);
+    let query = db.from("transactions").select("*").order("transaction_date", { ascending: false }).limit(limit);
     if (filter !== "all") query = query.eq("type", filter);
     const { data } = await query;
     setTransactions((data as Transaction[]) || []);
@@ -68,7 +88,7 @@ export default function TransactionsPage() {
     await db.from("transactions").delete().eq("id", id);
     toast({ title: t("common.delete") });
     invalidateHomeTransactions();
-    fetchTransactions(); fetchWeeklyData();
+    fetchTransactions(); fetchWeeklyData(); fetchTotals();
   };
 
   const openEdit = (tx: Transaction) => {
@@ -78,20 +98,25 @@ export default function TransactionsPage() {
 
   const handleUpdate = async () => {
     if (!editTx) return;
+    // Validate: an empty edit used to toast success while storing
+    // nothing (adapter drops NaN), and a negative edit stored negative
+    // money, corrupting totals (audit 2026-10-24).
+    const parsedAmount = parseFloat(editAmount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      toast({ title: t("auth.error"), description: t("tx.missingFields"), variant: "destructive" });
+      return;
+    }
     setSaving(true);
     const { error } = await db.from("transactions").update({
-      amount: parseFloat(editAmount), category: editCategory,
+      amount: parsedAmount, category: editCategory,
       description: editDescription || null, transaction_date: editDate,
     }).eq("id", editTx.id);
-    if (error) { toast({ title: t("auth.error"), description: error.message, variant: "destructive" }); }
-    else { toast({ title: t("tx.updateTransaction") }); setEditTx(null); invalidateHomeTransactions(); fetchTransactions(); fetchWeeklyData(); }
+    if (error) { toast({ title: t("auth.error"), description: friendlyErrorMessage(error), variant: "destructive" }); }
+    else { toast({ title: t("tx.updateTransaction") }); setEditTx(null); invalidateHomeTransactions(); fetchTransactions(); fetchWeeklyData(); fetchTotals(); }
     setSaving(false);
   };
 
-  const totals = transactions.reduce((acc, tx) => {
-    if (tx.type === "income") acc.income += Number(tx.amount); else acc.expense += Number(tx.amount);
-    return acc;
-  }, { income: 0, expense: 0 });
+  const totals = allTotals;
 
   const categoryOptions = editTx?.type === "income" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
 
@@ -135,11 +160,11 @@ export default function TransactionsPage() {
             const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
             const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
             const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
-            const weekIncome = weeklyTx.filter(t => t.type === "income").reduce((s, t) => s + Number(t.amount), 0);
-            const weekExpense = weeklyTx.filter(t => t.type === "expense").reduce((s, t) => s + Number(t.amount), 0);
+            const weekIncome = weeklyTx.filter(t => t.type === "income").reduce((s, t) => s + toAmount(t.amount), 0);
+            const weekExpense = weeklyTx.filter(t => t.type === "expense").reduce((s, t) => s + toAmount(t.amount), 0);
             const maxDayAmount = Math.max(...days.map(day => {
               const dayTx = weeklyTx.filter(t => isSameDay(parseISO(t.transaction_date), day));
-              return dayTx.reduce((s, t) => s + Number(t.amount), 0);
+              return dayTx.reduce((s, t) => s + toAmount(t.amount), 0);
             }), 1);
             return (
               <>
@@ -150,8 +175,8 @@ export default function TransactionsPage() {
                 </div>
                 <div className="flex items-end gap-1 h-16">
                   {days.map(day => {
-                    const dayIncome = weeklyTx.filter(t => t.type === "income" && isSameDay(parseISO(t.transaction_date), day)).reduce((s, t) => s + Number(t.amount), 0);
-                    const dayExpense = weeklyTx.filter(t => t.type === "expense" && isSameDay(parseISO(t.transaction_date), day)).reduce((s, t) => s + Number(t.amount), 0);
+                    const dayIncome = weeklyTx.filter(t => t.type === "income" && isSameDay(parseISO(t.transaction_date), day)).reduce((s, t) => s + toAmount(t.amount), 0);
+                    const dayExpense = weeklyTx.filter(t => t.type === "expense" && isSameDay(parseISO(t.transaction_date), day)).reduce((s, t) => s + toAmount(t.amount), 0);
                     const incomeH = maxDayAmount > 0 ? (dayIncome / maxDayAmount) * 100 : 0;
                     const expenseH = maxDayAmount > 0 ? (dayExpense / maxDayAmount) * 100 : 0;
                     const isToday = isSameDay(day, new Date());
@@ -201,7 +226,7 @@ export default function TransactionsPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <span className={`text-sm font-bold ${tx.type === "income" ? "text-success" : "text-destructive"}`}>{tx.type === "income" ? "+" : "-"}{formatINR(Number(tx.amount))}</span>
+                    <span className={`text-sm font-bold ${tx.type === "income" ? "text-success" : "text-destructive"}`}>{tx.type === "income" ? "+" : "-"}{formatINR(toAmount(tx.amount))}</span>
                     <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(tx)}><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(tx.id)}><Trash2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                   </div>
@@ -211,6 +236,12 @@ export default function TransactionsPage() {
           ))
         )}
       </div>
+
+      {transactions.length >= limit && (
+        <Button variant="outline" className="w-full" onClick={() => setLimit((l) => l + 50)}>
+          {t("tx.loadMore")}
+        </Button>
+      )}
 
       <Dialog open={!!editTx} onOpenChange={(open) => !open && setEditTx(null)}>
         <DialogContent>

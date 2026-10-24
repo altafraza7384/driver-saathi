@@ -53,6 +53,7 @@ export default function GoalsPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [showAddSavings, setShowAddSavings] = useState<string | null>(null);
   const [addAmount, setAddAmount] = useState("");
+  const [savingGoalId, setSavingGoalId] = useState<string | null>(null);
 
   // Add form
   const [title, setTitle] = useState("");
@@ -151,13 +152,16 @@ export default function GoalsPage() {
 
   const handleAddSavings = async (goalId: string) => {
     const goal = goals.find(g => g.id === goalId);
-    if (!goal || !addAmount) return;
+    if (!goal || !addAmount || savingGoalId) return;
 
     const amount = parseFloat(addAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
       toast({ title: "Error", description: "Please enter a valid amount.", variant: "destructive" });
       return;
     }
+    // Disable while saving: a double-tap used to compute both writes
+    // from the same base and lose one addition (audit 2026-10-24).
+    setSavingGoalId(goalId);
 
     const newSaved = toAmount(goal.saved_amount) + amount;
     const isCompleted = newSaved >= toAmount(goal.target_amount);
@@ -169,6 +173,7 @@ export default function GoalsPage() {
 
     if (error) {
       toast({ title: "Error", description: friendlyErrorMessage(error), variant: "destructive" });
+      setSavingGoalId(null);
       return;
     }
 
@@ -177,6 +182,8 @@ export default function GoalsPage() {
     } else {
       toast({ title: `₹${addAmount} added to savings!` });
     }
+
+    setSavingGoalId(null);
 
     setShowAddSavings(null);
     setAddAmount("");
@@ -305,7 +312,7 @@ export default function GoalsPage() {
                               min="1"
                               className="flex-1"
                             />
-                            <Button size="sm" onClick={() => handleAddSavings(goal.id)}>{t("common.save")}</Button>
+                            <Button size="sm" onClick={() => handleAddSavings(goal.id)} disabled={savingGoalId === goal.id}>{savingGoalId === goal.id ? t("common.saving") : t("common.save")}</Button>
                             <Button size="sm" variant="ghost" onClick={() => { setShowAddSavings(null); setAddAmount(""); }}>✕</Button>
                           </div>
                         ) : (

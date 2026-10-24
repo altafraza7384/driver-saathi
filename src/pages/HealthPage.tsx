@@ -12,12 +12,13 @@ import { Moon, Droplets, Coffee, Footprints, Save, CheckCircle2 } from "lucide-r
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO } from "date-fns";
+import { localToday } from "@/lib/budgets";
 
 export default function HealthPage() {
   const { user } = useAuth();
   const { t } = useI18n();
   const queryClient = useQueryClient();
-  const today = new Date().toISOString().split("T")[0];
+  const today = localToday(); // local date, not UTC (audit 2026-10-24)
 
   const { data: log, isLoading } = useQuery({
     queryKey: ["health_log", today],

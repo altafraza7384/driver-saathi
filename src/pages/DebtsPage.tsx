@@ -13,6 +13,7 @@ import { TimePicker } from "@/components/ui/time-picker";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
+import { localToday } from "@/lib/budgets";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, ArrowLeft, CreditCard, Trash2, Pencil, Banknote } from "lucide-react";
 import { motion } from "framer-motion";
@@ -81,6 +82,7 @@ export default function DebtsPage() {
   // Pay EMI state
   const [payDebtId, setPayDebtId] = useState<string | null>(null);
   const [payAmount, setPayAmount] = useState("");
+  const [paying, setPaying] = useState(false);
 
   useEffect(() => {
     if (user) fetchDebts();
@@ -107,6 +109,13 @@ export default function DebtsPage() {
     const m = parseInt(tenure) || 12;
     const calculatedEmi = calculateEMI(p, r, m);
     const parsedCustom = parseFloat(customEmi);
+    // A custom EMI must be positive: a negative/zero custom EMI used to
+    // be stored and dragged the monthly-EMI total down (audit 2026-10-24).
+    if (customEmi && (!Number.isFinite(parsedCustom) || parsedCustom <= 0)) {
+      toast({ title: "Error", description: "Please enter a valid custom EMI amount.", variant: "destructive" });
+      setSaving(false);
+      return;
+    }
     const finalEmi = customEmi && Number.isFinite(parsedCustom) ? parsedCustom : calculatedEmi;
 
     const notifyAt = notifyDate && notifyTime ? `${notifyDate}T${notifyTime}:00` : notifyDate ? `${notifyDate}T09:00:00` : null;
@@ -122,7 +131,7 @@ export default function DebtsPage() {
       // leaving them out is what produced "₹NaN" and invisible loans.
       total_paid: 0,
       is_active: true,
-      start_date: new Date().toISOString().split("T")[0],
+      start_date: localToday(),
       notify_at: notifyAt,
     } as any);
 
@@ -157,7 +166,14 @@ export default function DebtsPage() {
     }
     const r = parseFloat(editRate) || 0;
     const m = parseInt(editTenure) || 12;
-    const emi = calculateEMI(p, r, m);
+    // Preserve a custom EMI: editing only the loan name used to silently
+    // reset a custom EMI back to the calculated value (audit 2026-10-24).
+    // Recalculate only when the inputs that determine the EMI changed.
+    const inputsChanged =
+      p !== toAmount(editDebt.principal) ||
+      r !== toAmount(editDebt.interest_rate) ||
+      m !== toAmount(editDebt.tenure_months);
+    const emi = inputsChanged ? calculateEMI(p, r, m) : toAmount(editDebt.emi_amount);
 
     const { error } = await db.from("debts").update({
       name: editName,
@@ -188,6 +204,14 @@ export default function DebtsPage() {
       toast({ title: "Error", description: "Please enter a valid payment amount.", variant: "destructive" });
       return;
     }
+    // Block overpayment: paying more than the remaining balance used to
+    // store a negative "Remaining" (audit 2026-10-24).
+    const remaining = toAmount(debt.principal) - toAmount(debt.total_paid);
+    if (amount > remaining) {
+      toast({ title: "Error", description: `Payment is more than the remaining amount (${formatINR(remaining)}).`, variant: "destructive" });
+      return;
+    }
+    setPaying(true);
     const newTotalPaid = toAmount(debt.total_paid) + amount;
     const isFullyPaid = newTotalPaid >= toAmount(debt.principal);
 
@@ -199,6 +223,7 @@ export default function DebtsPage() {
     });
     if (paymentError) {
       toast({ title: "Error", description: friendlyErrorMessage(paymentError), variant: "destructive" });
+      setPaying(false);
       return;
     }
 
@@ -209,10 +234,12 @@ export default function DebtsPage() {
     }).eq("id", payDebtId);
     if (updateError) {
       toast({ title: "Error", description: friendlyErrorMessage(updateError), variant: "destructive" });
+      setPaying(false);
       return;
     }
 
     toast({ title: isFullyPaid ? "🎉 Loan fully paid!" : `₹${payAmount} payment recorded!` });
+    setPaying(false);
     setPayDebtId(null);
     setPayAmount("");
     invalidateDebtReaders();
@@ -361,7 +388,7 @@ export default function DebtsPage() {
                     </div>
                     <div className="flex justify-between text-xs">
                       <span>Paid: {formatINR(paidAmt)}</span>
-                      <span>Remaining: {formatINR(remaining)}</span>
+                      <span>Remaining: {formatINR(Math.max(0, remaining))}</span>
                     </div>
                     <Progress value={progress} className="h-2" />
                     {toAmount(debt.emi_amount) > 0 && (
@@ -379,7 +406,7 @@ export default function DebtsPage() {
                               min="1"
                               className="flex-1"
                             />
-                            <Button size="sm" onClick={handlePayEMI}>{t("common.pay")}</Button>
+                            <Button size="sm" onClick={handlePayEMI} disabled={paying}>{paying ? t("common.saving") : t("common.pay")}</Button>
                             <Button size="sm" variant="ghost" onClick={() => { setPayDebtId(null); setPayAmount(""); }}>✕</Button>
                           </div>
                         ) : (

@@ -12,7 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import { db } from "@/lib/backend";
 import { NotificationBell } from "@/components/NotificationBell";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
-import { currentMonth, monthRange, budgetStatus, Budget } from "@/lib/budgets";
+import { currentMonth, monthRange, budgetStatus, Budget, localToday } from "@/lib/budgets";
 
 function getGreetingKey(): string {
   const hour = new Date().getHours();
@@ -57,7 +57,7 @@ export default function HomePage() {
   const { t } = useI18n();
   const { user } = useAuth();
   const navigate = useNavigate();
-  const today = new Date().toISOString().split("T")[0];
+  const today = localToday(); // local date, not UTC (audit 2026-10-24)
 
   const { data: profile, isLoading: profileLoading } = useQuery({
     queryKey: ["profile"],
@@ -82,7 +82,7 @@ export default function HomePage() {
   // capped at 5 for display, so summing it under-reports on busy days. The key
   // extends ["transactions_today"], which the write pages already invalidate
   // (react-query invalidates by key prefix), so totals refresh after mutations.
-  const { data: todayTxTotals = [] } = useQuery({
+  const { data: todayTxTotals = [], isError: todayError, refetch: refetchToday } = useQuery({
     queryKey: ["transactions_today", "totals"],
     queryFn: async () => {
       const { data, error } = await db.from("transactions").select("*").eq("transaction_date", today);
@@ -92,17 +92,21 @@ export default function HomePage() {
     enabled: !!user,
   });
 
-  const { data: debts = [] } = useQuery({
+  const { data: debts = [], isError: debtsError, refetch: refetchDebts } = useQuery({
     queryKey: ["debts_active"],
     queryFn: async () => {
-      const { data, error } = await db.from("debts").select("*").eq("is_active", true);
+      // Legacy debts have no is_active flag (it predates creation-time
+      // defaults); only an explicit false means inactive — same rule as
+      // DebtsPage, so the Home widget stops hiding legacy loans
+      // (audit 2026-10-24). Server-side eq(true) would exclude them.
+      const { data, error } = await db.from("debts").select("*");
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []).filter((d: any) => d.is_active !== false);
     },
     enabled: !!user,
   });
 
-  const { data: goals = [] } = useQuery({
+  const { data: goals = [], isError: goalsError, refetch: refetchGoals } = useQuery({
     queryKey: ["goals_active"],
     queryFn: async () => {
       const { data, error } = await db.from("goals").select("*").eq("is_completed", false);
@@ -171,6 +175,17 @@ export default function HomePage() {
       <div className="space-y-5 p-4 pt-0">
         <AnnouncementBanner />
 
+        {(todayError || debtsError || goalsError) && (
+          <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm">
+            <p className="font-medium">{t("home.loadError")}</p>
+            <button
+              className="mt-1 font-medium text-primary underline"
+              onClick={() => { refetchToday(); refetchDebts(); refetchGoals(); }}
+            >
+              {t("common.retry")}
+            </button>
+          </div>
+        )}
       <div className="animate-in fade-in duration-300">
         <Card className="overflow-hidden border-0 bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg">
           <CardContent className="p-5">

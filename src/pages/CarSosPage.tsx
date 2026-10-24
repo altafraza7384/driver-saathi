@@ -107,6 +107,9 @@ export default function CarSosPage() {
     },
     enabled: !!user,
     refetchInterval: (query) => {
+      // Pause polling while the tab is hidden (audit 2026-10-24):
+      // a background tab kept hitting Firestore every 10s forever.
+      if (document.hidden) return false;
       const rows = query.state.data as CarSosRequest[] | undefined;
       const hasActive = rows?.some((r) =>
         ACTIVE_SOS_STATUSES.includes(r.status),
@@ -164,7 +167,16 @@ export default function CarSosPage() {
         });
       if (detError) {
         // Roll back the public request so no half-created SOS stays live.
-        await db.from("sos_requests").delete().eq("id", id);
+        // Use a status update, NOT a delete: the rules forbid deleting
+        // sos_requests (allow delete: if false), so the old delete-based
+        // rollback silently failed and left a phantom live request
+        // (backend audit 2026-10-24). A driver may update their own
+        // request to "cancelled" under the rules.
+        const { error: rollbackError } = await db
+          .from("sos_requests")
+          .update({ status: "cancelled" })
+          .eq("id", id);
+        if (rollbackError) throw new Error(friendlyErrorMessage(rollbackError));
         throw detError;
       }
     },
@@ -291,7 +303,7 @@ export default function CarSosPage() {
               )}
 
               <div className="flex gap-2">
-                {active.status === "pending" && (
+                {(active.status === "pending" || active.status === "accepted" || active.status === "onway") && (
                   <Button
                     variant="destructive"
                     className="flex-1"
@@ -386,7 +398,7 @@ export default function CarSosPage() {
                 disabled={locating}
               >
                 <Navigation className="h-4 w-4" />
-                {locating ? t("common.saving") : t("carSos.getLocation")}
+                {locating ? t("sos.locating") : t("carSos.getLocation")}
               </Button>
               {gps && (
                 <p className="text-xs text-muted-foreground">

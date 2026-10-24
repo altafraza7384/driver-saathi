@@ -11,6 +11,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
+import { localToday } from "@/lib/budgets";
+import { friendlyErrorMessage } from "@/lib/errors";
 import { ArrowLeft } from "lucide-react";
 import { INCOME_CATEGORIES, EXPENSE_CATEGORIES } from "./TransactionsPage";
 
@@ -30,14 +32,20 @@ export default function AddTransactionPage() {
   const [category, setCategory] = useState("");
   const [platform, setPlatform] = useState("");
   const [description, setDescription] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(localToday());
   const [loading, setLoading] = useState(false);
 
   const categories = type === "income" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !amount || !category) return;
+    // Never silently do nothing: if the Select's required validation
+    // doesn't fire in the WebView, the user got zero feedback (audit
+    // 2026-10-24). Tell them what is missing.
+    if (!user || !amount || !category) {
+      toast({ title: t("tx.missingFields"), variant: "destructive" });
+      return;
+    }
     setLoading(true);
 
     const { error } = await db.from("transactions").insert({
@@ -51,13 +59,15 @@ export default function AddTransactionPage() {
     });
 
     if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: t("auth.error"), description: friendlyErrorMessage(error), variant: "destructive" });
     } else {
-      toast({ title: type === "income" ? "Income added!" : "Expense added!" });
+      toast({ title: type === "income" ? t("tx.incomeAdded") : t("tx.expenseAdded") });
       // Home reads transactions via react-query (["transactions_today"],
       // 5-minute staleTime): invalidate so the dashboard reflects the new
       // entry on return instead of staying stale until a reload.
       queryClient.invalidateQueries({ queryKey: ["transactions_today"] });
+      queryClient.invalidateQueries({ queryKey: ["budgets_month_tx"] });
+      queryClient.invalidateQueries({ queryKey: ["budgets_month"] });
       navigate("/transactions");
     }
     setLoading(false);
