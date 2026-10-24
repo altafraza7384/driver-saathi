@@ -23,7 +23,7 @@ type Transaction = {
 };
 
 const INCOME_CATEGORIES = ["Ride Earnings", "Tips", "Incentives", "Bonus", "Other"];
-const EXPENSE_CATEGORIES = ["Fuel", "Maintenance", "Food", "Tolls", "Insurance", "EMI", "Phone", "Other"];
+const EXPENSE_CATEGORIES = ["Fuel", "Maintenance", "Food", "Tolls", "Insurance", "EMI", "Phone", "Subscription", "Other"];
 
 export default function TransactionsPage() {
   const { t } = useI18n();
