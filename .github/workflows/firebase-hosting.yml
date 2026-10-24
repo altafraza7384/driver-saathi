@@ -95,6 +95,24 @@ jobs:
           workload_identity_provider: "projects/282968056888/locations/global/workloadIdentityPools/github/providers/github"
           service_account: "firebase-hosting-deploy@driver-saathi-app.iam.gserviceaccount.com"
 
+      # Deploy step: firebase.json lives in firebase/ (it also carries
+      # firestore/storage/functions/emulator config for later deploys),
+      # and its hosting.public "../dist" is REJECTED by firebase-tools
+      # when run from firebase/ ("../dist is outside of project
+      # directory"). So instead of touching that shared config, this
+      # step writes a hosting-only config at the repo root for this
+      # run only (public "dist" is inside the root project directory,
+      # same rewrites as firebase.json) and deploys from the root.
+      # The file is generated in the runner and never committed.
       - name: Deploy to Firebase Hosting
-        working-directory: firebase
-        run: npx -y firebase-tools@latest deploy --only hosting --project driver-saathi-app --non-interactive
+        run: |
+          cat > firebase-hosting-deploy.json <<'EOF'
+          {
+            "hosting": {
+              "public": "dist",
+              "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+              "rewrites": [{ "source": "**", "destination": "/index.html" }]
+            }
+          }
+          EOF
+          npx -y firebase-tools@latest deploy --only hosting --config firebase-hosting-deploy.json --project driver-saathi-app --non-interactive
