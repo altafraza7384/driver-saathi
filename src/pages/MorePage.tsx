@@ -1,7 +1,7 @@
 import { useI18n } from "@/lib/i18n";
 import { 
-  CreditCard, Target, Car, Bell, StickyNote, Shield, 
-  Settings, ChevronRight, Sun, Moon, Info, HardDrive, Mail, Phone, MessageCircle
+  CreditCard, Target, Car, Bell, StickyNote, Shield,
+  Settings, ChevronRight, Sun, Moon, Info, HardDrive, Mail, Phone, MessageCircle, Wallet
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "next-themes";
@@ -23,6 +23,7 @@ export default function MorePage() {
 
   const menuItems = [
     { labelKey: "more.debtEmi", icon: CreditCard, path: "/debts" },
+    { labelKey: "more.budgets", icon: Wallet, path: "/budgets" },
     { labelKey: "more.goalsSavings", icon: Target, path: "/goals" },
     { labelKey: "more.carChecks", icon: Car, path: "/car-checks" },
     { labelKey: "more.reminders", icon: Bell, path: "/reminders" },
