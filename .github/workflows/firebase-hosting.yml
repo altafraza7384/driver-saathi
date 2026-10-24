@@ -22,14 +22,22 @@
 #    Those are separate deploys (rules were published from the console;
 #    functions are Blaze-gated).
 #
-# Secret (Repository Settings > Secrets and variables > Actions, added
-# by the owner himself — NEVER committed, NEVER sent in chat):
-#  FIREBASE_SERVICE_ACCOUNT_JSON — a Google Cloud service-account key
-#  JSON with the Firebase Hosting Admin role on driver-saathi-app.
-#  The workflow writes it to a temporary file for this run only and
-#  deletes it at the end (always, even on failure). If the secret is
-#  missing, the job FAILS with a clear message instead of deploying
-#  nothing silently.
+# Authentication (KEYLESS, via Workload Identity Federation — set up
+# 2026-10-24 after Google blocked service-account key creation with the
+# iam.disableServiceAccountKeyCreation organization policy):
+#  - Google Cloud pool "github" + provider "github" (OIDC issuer
+#    https://token.actions.githubusercontent.com), attribute condition
+#    limited to repo altafraza7384/driver-saathi AND branch
+#    refs/heads/main. The existing service account
+#    firebase-hosting-deploy@driver-saathi-app.iam.gserviceaccount.com
+#    (Firebase Hosting Admin only) is granted Workload Identity User to
+#    that repo's principalSet. No key file, no GitHub secret, no secret
+#    rotation: each run gets a short-lived token from GitHub's OIDC
+#    provider (hence the job-level id-token: write permission below).
+#  - The google-github-actions/auth step sets up Application Default
+#    Credentials for the run and cleans them up when the job ends.
+#  - If this auth step fails, the job fails with a clear message instead
+#    of deploying nothing silently.
 
 name: Firebase Hosting Deploy
 
@@ -49,6 +57,7 @@ name: Firebase Hosting Deploy
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   deploy:
@@ -69,20 +78,13 @@ jobs:
       - name: Build web bundle
         run: npm run build
 
-      - name: Write service-account key for this run only
-        run: |
-          if [ -z "${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}" ]; then
-            echo "FIREBASE_SERVICE_ACCOUNT_JSON secret is missing. The owner must add it in Repository Settings > Secrets and variables > Actions (a service-account key JSON with Firebase Hosting Admin on driver-saathi-app). It is never committed and never sent in chat."
-            exit 1
-          fi
-          printf '%s' '${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}' > "$GITHUB_WORKSPACE/firebase-service-account.json"
+      - name: Authenticate to Google Cloud (keyless, Workload Identity Federation)
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/282968056888/locations/global/workloadIdentityPools/github/providers/github"
+          service_account: "firebase-hosting-deploy@driver-saathi-app.iam.gserviceaccount.com"
 
       - name: Deploy to Firebase Hosting
         working-directory: firebase
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/firebase-service-account.json
         run: npx -y firebase-tools@latest deploy --only hosting --project driver-saathi-app --non-interactive
-
-      - name: Delete service-account key
-        if: always()
-        run: rm -f "$GITHUB_WORKSPACE/firebase-service-account.json"
