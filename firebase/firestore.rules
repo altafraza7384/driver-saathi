@@ -34,7 +34,7 @@ service cloud.firestore {
         return ['transactions','debts','debt_payments','goals','notes','reminders',
                 'car_checks','car_documents','health_logs','emergency_contacts',
                 'platform_affiliations','push_subscriptions','chat_messages',
-                'recurring_expenses','recurring_expense_payments'];
+                'recurring_expenses','recurring_expense_payments','budgets'];
       }
       match /{collection}/{docId} {
         allow read, delete: if (isOwner(uid) || isAdmin()) && collection in ownedCollections();
