@@ -90,8 +90,12 @@ export default function CarChecksPage() {
     mutationFn: async () => {
       if (!user) throw new Error("Please sign in again.");
       if (!form.check_type.trim() || !parseDateValue(form.check_date)) throw new Error("Select a type and valid date.");
-      const notifyAt = form.notify_date && form.notify_time ? `${form.notify_date}T${form.notify_time}:00` : form.notify_date ? `${form.notify_date}T09:00:00` : null;
+      // Negative cost/odometer used to be stored and rendered as -₹500
+      // (audit 2026-10-24); reject them at save time.
       const odometer = Number(form.odometer_reading);
+      if (form.odometer_reading && (!Number.isFinite(odometer) || odometer < 0)) throw new Error("Odometer reading cannot be negative.");
+      if (form.cost && toAmount(form.cost) < 0) throw new Error("Cost cannot be negative.");
+      const notifyAt = form.notify_date && form.notify_time ? `${form.notify_date}T${form.notify_time}:00` : form.notify_date ? `${form.notify_date}T09:00:00` : null;
       const { error } = await db.from("car_checks").insert({
         user_id: user.id,
         check_type: form.check_type,
@@ -308,7 +312,7 @@ export default function CarChecksPage() {
                       </div>
                       <div>
                         <p className="text-sm font-medium">{c.check_type}</p>
-                        <p className="text-xs text-muted-foreground">{c.check_date}{toAmount(c.cost) ? ` • ${formatINR(toAmount(c.cost))}` : ""}</p>
+                        <p className="text-xs text-muted-foreground">{c.check_date ? format(parseISO(c.check_date), "dd MMM yyyy") : "—"}{toAmount(c.cost) ? ` • ${formatINR(toAmount(c.cost))}` : ""}</p>
                       </div>
                     </div>
                     <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(c.id)}><Trash2 className="h-4 w-4 text-muted-foreground" /></Button>

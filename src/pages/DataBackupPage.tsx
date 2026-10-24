@@ -29,7 +29,7 @@ export default function DataBackupPage() {
     try {
       const doc = new jsPDF();
       let currentY = 20;
-      doc.setFontSize(18); doc.text("Driver Buddy - Data Export", 14, currentY); currentY += 8;
+      doc.setFontSize(18); doc.text("Driver Saathi - Data Export", 14, currentY); currentY += 8;
       doc.setFontSize(10); doc.text(`Exported on: ${new Date().toLocaleString()}`, 14, currentY); currentY += 12;
       for (const table of BACKUP_TABLES) {
         const { data, error } = await db.from(table.key).select("*");
@@ -42,7 +42,7 @@ export default function DataBackupPage() {
         autoTable(doc, { startY: currentY, head: [columns], body: rows, styles: { fontSize: 7, cellPadding: 1.5 }, headStyles: { fillColor: [59, 130, 246] }, margin: { left: 14, right: 14 }, tableWidth: "auto", didDrawPage: () => {} });
         currentY = (doc as any).lastAutoTable.finalY + 12;
       }
-      doc.save(`driver-buddy-export-${new Date().toISOString().slice(0, 10)}.pdf`);
+      doc.save(`driver-saathi-export-${new Date().toISOString().slice(0, 10)}.pdf`);
       toast({ title: "✅", description: t("backup.exportDesc") });
     } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
     finally { setExporting(false); }

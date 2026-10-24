@@ -71,10 +71,15 @@ export default function BudgetsPage() {
     if (!user) return;
     setLoading(true);
     const { start, end } = monthRange(month);
-    const [{ data: budgetData }, { data: txData }] = await Promise.all([
+    const [{ data: budgetData, error: budgetError }, { data: txData, error: txError }] = await Promise.all([
       db.from("budgets").select("*").eq("month", month),
       db.from("transactions").select("*").gte("transaction_date", start).lte("transaction_date", end),
     ]);
+    // Surface fetch failures instead of rendering a misleading "no
+    // budgets" empty state (audit 2026-10-24).
+    if (budgetError || txError) {
+      toast({ title: t("home.loadError"), variant: "destructive" });
+    }
     setBudgets((budgetData as Budget[]) || []);
     const spent: Record<string, number> = {};
     for (const tx of (txData as Transaction[]) || []) {
@@ -91,6 +96,7 @@ export default function BudgetsPage() {
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["budgets_month"] });
+    queryClient.invalidateQueries({ queryKey: ["budgets_month_tx"] });
     queryClient.invalidateQueries({ queryKey: ["transactions_today"] });
   };
 
@@ -149,15 +155,23 @@ export default function BudgetsPage() {
     const { data } = await db.from("budgets").select("*").eq("month", last);
     const existing = new Set(budgets.map((b) => b.category));
     const toCopy = ((data as Budget[]) || []).filter((b) => !existing.has(b.category));
+    // Report partial failure honestly: the old code toasted "copied"
+    // even when inserts failed (audit 2026-10-24).
+    const failures: string[] = [];
     for (const b of toCopy) {
-      await db.from("budgets").insert({
+      const { error } = await db.from("budgets").insert({
         user_id: user.id,
         category: b.category,
         monthly_limit: toAmount(b.monthly_limit),
         month,
       } as any);
+      if (error) failures.push(b.category);
     }
-    toast({ title: t("budget.copied") });
+    if (failures.length > 0) {
+      toast({ title: "Copy partially failed", description: failures.join(", "), variant: "destructive" });
+    } else {
+      toast({ title: t("budget.copied") });
+    }
     setCopying(false);
     invalidate();
     fetchData();

@@ -46,9 +46,15 @@ export default function AuthPage() {
       }
 
       await signUpWithPassword(email, password, fullName, handleRetry);
+      // Honest signup: no verification email is ever sent (the app
+      // never calls sendEmailVerification and Firebase does not enforce
+      // verification), so do NOT show the old "check your email" toast
+      // that stranded new users (audit 2026-10-24). Switch the form to
+      // Login so one tap signs them in with the same credentials.
+      setIsLogin(true);
       toast({
-        title: t("auth.checkEmail"),
-        description: t("auth.verifyEmail"),
+        title: t("auth.accountCreated"),
+        description: t("auth.loginNow"),
       });
     } catch (error) {
       console.error("Auth submit failed", error);
@@ -79,7 +85,7 @@ export default function AuthPage() {
     } catch (error) {
       console.error("Google sign-in failed", error);
       toast({
-        title: "Google sign-in failed",
+        title: t("auth.error"),
         description: formatAuthError(error),
         variant: "destructive",
       });

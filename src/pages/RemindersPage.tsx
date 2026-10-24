@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DatePicker, TimePicker, parseDateValue } from "@/components/ui/date-time-picker";
+import { format, parseISO } from "date-fns";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, Bell, Check, Trash2, ArrowLeft } from "lucide-react";
@@ -48,6 +49,9 @@ export default function RemindersPage() {
     mutationFn: async () => {
       if (!user) throw new Error("Please sign in again.");
       if (!form.title.trim() || !parseDateValue(form.reminder_date)) throw new Error("Enter a title and select a valid date.");
+      // A custom category left blank used to be stored as "" (audit
+      // 2026-10-24); require it when the custom option is chosen.
+      if (!form.category.trim()) throw new Error("Please enter a category.");
       const notifyAt = form.notify_date && form.notify_time ? `${form.notify_date}T${form.notify_time}:00` : form.notify_date ? `${form.notify_date}T09:00:00` : null;
       const { error } = await db.from("reminders").insert({ user_id: user.id, title: form.title, description: form.description || null, reminder_date: form.reminder_date, category: form.category, notify_at: notifyAt } as any);
       if (error) throw error;
@@ -119,7 +123,7 @@ export default function RemindersPage() {
                   <Card key={r.id} className="border-warning/20"><CardContent className="flex items-center justify-between p-3">
                     <div className="flex items-center gap-3">
                       <button onClick={() => toggleMutation.mutate({ id: r.id, completed: true })} className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-warning text-warning hover:bg-warning/10"><Bell className="h-4 w-4" /></button>
-                      <div><p className="text-sm font-medium">{r.title}</p><p className="text-xs text-muted-foreground">{r.reminder_date} • <span className="capitalize">{categoryLabel(r.category)}</span></p></div>
+                      <div><p className="text-sm font-medium">{r.title}</p><p className="text-xs text-muted-foreground">{format(parseISO(r.reminder_date), "dd MMM yyyy")} • <span className="capitalize">{categoryLabel(r.category)}</span></p></div>
                     </div>
                     <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(r.id)}><Trash2 className="h-4 w-4 text-muted-foreground" /></Button>
                   </CardContent></Card>

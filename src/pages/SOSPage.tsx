@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { db } from "@/lib/backend";
 import { friendlyErrorMessage } from "@/lib/errors";
+import { isValidPhone } from "@/lib/carSos";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
 import { Card, CardContent } from "@/components/ui/card";
@@ -30,8 +31,14 @@ export default function SOSPage() {
   });
 
   const addMutation = useMutation({
-    mutationFn: async () => { const { error } = await db.from("emergency_contacts").insert({ user_id: user!.id, name: form.name, phone: form.phone, relationship: form.relationship || null, is_primary: contacts.length === 0 }); if (error) throw error; },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["emergency_contacts"] }); setOpen(false); setForm({ name: "", phone: "", relationship: "" }); toast.success("✅"); },
+    mutationFn: async () => {
+      // A non-numeric contact degrades the SOS share to a recipient-less
+      // wa.me link (audit 2026-10-24): validate at save time.
+      if (!form.name.trim()) throw new Error("Please enter a name.");
+      if (!isValidPhone(form.phone)) throw new Error("Please enter a valid 10-digit mobile number starting with 6-9.");
+      const { error } = await db.from("emergency_contacts").insert({ user_id: user!.id, name: form.name, phone: form.phone, relationship: form.relationship || null, is_primary: contacts.length === 0 }); if (error) throw error;
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["emergency_contacts"] }); setOpen(false); setForm({ name: "", phone: "", relationship: "" }); toast.success(t("sos.contactAdded")); },
     onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
 
@@ -75,7 +82,10 @@ export default function SOSPage() {
         const message = `🚨 SOS EMERGENCY! I need help! My live location: ${mapsUrl}`;
         toast.success(t("sos.locationCaptured", { coords: `${latitude.toFixed(4)}, ${longitude.toFixed(4)}` }));
         if (contacts.length > 0) {
-          const phones = contacts.map((c) => c.phone.replace(/\s+/g, "")).join(",");
+          // Android's multi-recipient SMS separator is ";", not ","
+          // (audit 2026-10-24: "," could mis-address on some devices).
+          const sep = /Android/i.test(navigator.userAgent) ? ";" : ",";
+          const phones = contacts.map((c) => c.phone.replace(/\s+/g, "")).join(sep);
           const smsUrl = `sms:${phones}?body=${encodeURIComponent(message)}`;
           window.open(smsUrl, "_self");
           toast.info(t("sos.openingSms", { count: contacts.length }));

@@ -1,4 +1,7 @@
 import { useI18n } from "@/lib/i18n";
+import { useAuth } from "@/hooks/useAuth";
+import { useQuery } from "@tanstack/react-query";
+import { db } from "@/lib/backend";
 import { 
   CreditCard, Target, Car, Bell, StickyNote, Shield,
   Settings, ChevronRight, Sun, Moon, Info, HardDrive, Mail, Phone, MessageCircle, Wallet
@@ -16,6 +19,19 @@ import { SubscriptionPlansCard } from "@/components/SubscriptionPlansCard";
 export default function MorePage() {
   const { t } = useI18n();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  // Admin entry point (audit 2026-10-24): /admin was reachable only by
+  // typing the URL. Show the row only to admins (same has_role check
+  // as AdminLayout); the panel itself still role-gates.
+  const { data: isAdmin } = useQuery({
+    queryKey: ["is_admin", user?.id],
+    queryFn: async () => {
+      const { data, error } = await db.rpc("has_role", { _user_id: user!.id, _role: "admin" });
+      if (error) return false;
+      return data as boolean;
+    },
+    enabled: !!user,
+  });
   const { theme, setTheme } = useTheme();
   const [aboutOpen, setAboutOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
@@ -52,6 +68,19 @@ export default function MorePage() {
             <ChevronRight className="h-5 w-5 text-muted-foreground" />
           </button>
         ))}
+
+        {isAdmin && (
+          <button onClick={() => navigate("/admin")}
+            className="flex w-full items-center justify-between rounded-xl p-4 text-left transition-colors hover:bg-muted active:bg-muted/80">
+            <div className="flex items-center gap-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+                <Shield className="h-5 w-5 text-foreground" />
+              </div>
+              <span className="text-base font-bold">{t("more.adminPanel")}</span>
+            </div>
+            <ChevronRight className="h-5 w-5 text-muted-foreground" />
+          </button>
+        )}
 
         {/* Dark Mode Toggle */}
         <div className="flex w-full items-center justify-between rounded-xl p-4">
@@ -103,7 +132,7 @@ export default function MorePage() {
           <div className="space-y-4 text-sm">
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">{t("more.appVersion")}</span>
-              <span className="font-bold">1.0.0</span>
+              <span className="font-bold">{typeof __APP_BUILD_ID__ !== "undefined" ? __APP_BUILD_ID__ : "1.0.0"}</span>
             </div>
             <div className="border-t pt-3 space-y-2">
               <h4 className="font-bold">{t("more.privacyPolicy")}</h4>

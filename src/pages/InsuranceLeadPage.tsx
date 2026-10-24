@@ -60,7 +60,7 @@ export default function InsuranceLeadPage() {
   const [consent, setConsent] = useState(false);
   const [error, setError] = useState("");
 
-  const { data: myLeads = [] } = useQuery({
+  const { data: myLeads = [], isLoading: leadsLoading } = useQuery({
     queryKey: ["insurance_leads_mine"],
     queryFn: async () => {
       const { data, error } = await db
@@ -87,11 +87,32 @@ export default function InsuranceLeadPage() {
       if (!consent) {
         throw new Error(t("insurance.consentRequired"));
       }
+      // Vehicle year must be a plausible 4-digit year, and a policy
+      // expiry in the past is useless to a broker (audit 2026-10-24:
+      // "abc"/"1800"/past dates were all accepted).
+      const year = form.vehicle_year.trim();
+      const thisYear = new Date().getFullYear();
+      if (year && !/^\d{4}$/.test(year)) {
+        throw new Error(t("insurance.invalidYear"));
+      }
+      if (year && (Number(year) < 1980 || Number(year) > thisYear + 1)) {
+        throw new Error(t("insurance.invalidYear"));
+      }
+      if (form.policy_expiry) {
+        const todayStr = `${thisYear}-${String(new Date().getMonth() + 1).padStart(2, "0")}-${String(new Date().getDate()).padStart(2, "0")}`;
+        if (form.policy_expiry < todayStr) {
+          throw new Error(t("insurance.pastExpiry"));
+        }
+      }
       // 30-day duplicate block on the same phone + vehicle number (or
       // phone alone when no vehicle number was given): brokers pay only
       // for qualified, non-duplicate leads, so never create a second one.
+      // A REJECTED lead does not block a corrected resubmission (audit
+      // 2026-10-24): a mistyped vehicle number otherwise locked the user
+      // out for 30 days with no edit/delete path.
       const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
       const dup = myLeads.some((l) => {
+        if (l.status === "rejected") return false;
         if (normalizePhone(l.phone ?? "") !== phone) return false;
         if (!l.created_at || new Date(l.created_at).getTime() < cutoff) return false;
         const oldVehicle = (l.vehicle_number ?? "").trim().toUpperCase();
@@ -188,11 +209,11 @@ export default function InsuranceLeadPage() {
             <span>{t("insurance.consent")}</span>
           </label>
           {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button className="w-full" onClick={() => submitMutation.mutate()} disabled={submitMutation.isPending}>
+          <Button className="w-full" onClick={() => submitMutation.mutate()} disabled={submitMutation.isPending || leadsLoading}>
             {submitMutation.isPending ? t("insurance.submitting") : t("insurance.submit")}
           </Button>
           <p className="text-xs text-muted-foreground">
-            Driver Saathi does not sell insurance or collect any premium. Quotes and sales are handled by our licensed insurance partner.
+            {t("insurance.disclaimer")}
           </p>
         </CardContent>
       </Card>
