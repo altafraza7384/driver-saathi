@@ -116,10 +116,16 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.driverId == request.auth.uid
         && request.resource.data.status == 'pending'
+        // The public doc must never carry phone/exact coords (audit
+        // 2026-10-24 hardening; the app never writes them here).
+        && !request.resource.data.keys().hasAny(['driverPhone', 'phone', 'exactLat', 'exactLng'])
         && request.resource.data.category in ['tyre', 'mechanic', 'battery', 'other'];
       allow read: if signedIn()
         && (resource.data.driverId == request.auth.uid
           || resource.data.status == 'pending'
+          // Assigned mechanic: without this branch an accepted job
+          // vanished from the mechanic's Jobs page (audit 2026-10-24).
+          || resource.data.mechanicId == request.auth.uid
           || isAdmin());
       allow update: if signedIn() && (
         // Driver: cancel or complete their own request.
@@ -152,9 +158,11 @@ service cloud.firestore {
         && request.resource.data.requestId == requestId;
       // Driver reads own details; a mechanic reads them only after being
       // assigned (the mechanic app claims the doc right after accepting).
+      // Admins read them for SOS oversight/disputes (audit 2026-10-24).
       allow read: if signedIn()
         && (resource.data.driverId == request.auth.uid
-          || resource.data.mechanicId == request.auth.uid);
+          || resource.data.mechanicId == request.auth.uid
+          || isAdmin());
       allow update: if signedIn()
         && get(/databases/$(database)/documents/sos_requests/$(requestId)).data.mechanicId == request.auth.uid
         && request.resource.data.mechanicId == request.auth.uid;
