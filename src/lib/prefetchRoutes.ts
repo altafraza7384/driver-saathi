@@ -37,6 +37,7 @@ const DAILY_PAGES = [
   () => import("../pages/SOSPage"),
   () => import("../pages/CarSosPage"),
   () => import("../pages/InsuranceLeadPage"),
+  () => import("../pages/BudgetsPage"),
   () => import("../pages/SettingsPage"),
 ];
 
