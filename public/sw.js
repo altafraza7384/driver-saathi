@@ -85,7 +85,10 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = event.notification.data?.url || "/";
+  const rawUrl = event.notification.data?.url || "/";
+  // Only open same-origin URLs: a push payload must never be able to
+  // open an external site (audit 2026-10-24).
+  const url = rawUrl.startsWith("/") || rawUrl.startsWith(self.location.origin) ? rawUrl : "/";
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {
       for (const client of windowClients) {
