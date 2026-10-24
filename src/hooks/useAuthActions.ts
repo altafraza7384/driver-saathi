@@ -93,10 +93,6 @@ export function formatAuthError(error: unknown) {
     return "Slow or unstable internet detected. Please wait and try again — the app will retry automatically.";
   }
 
-  if (lowerMsg.includes("email not confirmed")) {
-    return "Please verify your email from inbox before logging in.";
-  }
-
   if (lowerMsg.includes("oauth secret") || lowerMsg.includes("unsupported provider")) {
     return "Google sign-in is temporarily unavailable. Please use email/password login.";
   }
