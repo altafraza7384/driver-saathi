@@ -3,6 +3,7 @@ import { db } from "@/lib/backend";
 import { Card, CardContent } from "@/components/ui/card";
 import { CreditCard, Check, Tag } from "lucide-react";
 import { formatINR } from "@/lib/currency";
+import { useI18n } from "@/lib/i18n";
 
 type Offer = {
   id: string;
@@ -18,6 +19,7 @@ function isOfferLive(o: Offer, today: string) {
 }
 
 export function SubscriptionPlansCard() {
+  const { t } = useI18n();
   const { data: plans = [], isLoading } = useQuery({
     queryKey: ["subscription_plans"],
     queryFn: async () => {
@@ -48,10 +50,10 @@ export function SubscriptionPlansCard() {
 
   return (
     <Card><CardContent className="p-4 space-y-3">
-      <div className="flex items-center gap-2"><CreditCard className="h-4 w-4 text-muted-foreground" /><span className="font-semibold">Subscription Plans</span></div>
+      <div className="flex items-center gap-2"><CreditCard className="h-4 w-4 text-muted-foreground" /><span className="font-semibold">{t("plans.title")}</span></div>
       {liveOffers.length > 0 && (
         <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-1">
-          <p className="flex items-center gap-1 text-sm font-bold"><Tag className="h-4 w-4" /> {"Current offers"}</p>
+          <p className="flex items-center gap-1 text-sm font-bold"><Tag className="h-4 w-4" /> {t("plans.currentOffers")}</p>
           {liveOffers.map((o) => (
             <p key={o.id} className="text-sm text-muted-foreground">
               {`${o.title} — ${o.discount_percent}% off`}
@@ -62,7 +64,7 @@ export function SubscriptionPlansCard() {
       {isLoading ? (
         <div className="h-16 animate-pulse rounded-md bg-muted" />
       ) : plans.length === 0 ? (
-        <p className="text-muted-foreground">No plans available right now.</p>
+        <p className="text-muted-foreground">{t("plans.noPlans")}</p>
       ) : (
         plans.map((p) => (
           <div key={p.id} className="rounded-lg border border-border p-3">
@@ -87,7 +89,7 @@ export function SubscriptionPlansCard() {
           </div>
         ))
       )}
-      <p className="text-xs text-muted-foreground">Paid plans and payments are coming soon.</p>
+      <p className="text-xs text-muted-foreground">{t("plans.comingSoon")}</p>
     </CardContent></Card>
   );
 }
