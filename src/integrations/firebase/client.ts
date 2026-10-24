@@ -5,6 +5,7 @@ import {
   initializeFirestore,
   persistentLocalCache,
   persistentMultipleTabManager,
+  persistentSingleTabManager,
   type Firestore,
 } from "firebase/firestore";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
@@ -33,18 +34,23 @@ export const firebaseAuth: Auth = getAuth(firebaseApp);
  * Firestore instance. On web, use the persistent (IndexedDB) local cache
  * with the multi-tab manager: repeat app opens render straight from the
  * local cache and sync in the background, instead of a cold network read
- * of every collection on every launch. Native (Capacitor) keeps the
- * default instance: the WebView storage is already on-device and the
- * multi-tab manager is a browser concept. Any failure (private mode,
- * missing IndexedDB, an already-initialized instance) falls back to the
- * default in-memory-cache instance.
+ * of every collection on every launch. Native (Capacitor) previously
+ * kept the default in-memory instance, so the native app — the MAIN
+ * distribution — re-read everything from the network on every launch
+ * and showed loading/empty states offline (audit 2026-10-24). Native
+ * now gets the persistent cache too, with the single-tab manager
+ * (the multi-tab manager is a browser concept). Any failure (private
+ * mode, missing IndexedDB, an already-initialized instance) falls back
+ * to the default in-memory-cache instance.
  */
 function createFirestore(app: FirebaseApp): Firestore {
-  if (!Capacitor.isNativePlatform() && typeof indexedDB !== "undefined") {
+  if (typeof indexedDB !== "undefined") {
     try {
       return initializeFirestore(app, {
         localCache: persistentLocalCache({
-          tabManager: persistentMultipleTabManager(),
+          tabManager: Capacitor.isNativePlatform()
+            ? persistentSingleTabManager()
+            : persistentMultipleTabManager(),
         }),
       });
     } catch (e) {
