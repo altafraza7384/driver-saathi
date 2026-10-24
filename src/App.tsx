@@ -4,7 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import { I18nProvider } from "@/lib/i18n";
+import { I18nProvider, useI18n } from "@/lib/i18n";
 import { db } from "@/lib/backend";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { ThemeProvider } from "next-themes";
@@ -65,17 +65,18 @@ function RouteLoader() {
 
 function BlockedScreen() {
   const { signOut } = useAuth();
+  const { t } = useI18n();
   const navigate = useNavigate();
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <div className="max-w-sm text-center space-y-4">
-        <h1 className="text-2xl font-bold text-destructive">{"Account Blocked"}</h1>
-        <p className="text-sm text-muted-foreground">{"Your account has been blocked by the admin. Please contact support if you think this is a mistake."}</p>
+        <h1 className="text-2xl font-bold text-destructive">{t("blocked.title")}</h1>
+        <p className="text-sm text-muted-foreground">{t("blocked.message")}</p>
         <button
           className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
           onClick={() => { signOut(); navigate("/auth"); }}
         >
-          {"Log out"}
+          {t("auth.logout")}
         </button>
       </div>
     </div>
