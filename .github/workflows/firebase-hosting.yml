@@ -1,0 +1,88 @@
+# Driver Saathi — Firebase Hosting auto-deploy (WEB track, added 2026-10-24).
+#
+# Why this exists: the live site is moving off driver-saathi.lovable.app
+# (whose free plan forces the "Edit with Lovable" badge) to Firebase
+# Hosting on the SAME Firebase project (driver-saathi-app, Spark free
+# tier). Hosting serves only the static web bundle — it has no badge.
+#
+# How updates flow after this migration:
+#  - WEB feature add/remove (src/, pages, i18n, styles): push to main ->
+#    THIS workflow builds dist/ and deploys it to Hosting automatically.
+#    The installed native app loads the site through server.url on next
+#    open, so users get the feature with NO new APK and NO Play upload.
+#  - NATIVE change (capacitor.config.ts, new Capacitor plugin, icon):
+#    handled by android-play-release.yml, which now triggers ONLY on
+#    native-relevant paths, plus manual dispatch.
+#
+# What this workflow does NOT do:
+#  - It does not change server.url. Until server.url is pointed at the
+#    Hosting URL (a separate, later step, only AFTER the first Hosting
+#    deploy is verified live), the installed app keeps loading lovable.app.
+#  - It does not deploy Firestore rules, Storage rules, or Cloud Functions.
+#    Those are separate deploys (rules were published from the console;
+#    functions are Blaze-gated).
+#
+# Secret (Repository Settings > Secrets and variables > Actions, added
+# by the owner himself — NEVER committed, NEVER sent in chat):
+#  FIREBASE_SERVICE_ACCOUNT_JSON — a Google Cloud service-account key
+#  JSON with the Firebase Hosting Admin role on driver-saathi-app.
+#  The workflow writes it to a temporary file for this run only and
+#  deletes it at the end (always, even on failure). If the secret is
+#  missing, the job FAILS with a clear message instead of deploying
+#  nothing silently.
+
+name: Firebase Hosting Deploy
+
+"on":
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "public/**"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.ts"
+      - "index.html"
+      - "firebase/firebase.json"
+      - ".github/workflows/firebase-hosting.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build web bundle
+        run: npm run build
+
+      - name: Write service-account key for this run only
+        run: |
+          if [ -z "${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}" ]; then
+            echo "FIREBASE_SERVICE_ACCOUNT_JSON secret is missing. The owner must add it in Repository Settings > Secrets and variables > Actions (a service-account key JSON with Firebase Hosting Admin on driver-saathi-app). It is never committed and never sent in chat."
+            exit 1
+          fi
+          printf '%s' '${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}' > "$GITHUB_WORKSPACE/firebase-service-account.json"
+
+      - name: Deploy to Firebase Hosting
+        working-directory: firebase
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/firebase-service-account.json
+        run: npx -y firebase-tools@latest deploy --only hosting --project driver-saathi-app --non-interactive
+
+      - name: Delete service-account key
+        if: always()
+        run: rm -f "$GITHUB_WORKSPACE/firebase-service-account.json"
