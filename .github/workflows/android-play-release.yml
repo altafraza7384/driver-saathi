@@ -1,7 +1,8 @@
 # Driver Saathi — Android Play Store pipeline (unparked 2026-10-22, user-approved).
 #
-# What it does, on every push to main that touches app code (and on manual
-# dispatch): build the web bundle, generate the Capacitor Android platform
+# What it does, on every push to main that touches NATIVE-relevant files
+# (and on manual dispatch): build the web bundle, generate the Capacitor
+# Android platform
 # (android/ is NOT committed to this repo), sign a release AAB, upload the
 # AAB as a workflow artifact, and — only when the Play secrets exist —
 # upload it to Google Play. Play's auto-update then delivers it to users
@@ -16,10 +17,14 @@
 #  - It cannot invent a keystore or a Play service account. Both live ONLY
 #    as GitHub Secrets added by the owner (see docs/PLAY_PIPELINE.md).
 #    Secrets are NEVER committed, NEVER sent in chat, NEVER printed in logs.
-#  - It does not deploy the web site. Web changes still go live via the
-#    Lovable publish step, and the installed app loads them on next open
-#    through server.url — a new AAB is only needed for NATIVE changes
-#    (icon, permissions, plugins) or for Play distribution itself.
+#  - It does not deploy the web site. Web changes go live via the
+#    firebase-hosting.yml workflow (Firebase Hosting auto-deploy on push
+#    to main), and the installed app loads them on next open through
+#    server.url — a new AAB is only needed for NATIVE changes
+#    (icon, permissions, plugins, server.url itself) or for Play
+#    distribution itself. That is why this workflow's push trigger below
+#    deliberately EXCLUDES src/ and public/: a web-only feature must not
+#    churn versionCodes or push a pointless new build to Play Internal.
 #
 # Secrets (Repository Settings > Secrets and variables > Actions):
 #  ANDROID_KEYSTORE_BASE64  — base64 of the upload keystore (.jks) file.
@@ -45,12 +50,9 @@ name: Android Play Release
   push:
     branches: [main]
     paths:
-      - "src/**"
-      - "public/**"
       - "package.json"
       - "package-lock.json"
       - "capacitor.config.ts"
-      - "vite.config.ts"
       - ".github/workflows/android-play-release.yml"
   workflow_dispatch:
     inputs:
