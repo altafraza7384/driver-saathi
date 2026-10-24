@@ -152,10 +152,13 @@ export const sendAnnouncementPush = onDocumentCreated(
 );
 
 export const cleanupTransactions = onSchedule({ schedule: "0 3 * * *", timeZone: "Asia/Kolkata", region: REGION }, async () => {
-  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
-  const old = await db.collectionGroup("transactions").where("transaction_date", "<", cutoff.toISOString().slice(0, 10)).get();
+  // CHANGED 2026-10-24 (audit): this job used to delete every
+  // transaction older than 30 days, nightly — for a money app that
+  // destroys the user's financial history. Transaction deletion is
+  // REMOVED entirely. Only AI chat messages older than 24h are cleaned
+  // (chat history, not money data). If a retention policy for other
+  // data is ever wanted, it needs an explicit owner decision first.
   const writer = db.bulkWriter();
-  old.docs.forEach((d) => writer.delete(d.ref));
   const dayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
   (await db.collectionGroup("chat_messages").where("created_at", "<", dayAgo).get()).docs.forEach((d) => writer.delete(d.ref));
   await writer.close();
