@@ -1,4 +1,4 @@
-import { Plus, Minus, Car, StickyNote, ChevronRight, Target, CreditCard, Heart, AlertTriangle } from "lucide-react";
+import { Plus, Minus, Car, StickyNote, ChevronRight, Target, CreditCard, Heart, AlertTriangle, Wallet } from "lucide-react";
 import { AdBanner } from "@/components/AdBanner";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,6 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import { db } from "@/lib/backend";
 import { NotificationBell } from "@/components/NotificationBell";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
+import { currentMonth, monthRange, budgetStatus, Budget } from "@/lib/budgets";
 
 function getGreetingKey(): string {
   const hour = new Date().getHours();
@@ -110,6 +111,41 @@ export default function HomePage() {
     },
     enabled: !!user,
   });
+
+  // Monthly budgets for the Home widget (current month only). Spent is
+  // summed from this month's expense transactions, same as BudgetsPage.
+  const thisMonth = currentMonth();
+  const { start: monthStart, end: monthEnd } = monthRange(thisMonth);
+  const { data: monthBudgets = [] } = useQuery({
+    queryKey: ["budgets_month", thisMonth],
+    queryFn: async () => {
+      const { data, error } = await db.from("budgets").select("*").eq("month", thisMonth);
+      if (error) throw error;
+      return (data ?? []) as Budget[];
+    },
+    enabled: !!user,
+  });
+  const { data: monthTx = [] } = useQuery({
+    queryKey: ["budgets_month_tx", thisMonth],
+    queryFn: async () => {
+      const { data, error } = await db.from("transactions").select("*").gte("transaction_date", monthStart).lte("transaction_date", monthEnd);
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!user,
+  });
+  const budgetSpent: Record<string, number> = {};
+  for (const tx of monthTx as any[]) {
+    if (tx.type !== "expense") continue;
+    budgetSpent[tx.category] = (budgetSpent[tx.category] || 0) + toAmount(tx.amount);
+  }
+  const budgetAtRisk = monthBudgets
+    .map((b) => ({ ...b, spent: budgetSpent[b.category] || 0 }))
+    .filter((b) => budgetStatus(b.spent, toAmount(b.monthly_limit)) !== "ok")
+    .sort((a, b) => (b.spent / toAmount(b.monthly_limit)) - (a.spent / toAmount(a.monthly_limit)))
+    .slice(0, 3);
+  const budgetTotalAllocated = monthBudgets.reduce((s, b) => s + toAmount(b.monthly_limit), 0);
+  const budgetTotalSpent = monthBudgets.reduce((s, b) => s + (budgetSpent[b.category] || 0), 0);
 
   const isInitialLoading = profileLoading && txLoading;
 
@@ -245,6 +281,44 @@ export default function HomePage() {
           </div>
         </section>
       )}
+
+      <section>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-base font-semibold">{t("budget.title")}</h2>
+          <Button variant="ghost" size="sm" className="text-xs text-primary" onClick={() => navigate("/budgets")}>
+            {t("budget.viewBudgets")} <ChevronRight className="ml-1 h-3 w-3" />
+          </Button>
+        </div>
+        {monthBudgets.length === 0 ? (
+          <Card><CardContent className="p-4 text-center text-sm text-muted-foreground">
+            {t("budget.noBudgets")}{" "}
+            <Button variant="link" className="p-0 h-auto text-xs" onClick={() => navigate("/budgets")}>
+              {t("budget.addBudget")}
+            </Button>
+          </CardContent></Card>
+        ) : (
+          <Card className="border-0 shadow-sm">
+            <CardContent className="p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <Wallet className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">{t("budget.totalSpent")}: {formatINR(budgetTotalSpent)} / {formatINR(budgetTotalAllocated)}</span>
+              </div>
+              <Progress value={budgetTotalAllocated > 0 ? clampPercent((budgetTotalSpent / budgetTotalAllocated) * 100) : 0} className="h-2" />
+              {budgetAtRisk.length > 0 ? (
+                <div className="space-y-1">
+                  {budgetAtRisk.map((b) => (
+                    <p key={b.id} className="text-xs text-destructive">
+                      {b.category}: {formatINR(b.spent)} / {formatINR(toAmount(b.monthly_limit))}
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">{t("budget.remaining")}: {formatINR(budgetTotalAllocated - budgetTotalSpent)}</p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+      </section>
 
       <section>
         <div className="mb-3 flex items-center justify-between">
