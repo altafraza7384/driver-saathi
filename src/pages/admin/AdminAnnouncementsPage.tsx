@@ -17,7 +17,8 @@ import { toast } from "sonner";
 
 // Admin-only announcements (English only, like all admin pages).
 // An announcement created here does TWO things:
-//  1. In-app, immediately after the next Lovable publish: Home banner +
+//  1. In-app, immediately on the next Home load (Firestore-driven, no
+//     deploy or publish needed): Home banner +
 //     once-per-announcement popup (see AnnouncementBanner). This works
 //     WITHOUT Blaze and WITHOUT a new APK.
 //  2. Closed-app native push (FCM): the staged function
@@ -174,7 +175,7 @@ export default function AdminAnnouncementsPage() {
                   <Button size="sm" variant="outline" onClick={() => toggleMutation.mutate(a)} disabled={toggleMutation.isPending}>
                     {a.is_active ? "Deactivate" : "Activate"}
                   </Button>
-                  <Button size="sm" variant="destructive" onClick={() => deleteMutation.mutate(a.id)} disabled={deleteMutation.isPending}>
+                  <Button size="sm" variant="destructive" onClick={() => { if (window.confirm("Delete this announcement?")) deleteMutation.mutate(a.id); }} disabled={deleteMutation.isPending}>
                     {"Delete"}
                   </Button>
                 </div>

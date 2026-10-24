@@ -84,16 +84,20 @@ export default function AdminUsersPage() {
   const { data: counts, isLoading: countsLoading } = useQuery({
     queryKey: ["admin_user_counts", selected?.id],
     queryFn: async () => {
-      const out: Record<string, number> = {};
-      for (const sub of COUNT_COLLECTIONS) {
-        try {
-          const snap = await getDocs(collection(firebaseDb, "users", selected!.id, sub));
-          out[sub] = snap.size;
-        } catch {
-          out[sub] = 0;
-        }
-      }
-      return out;
+      // Parallel (was sequential) and honest about failures: a denied
+      // read used to render as "0", indistinguishable from an empty
+      // account (audit 2026-10-24). -1 renders as "—".
+      const entries = await Promise.all(
+        COUNT_COLLECTIONS.map(async (sub) => {
+          try {
+            const snap = await getDocs(collection(firebaseDb, "users", selected!.id, sub));
+            return [sub, snap.size] as const;
+          } catch {
+            return [sub, -1] as const;
+          }
+        }),
+      );
+      return Object.fromEntries(entries) as Record<string, number>;
     },
     enabled: !!selected,
   });
@@ -259,7 +263,7 @@ export default function AdminUsersPage() {
                     {COUNT_COLLECTIONS.map((key) => (
                       <div key={key} className="rounded-lg border p-2">
                         <p className="text-[10px] text-muted-foreground">{COUNT_KEYS[key]}</p>
-                        <p className="text-lg font-bold">{counts?.[key] ?? 0}</p>
+                        <p className="text-lg font-bold">{counts?.[key] === -1 ? "—" : (counts?.[key] ?? 0)}</p>
                       </div>
                     ))}
                   </div>

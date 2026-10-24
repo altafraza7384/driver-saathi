@@ -57,6 +57,13 @@ export default function AdminCategoriesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
+      // Deleting a category used to orphan its posts (blank category
+      // names in the Posts list, audit 2026-10-24): block while posts
+      // still reference it.
+      const { data: posts } = await db.from("marketplace_posts").select("id").eq("category_id", id).limit(1);
+      if (posts && posts.length > 0) {
+        throw new Error("This category still has posts. Move or delete those posts first.");
+      }
       const { error } = await db.from("marketplace_categories").delete().eq("id", id);
       if (error) throw error;
     },
@@ -64,6 +71,7 @@ export default function AdminCategoriesPage() {
       queryClient.invalidateQueries({ queryKey: ["admin_all_categories"] });
       toast.success("Category deleted");
     },
+    onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
 
   const resetForm = () => {
@@ -138,7 +146,7 @@ export default function AdminCategoriesPage() {
                 <div className="flex items-center gap-1">
                   <Switch checked={cat.is_active} onCheckedChange={(v) => toggleMutation.mutate({ id: cat.id, is_active: v })} />
                   <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(cat)}><Pencil className="h-4 w-4 text-muted-foreground" /></Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => deleteMutation.mutate(cat.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { if (window.confirm("Delete this category?")) deleteMutation.mutate(cat.id); }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                 </div>
               </CardContent>
             </Card>

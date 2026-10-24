@@ -140,7 +140,7 @@ export default function AdminMechanicsPage() {
   };
 
   const hold = (m: Mechanic) => {
-    const reason = window.prompt("Reason for this warning…");
+    const reason = window.prompt("Reason for holding this mechanic…");
     if (reason === null || reason.trim() === "") return;
     const patch = { status: "held", held_at: new Date().toISOString(), held_reason: reason.trim() };
     updateMechanic.mutate(

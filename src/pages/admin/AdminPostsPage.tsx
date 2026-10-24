@@ -104,6 +104,7 @@ export default function AdminPostsPage() {
       queryClient.invalidateQueries({ queryKey: ["admin_posts"] });
       toast.success("Post deleted");
     },
+    onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
 
   const resetForm = () => {
@@ -236,7 +237,7 @@ export default function AdminPostsPage() {
                 </div>
                 <div className="flex gap-0.5 shrink-0">
                   <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(post)}><Pencil className="h-4 w-4 text-muted-foreground" /></Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => deleteMutation.mutate(post.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { if (window.confirm("Delete this post?")) deleteMutation.mutate(post.id); }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                 </div>
               </CardContent>
             </Card>

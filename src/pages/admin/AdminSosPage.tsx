@@ -51,6 +51,20 @@ export default function AdminSosPage() {
   const filtered = filter === "all" ? requests : requests.filter((r) => r.status === filter);
   const statusLabel = (s: string | null | undefined) => (s && STATUS_LABELS[s] ? STATUS_LABELS[s] : (s ?? "—"));
 
+  // Admin-only read of the private details doc (driver phone + exact
+  // location) for dispute/mediation. The rules grant isAdmin() read on
+  // sos_request_details (audit 2026-10-24); without the rules change
+  // this query fails closed and the section simply stays empty.
+  const { data: details } = useQuery({
+    queryKey: ["admin_sos_details", selected?.id],
+    queryFn: async () => {
+      const { data } = await db.from("sos_request_details").select("*").eq("id", selected!.id);
+      const row = Array.isArray(data) ? data[0] : data;
+      return row as { driverPhone?: string | null; exactLat?: number | null; exactLng?: number | null } | null;
+    },
+    enabled: !!selected,
+  });
+
   return (
     <div className="p-4 pt-6 space-y-4 max-w-2xl mx-auto">
       <button onClick={() => navigate("/admin")} className="flex items-center gap-1 text-sm text-muted-foreground">
@@ -123,6 +137,12 @@ export default function AdminSosPage() {
                 <p><span className="text-muted-foreground">{"Mechanic phone"}: </span><a href={`tel:${selected.mechanicPhone}`} className="text-primary">{selected.mechanicPhone}</a></p>
               )}
               <p><span className="text-muted-foreground">{"Approx location"}: </span>{selected.approxLat !== null && selected.approxLat !== undefined ? `${selected.approxLat}, ${selected.approxLng}` : "—"}</p>
+              {details?.driverPhone && (
+                <p><span className="text-muted-foreground">{"Driver phone (admin only)"}: </span><a href={`tel:${details.driverPhone}`} className="text-primary">{details.driverPhone}</a></p>
+              )}
+              {details?.exactLat !== null && details?.exactLat !== undefined && (
+                <p><span className="text-muted-foreground">{"Exact location (admin only)"}: </span><a href={`https://maps.google.com/maps?q=${details.exactLat},${details.exactLng}`} target="_blank" rel="noreferrer" className="text-primary">{details.exactLat}, {details.exactLng}</a></p>
+              )}
               <p><span className="text-muted-foreground">{"Charges agreed"}: </span>{selected.chargesAgreed !== null && selected.chargesAgreed !== undefined ? `₹${selected.chargesAgreed}` : "—"}</p>
               <p><span className="text-muted-foreground">{"Rating"}: </span>{selected.rating ?? "—"}</p>
               <p><span className="text-muted-foreground">{"Date"}: </span>{selected.created_at ? new Date(selected.created_at).toLocaleString() : "—"}</p>

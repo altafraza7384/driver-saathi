@@ -83,6 +83,12 @@ export default function AdminInsuranceLeadsPage() {
       if (amount !== null && (!Number.isFinite(amount) || amount < 0)) {
         throw new Error("Commission must be a positive number or blank.");
       }
+      // Commission on a new/rejected lead is stored but invisible in
+      // "Commission Recorded" (which sums converted only) — gate it
+      // (audit 2026-10-24).
+      if (amount !== null && status !== "converted" && status !== "quoted") {
+        throw new Error("Commission can only be recorded on converted or quoted leads.");
+      }
       const { error } = await db
         .from("insurance_leads")
         .update({ status, commission_amount: amount, commission_note: note.trim() || null } as never)
