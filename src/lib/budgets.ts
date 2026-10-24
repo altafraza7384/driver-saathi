@@ -44,6 +44,15 @@ export function currentMonth(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
+// Local (device-timezone) date as yyyy-MM-dd. Never use
+// new Date().toISOString().split("T")[0] for user-facing dates: UTC
+// midnight is 05:30 IST, so 00:00–05:29 IST would show yesterday.
+// (Audit 2026-10-24: Home/AddTransaction/Health/Debts all had this bug.)
+export function localToday(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
 /** Previous month's "yyyy-MM" for a given month string. */
 export function prevMonth(month: string): string {
   const [y, m] = month.split("-").map(Number);
