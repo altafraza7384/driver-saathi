@@ -5,8 +5,11 @@ const config: CapacitorConfig = {
   appName: 'Driver Saathi',
   webDir: 'dist',
   server: {
-    // Live published app: Google sign-in (/~oauth) only works on the published domain.
-    url: 'https://driver-saathi.lovable.app',
+    // Live published app: Google sign-in only works on the published domain.
+    // Moved 2026-10-24 from driver-saathi.lovable.app to Firebase Hosting
+    // (badge-free). Native-only change: needs a new APK/AAB to take effect
+    // in the installed app; web changes still reach it via this URL.
+    url: 'https://driver-saathi-app.web.app',
   },
   plugins: {
     FirebaseAuthentication: {
