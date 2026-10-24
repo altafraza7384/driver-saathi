@@ -4,10 +4,14 @@ How releases reach users' phones without a manual build on anyone's computer.
 
 ## The two release paths (do not confuse them)
 
-1. **Web changes (most features):** Lovable publish -> live site
-   `driver-saathi.lovable.app` -> the installed app loads it on next open
-   through `server.url`. No AAB, no Play upload, no user update needed.
-   This pipeline does NOT replace that path.
+1. **Web changes (most features):** GitHub push -> Firebase Hosting
+   auto-deploy (`.github/workflows/firebase-hosting.yml`) -> live site
+   on Hosting (after the server.url migration; before it, the installed
+   app still loads `driver-saathi.lovable.app`) -> the installed app
+   loads it on next open through `server.url`. No AAB, no Play upload,
+   no user update needed. This pipeline does NOT replace that path.
+   NOTE (2026-10-24): Lovable publish is no longer the web path — the
+   site moved to Firebase Hosting so the free Lovable badge disappears.
 2. **Native / Play distribution (this pipeline):** GitHub Actions builds a
    signed AAB from `main` and uploads it to Google Play. Play's auto-update
    then delivers it to users who enabled auto-update; everyone else sees an
@@ -17,9 +21,13 @@ How releases reach users' phones without a manual build on anyone's computer.
 
 Workflow: `.github/workflows/android-play-release.yml`
 
-- Trigger: every push to `main` touching app code (`src/`, `public/`,
-  `package.json`, `capacitor.config.ts`, `vite.config.ts`, or the workflow
-  itself), plus manual dispatch from the Actions tab.
+- Trigger: every push to `main` touching NATIVE-relevant files only
+  (`package.json`, `package-lock.json`, `capacitor.config.ts`, or the
+  workflow itself), plus manual dispatch from the Actions tab.
+  Web-only pushes (`src/`, `public/`) deliberately do NOT trigger this
+  workflow — they go through the Firebase Hosting workflow instead, so
+  a new feature does not churn versionCodes or push a pointless build
+  to Play Internal.
 - Steps: Node 22 + JDK 17 + Android SDK -> `npm ci` -> `npm run build` ->
   `npx cap add android` + `npx cap sync android` (android/ is generated in
   the runner, never committed) -> versionCode = GitHub run number,
