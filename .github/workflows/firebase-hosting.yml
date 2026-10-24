@@ -66,24 +66,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      # Node is kept only so the deploy step can run firebase-tools
+      # via npx. Dependencies themselves are installed with BUN, not
+      # npm: this repo's package manager is bun (bun.lock is the source
+      # of truth) and package-lock.json is stale — strict `npm ci`
+      # fails on it twice over (first the firebase 13 peer conflict,
+      # then "Missing: ..." entries for packages bun added). Switching
+      # the install to bun removes both failures at once, with no app
+      # code or dependency version change.
+      - name: Setup Node (for npx firebase-tools only)
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
-      # --legacy-peer-deps is REQUIRED here (CI-only, no app-code or
-      # lockfile change): package.json pins firebase ^13, but
-      # @capacitor-firebase/authentication@8.5.2 declares a firebase
-      # ^12 peer dependency, so strict `npm ci` fails with ERESOLVE
-      # before the build even starts. Bun (used locally) tolerates
-      # this peer mismatch, npm does not. The flag only relaxes peer
-      # checking; the exact locked versions are still installed.
-      - name: Install dependencies
-        run: npm ci --legacy-peer-deps --no-audit --no-fund
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies (bun)
+        run: bun install
 
       - name: Build web bundle
-        run: npm run build
+        run: bun run build
 
       - name: Authenticate to Google Cloud (keyless, Workload Identity Federation)
         id: auth
