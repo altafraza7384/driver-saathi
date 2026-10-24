@@ -28,7 +28,7 @@ Workflow: `.github/workflows/android-play-release.yml`
   workflow — they go through the Firebase Hosting workflow instead, so
   a new feature does not churn versionCodes or push a pointless build
   to Play Internal.
-- Steps: Node 22 + JDK 17 + Android SDK -> `npm ci` -> `npm run build` ->
+- Steps: Node 22 + JDK 17 + Android SDK -> `bun install` (bun.lock is the source of truth; `npm ci` fails on the stale package-lock.json) -> `bun run build` ->
   `npx cap add android` + `npx cap sync android` (android/ is generated in
   the runner, never committed) -> versionCode = GitHub run number,
   versionName = `1.0.<run number>` (Play rejects a repeated versionCode, so
@@ -136,3 +136,18 @@ with a different key without a key-reset request to Google — back it up.
 - Play uploads go to `internal` by default on push. Production uploads
   happen only via manual dispatch with track = production, or by promoting
   an Internal release inside Play Console — never automatically on push.
+
+
+## Local (non-CI) debug APK builds — AdMob App ID (audit 2026-10-24)
+
+Only the Play workflow injects `com.google.android.gms.ads.APPLICATION_ID`
+into `AndroidManifest.xml`, and the app has crashed on launch without it.
+For a local `cap sync` build, add this meta-data inside the
+`<application>` tag of `android/app/src/main/AndroidManifest.xml`
+BEFORE building, or the debug APK will crash on launch:
+
+```xml
+<meta-data
+    android:name="com.google.android.gms.ads.APPLICATION_ID"
+    android:value="ca-app-pub-1994214977986364~6230883263" />
+```
