@@ -15,6 +15,22 @@ service cloud.firestore {
         || (exists(/databases/$(database)/documents/roles/$(request.auth.uid))
           && get(/databases/$(database)/documents/roles/$(request.auth.uid)).data.roles.hasAny(['admin'])));
     }
+    // Block enforcement (fail-closed, user decision 2026-10-24): a profile
+    // flagged is_blocked by an admin is denied every data read/write
+    // below EXCEPT reading their own users/{uid} profile doc — the app's
+    // block gate reads exactly that doc to show the Blocked screen, and
+    // the gate treats read errors as NOT blocked, so denying it would let
+    // a blocked user straight into the app. A missing profile doc counts
+    // as NOT blocked (signup creates the doc; a missing doc must never
+    // lock a legitimate user out). Admin paths are NOT gated: an admin
+    // must still read a blocked user to unblock them; a blocked admin is
+    // unblocked via the other admin account or the console.
+    function isBlocked() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.is_blocked == true;
+    }
+    function notBlocked() { return !isBlocked(); }
     function ownsPayload(uid) {
       return !('user_id' in request.resource.data) || request.resource.data.user_id == uid;
     }
@@ -25,7 +41,7 @@ service cloud.firestore {
       // admin-managed fields, so a user can never unblock themselves or
       // grant themselves a plan.
       allow read: if isOwner(uid) || isAdmin();
-      allow create, update: if (isOwner(uid)
+      allow create, update: if (isOwner(uid) && notBlocked()
         && !request.resource.data.keys().hasAny(['role', 'roles', 'admin', 'is_blocked', 'subscription_plan_id']))
         || isAdmin();
       allow delete: if false; // deletion only via deleteAccount function
@@ -37,19 +53,19 @@ service cloud.firestore {
                 'recurring_expenses','recurring_expense_payments','budgets'];
       }
       match /{collection}/{docId} {
-        allow read, delete: if (isOwner(uid) || isAdmin()) && collection in ownedCollections();
-        allow create: if isOwner(uid) && ownsPayload(uid) && collection in ownedCollections();
+        allow read, delete: if ((isOwner(uid) && notBlocked()) || isAdmin()) && collection in ownedCollections();
+        allow create: if isOwner(uid) && notBlocked() && ownsPayload(uid) && collection in ownedCollections();
         // chat messages are append-only (matches previous policy: no UPDATE)
-        allow update: if isOwner(uid) && ownsPayload(uid)
+        allow update: if isOwner(uid) && notBlocked() && ownsPayload(uid)
           && collection in ownedCollections() && collection != 'chat_messages';
       }
       // aiUsage / sentNotifications fall through: denied for clients.
     }
 
-    match /roles/{uid} { allow read: if isOwner(uid) || isAdmin(); allow write: if false; }
+    match /roles/{uid} { allow read: if (isOwner(uid) && notBlocked()) || isAdmin(); allow write: if false; }
 
     match /subscription_plans/{planId} {
-      allow read: if signedIn() && (resource.data.is_active == true || isAdmin());
+      allow read: if signedIn() && notBlocked() && (resource.data.is_active == true || isAdmin());
       allow write: if isAdmin()
         && request.resource.data.price_inr is number
         && ((request.resource.data.billing_interval == 'free' && request.resource.data.price_inr == 0)
@@ -58,7 +74,7 @@ service cloud.firestore {
 
     // Admin-managed discount offers shown on the plans card.
     match /offers/{id} {
-      allow read: if signedIn();
+      allow read: if signedIn() && notBlocked();
       allow write: if isAdmin();
     }
 
@@ -70,7 +86,7 @@ service cloud.firestore {
     // edit or delete. Closed-app push for these announcements is the
     // staged sendAnnouncementPush function (Blaze-gated, not deployed).
     match /announcements/{id} {
-      allow read: if signedIn();
+      allow read: if signedIn() && notBlocked();
       allow write: if isAdmin();
     }
 
@@ -87,21 +103,21 @@ service cloud.firestore {
     // never appear in a public marketplace post. Partner forwarding is
     // manual in Phase 1; an automated webhook comes after Blaze.
     match /insurance_leads/{id} {
-      allow create: if signedIn()
+      allow create: if signedIn() && notBlocked()
         && request.resource.data.user_id == request.auth.uid
         && request.resource.data.consent == true
         && request.resource.data.status == 'new'
         && !request.resource.data.keys().hasAny(['commission_amount', 'commission_note']);
       allow read: if signedIn()
-        && (resource.data.user_id == request.auth.uid || isAdmin());
+        && ((resource.data.user_id == request.auth.uid && notBlocked()) || isAdmin());
       allow update: if isAdmin()
         && !request.resource.data.keys().hasAny(['user_id', 'phone', 'consent']);
       allow delete: if false;
     }
 
-    match /marketplace_categories/{id} { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /marketplace_categories/{id} { allow read: if signedIn() && notBlocked(); allow write: if isAdmin(); }
     match /marketplace_posts/{id} {
-      allow read: if signedIn();
+      allow read: if signedIn() && notBlocked();
       allow create: if isAdmin() && request.resource.data.created_by == request.auth.uid;
       allow update: if isAdmin() && request.resource.data.created_by == resource.data.created_by;
       allow delete: if isAdmin();
@@ -113,7 +129,7 @@ service cloud.firestore {
     // live in sos_request_details, readable only by the driver and the
     // assigned mechanic. Admins may read every request for oversight.
     match /sos_requests/{requestId} {
-      allow create: if signedIn()
+      allow create: if signedIn() && notBlocked()
         && request.resource.data.driverId == request.auth.uid
         && request.resource.data.status == 'pending'
         // The public doc must never carry phone/exact coords (audit
@@ -121,13 +137,14 @@ service cloud.firestore {
         && !request.resource.data.keys().hasAny(['driverPhone', 'phone', 'exactLat', 'exactLng'])
         && request.resource.data.category in ['tyre', 'mechanic', 'battery', 'other'];
       allow read: if signedIn()
-        && (resource.data.driverId == request.auth.uid
-          || resource.data.status == 'pending'
-          // Assigned mechanic: without this branch an accepted job
-          // vanished from the mechanic's Jobs page (audit 2026-10-24).
-          || resource.data.mechanicId == request.auth.uid
+        && ((notBlocked()
+          && (resource.data.driverId == request.auth.uid
+            || resource.data.status == 'pending'
+            // Assigned mechanic: without this branch an accepted job
+            // vanished from the mechanic's Jobs page (audit 2026-10-24).
+            || resource.data.mechanicId == request.auth.uid))
           || isAdmin());
-      allow update: if signedIn() && (
+      allow update: if signedIn() && notBlocked() && (
         // Driver: cancel or complete their own request.
         (resource.data.driverId == request.auth.uid
           && request.resource.data.driverId == request.auth.uid
@@ -153,17 +170,17 @@ service cloud.firestore {
     }
 
     match /sos_request_details/{requestId} {
-      allow create: if signedIn()
+      allow create: if signedIn() && notBlocked()
         && request.resource.data.driverId == request.auth.uid
         && request.resource.data.requestId == requestId;
       // Driver reads own details; a mechanic reads them only after being
       // assigned (the mechanic app claims the doc right after accepting).
       // Admins read them for SOS oversight/disputes (audit 2026-10-24).
       allow read: if signedIn()
-        && (resource.data.driverId == request.auth.uid
-          || resource.data.mechanicId == request.auth.uid
+        && (((resource.data.driverId == request.auth.uid
+          || resource.data.mechanicId == request.auth.uid) && notBlocked())
           || isAdmin());
-      allow update: if signedIn()
+      allow update: if signedIn() && notBlocked()
         && get(/databases/$(database)/documents/sos_requests/$(requestId)).data.mechanicId == request.auth.uid
         && request.resource.data.mechanicId == request.auth.uid;
       allow delete: if false;
@@ -174,10 +191,10 @@ service cloud.firestore {
     // (status/warnings/hold info) are excluded from owner writes, so a
     // mechanic can never clear their own strikes or unhold themselves.
     match /mechanics/{mechanicId} {
-      allow create: if signedIn() && mechanicId == request.auth.uid
+      allow create: if signedIn() && notBlocked() && mechanicId == request.auth.uid
         && !request.resource.data.keys().hasAny(['status', 'warnings', 'warning_history', 'held_at', 'held_reason']);
-      allow read: if signedIn() && (mechanicId == request.auth.uid || isAdmin());
-      allow update: if (signedIn() && mechanicId == request.auth.uid
+      allow read: if signedIn() && ((mechanicId == request.auth.uid && notBlocked()) || isAdmin());
+      allow update: if (signedIn() && notBlocked() && mechanicId == request.auth.uid
         && !request.resource.data.keys().hasAny(['status', 'warnings', 'warning_history', 'held_at', 'held_reason']))
         || isAdmin();
       allow delete: if false;
