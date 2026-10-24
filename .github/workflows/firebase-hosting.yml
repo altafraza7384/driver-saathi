@@ -72,8 +72,15 @@ jobs:
           node-version: 22
           cache: npm
 
+      # --legacy-peer-deps is REQUIRED here (CI-only, no app-code or
+      # lockfile change): package.json pins firebase ^13, but
+      # @capacitor-firebase/authentication@8.5.2 declares a firebase
+      # ^12 peer dependency, so strict `npm ci` fails with ERESOLVE
+      # before the build even starts. Bun (used locally) tolerates
+      # this peer mismatch, npm does not. The flag only relaxes peer
+      # checking; the exact locked versions are still installed.
       - name: Install dependencies
-        run: npm ci --no-audit --no-fund
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
 
       - name: Build web bundle
         run: npm run build
