@@ -2,23 +2,33 @@ import { useCallback, useEffect, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/lib/i18n";
 
 
 const CHECK_INTERVAL = 5 * 60 * 1000;
 type Kind = "store" | "web" | null;
 
+// Dismissal is persisted per version: the old session-only dismiss
+// nagged the user again on every 5-minute re-check (audit 2026-10-24).
+const DISMISS_KEY = "update_dismissed";
+
 /** Shows an update banner for new Play Store versions (native) and new web releases. */
 export function UpdatePrompt() {
+  const { t } = useI18n();
   const [kind, setKind] = useState<Kind>(null);
   const [dismissed, setDismissed] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [dismissId, setDismissId] = useState<string | null>(null);
 
   const checkStore = useCallback(async () => {
     if (Capacitor.getPlatform() !== "android") return false;
     try {
       const { AppUpdate, AppUpdateAvailability } = await import("@capawesome/capacitor-app-update");
       const info = await AppUpdate.getAppUpdateInfo();
-      if (info.updateAvailability === AppUpdateAvailability.UPDATE_AVAILABLE) { setKind("store"); return true; }
+      if (info.updateAvailability === AppUpdateAvailability.UPDATE_AVAILABLE) {
+        if (localStorage.getItem(DISMISS_KEY) === "store") return false;
+        setKind("store"); setDismissId("store"); return true;
+      }
     } catch { /* plugin missing in older builds or not installed from Play */ }
     return false;
   }, []);
@@ -29,7 +39,10 @@ export function UpdatePrompt() {
       const res = await fetch(`/version.json?t=${Date.now()}`, { cache: "no-store" });
       if (!res.ok) return;
       const { buildId } = await res.json();
-      if (buildId && buildId !== __APP_BUILD_ID__) setKind((k) => k ?? "web");
+      if (buildId && buildId !== __APP_BUILD_ID__) {
+        if (localStorage.getItem(DISMISS_KEY) === `web:${buildId}`) return;
+        setKind((k) => k ?? "web"); setDismissId(`web:${buildId}`);
+      }
     } catch { /* offline */ }
   }, []);
 
@@ -71,13 +84,13 @@ export function UpdatePrompt() {
       <div className="mx-auto mt-2 flex w-[calc(100%-1rem)] max-w-md items-center gap-3 rounded-lg border border-border bg-background p-3 shadow-lg">
         <RefreshCw className="h-5 w-5 shrink-0" />
         <div className="min-w-0 flex-1">
-          <p className="font-bold leading-tight">Update available</p>
+          <p className="font-bold leading-tight">{t("update.available")}</p>
           <p className="text-sm text-muted-foreground">
-            {kind === "store" ? "A new version is on Play Store." : "A new version of the app is ready."}
+            {kind === "store" ? t("update.storeReady") : t("update.webReady")}
           </p>
         </div>
-        <Button size="sm" className="h-11" onClick={update} disabled={busy}>{busy ? "..." : "Update"}</Button>
-        <Button size="icon" variant="ghost" className="h-11 w-11 shrink-0" aria-label="Later" onClick={() => setDismissed(true)}><X className="h-4 w-4" /></Button>
+        <Button size="sm" className="h-11" onClick={update} disabled={busy}>{busy ? "..." : t("update.update")}</Button>
+        <Button size="icon" variant="ghost" className="h-11 w-11 shrink-0" aria-label="Later" onClick={() => { if (dismissId) localStorage.setItem(DISMISS_KEY, dismissId); setDismissed(true); }}><X className="h-4 w-4" /></Button>
       </div>
     </div>
   );
