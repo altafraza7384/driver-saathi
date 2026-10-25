@@ -53,6 +53,7 @@ name: Android Play Release
       - "package.json"
       - "package-lock.json"
       - "capacitor.config.ts"
+      - "assets/"
       - ".github/workflows/android-play-release.yml"
   workflow_dispatch:
     inputs:
@@ -108,12 +109,17 @@ jobs:
         run: |
           npx cap add android
           npx cap sync android
-                - name: Generate native launcher icon from repo assets
-                        # @capacitor/assets runs via npx (no new dependency): it reads
-                                # assets/icon.png (1024) and writes the mipmap launcher icons.
-                                        # --icon-only: no splash change, so no splash delay is added —
-                                                # the 1-second splash rule stays intact (system splash only).
-                                                        run: npx -y @capacitor/assets generate --android --icon-only
+
+      - name: Generate native launcher icons and splash from repo assets
+        # @capacitor/assets runs via npx (no new dependency). v3 reads
+        # assets/icon.png (1024) plus assets/icon-foreground.png and
+        # assets/icon-background.png (both transparent, so the badge
+        # shows as a circle, not a square, on the splash screen and
+        # launcher). It writes the mipmap launcher icons and the
+        # drawable/splash used by the launch theme. No animation and no
+        # duration change, so the 1-second splash rule stays intact
+        # (system splash only).
+        run: npx -y @capacitor/assets generate --android
 
       - name: Bump versionCode / versionName
         # Play rejects a re-uploaded versionCode, so every run gets a
