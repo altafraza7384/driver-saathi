@@ -38,7 +38,7 @@ Workflow: `.github/workflows/android-play-release.yml`
   AAB uploaded as an Actions artifact AND, when the Play secret exists,
   uploaded to Play (default track: `internal`; manual dispatch can choose
   `production`).
-- Native launcher icon: after generating `android/` and syncing, run `npx -y @capacitor/assets generate --android --icon-only` so the launcher icon comes from `assets/icon.png` (1024px logo source in the repo).
+- Native launcher icon and splash: after generating `android/` and syncing, run `npx -y @capacitor/assets generate --android` (v3: the old `--icon-only` flag no longer exists). The tool reads `assets/icon.png` (1024px) plus `assets/icon-foreground.png` and `assets/icon-background.png` (both transparent, so the badge shows as a circle, not a square, on the splash screen and launcher) and writes the mipmap launcher icons and the `drawable/splash` used by the launch theme. Icon changes under `assets/` trigger this workflow.
 - - If the keystore secrets are missing, the job fails with a clear error
   instead of making an unsigned bundle Play would reject.
 - If only the Play secret is missing, the signed AAB is kept as an artifact
