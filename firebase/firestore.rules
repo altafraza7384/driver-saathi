@@ -65,7 +65,13 @@ service cloud.firestore {
     match /roles/{uid} { allow read: if (isOwner(uid) && notBlocked()) || isAdmin(); allow write: if false; }
 
     match /subscription_plans/{planId} {
-      allow read: if signedIn() && notBlocked() && (resource.data.is_active == true || isAdmin());
+      // Split read (2026-10-25): a single allow combining a per-document
+      // field check with isAdmin() denied list queries (both filtered and
+      // unfiltered) with permission-denied. Two allows keep the exact same
+      // access: admins read all plans, other signed-in non-blocked users
+      // read active plans only.
+      allow read: if signedIn() && notBlocked() && isAdmin();
+      allow read: if signedIn() && notBlocked() && resource.data.is_active == true;
       allow write: if isAdmin()
         && request.resource.data.price_inr is number
         && ((request.resource.data.billing_interval == 'free' && request.resource.data.price_inr == 0)
