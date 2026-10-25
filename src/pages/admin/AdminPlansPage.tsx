@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Plus, Pencil, CreditCard } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, Trash2, CreditCard } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { formatINR } from "@/lib/currency";
@@ -75,6 +75,36 @@ export default function AdminPlansPage() {
     onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
 
+  const remove = useMutation({
+    mutationFn: async (plan: Plan) => {
+      // Full cleanup: a deleted plan must disappear everywhere — clear it
+      // from any users assigned to it, delete offers tied to it (site-wide
+      // offers with plan_id null stay), then delete the plan itself.
+      const { data: assigned, error: assignedError } = await db.from("users").select("id").eq("subscription_plan_id", plan.id);
+      if (assignedError) throw assignedError;
+      for (const u of ((assigned ?? []) as { id: string }[])) {
+        const { error } = await db.from("users").update({ subscription_plan_id: null }).eq("id", u.id);
+        if (error) throw error;
+      }
+      const { data: planOffers, error: offersError } = await db.from("offers").select("id").eq("plan_id", plan.id);
+      if (offersError) throw offersError;
+      for (const o of ((planOffers ?? []) as { id: string }[])) {
+        const { error } = await db.from("offers").delete().eq("id", o.id);
+        if (error) throw error;
+      }
+      const { error } = await db.from("subscription_plans").delete().eq("id", plan.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      refresh();
+      qc.invalidateQueries({ queryKey: ["admin_users"] });
+      qc.invalidateQueries({ queryKey: ["admin_offers"] });
+      qc.invalidateQueries({ queryKey: ["offers"] });
+      toast.success("Plan deleted");
+    },
+    onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
+  });
+
   const close = () => { setOpen(false); setEdit(null); setForm(emptyForm); };
   const openNew = () => { setEdit(null); setForm(emptyForm); setOpen(true); };
   const openEdit = (p: Plan) => {
@@ -130,6 +160,7 @@ export default function AdminPlansPage() {
                 <div className="flex items-center gap-1 shrink-0">
                   <Switch aria-label="Active" checked={p.is_active} onCheckedChange={(v) => toggle.mutate({ id: p.id, is_active: v })} />
                   <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Edit plan" onClick={() => openEdit(p)}><Pencil className="h-4 w-4 text-muted-foreground" /></Button>
+                  <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Delete plan" disabled={remove.isPending} onClick={() => { if (window.confirm(`Delete "${p.name}"? It will disappear for all drivers, users on this plan will lose it, and offers tied to it will also be deleted.`)) remove.mutate(p); }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                 </div>
               </CardContent>
             </Card>
