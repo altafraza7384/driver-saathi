@@ -14,7 +14,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { formatAuthError, useAuthActions } from "@/hooks/useAuthActions";
 import { BACKEND } from "@/lib/backend";
-import { Car, Lock, Mail, User, Wifi, WifiOff } from "lucide-react";
+import { Lock, Mail, User, Wifi, WifiOff } from "lucide-react";
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -99,9 +99,7 @@ export default function AuthPage() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm space-y-6">
         <div className="flex flex-col items-center gap-2">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary">
-            <Car className="h-8 w-8 text-primary-foreground" />
-          </div>
+          <img src="/icon-192.png" alt="" className="h-16 w-16 rounded-2xl" />
           <h1 className="font-heading text-2xl font-bold text-foreground">{t("auth.appTitle")}</h1>
           <p className="text-sm text-muted-foreground">{t("auth.subtitle")}</p>
         </div>
