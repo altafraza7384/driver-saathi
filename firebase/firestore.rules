@@ -11,7 +11,7 @@ service cloud.firestore {
     function signedIn() { return request.auth != null; }
     function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
     function isAdmin() {
-      return signedIn() && (request.auth.token.admin == true
+      return signedIn() && (request.auth.token.get('admin', false) == true
         || (exists(/databases/$(database)/documents/roles/$(request.auth.uid))
           && get(/databases/$(database)/documents/roles/$(request.auth.uid)).data.roles.hasAny(['admin'])));
     }
@@ -47,8 +47,16 @@ service cloud.firestore {
       // admin-managed fields, so a user can never unblock themselves or
       // grant themselves a plan.
       allow read: if isOwner(uid) || isAdmin();
-      allow create, update: if (isOwner(uid) && notBlocked()
+      // create: the NEW document must not contain admin-managed fields.
+      allow create: if (isOwner(uid) && notBlocked()
         && !request.resource.data.keys().hasAny(['role', 'roles', 'admin', 'is_blocked', 'subscription_plan_id']))
+        || isAdmin();
+      // update: only the CHANGED fields are checked (diff().affectedKeys()),
+      // because the merged post-update document always contains fields the
+      // admin assigned earlier (e.g. subscription_plan_id) — checking the
+      // whole document locked plan-holding users out of their own profile.
+      allow update: if (isOwner(uid) && notBlocked()
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'roles', 'admin', 'is_blocked', 'subscription_plan_id']))
         || isAdmin();
       allow delete: if false; // deletion only via deleteAccount function
 
@@ -125,8 +133,12 @@ service cloud.firestore {
         && !request.resource.data.keys().hasAny(['commission_amount', 'commission_note']);
       allow read: if signedIn()
         && ((resource.data.user_id == request.auth.uid && notBlocked()) || isAdmin());
+      // update: only CHANGED fields are checked (diff().affectedKeys()) —
+      // the merged document always contains user_id/phone/consent, so the
+      // old whole-document check denied EVERY admin update (status and
+      // commission could never be saved).
       allow update: if isAdmin()
-        && !request.resource.data.keys().hasAny(['user_id', 'phone', 'consent']);
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['user_id', 'phone', 'consent']);
       allow delete: if false;
     }
 
@@ -154,7 +166,11 @@ service cloud.firestore {
       allow read: if signedIn()
         && ((notBlocked()
           && (resource.data.driverId == request.auth.uid
-            || resource.data.status == 'pending'
+            // Pending requests are visible only to registered mechanics
+            // (hardening 2026-10-26: previously ANY signed-in user could
+            // list stranded drivers' approx locations).
+            || (resource.data.status == 'pending'
+              && exists(/databases/$(database)/documents/mechanics/$(request.auth.uid)))
             // Assigned mechanic: without this branch an accepted job
             // vanished from the mechanic's Jobs page (audit 2026-10-24).
             || resource.data.mechanicId == request.auth.uid))
@@ -174,7 +190,7 @@ service cloud.firestore {
           && request.resource.data.mechanicId == request.auth.uid
           && request.resource.data.driverId == resource.data.driverId
           && exists(/databases/$(database)/documents/mechanics/$(request.auth.uid))
-          && get(/databases/$(database)/documents/mechanics/$(request.auth.uid)).data.status != 'held')
+          && get(/databases/$(database)/documents/mechanics/$(request.auth.uid)).data.get('status', '') != 'held')
         // Assigned mechanic: move the job forward.
         || (resource.data.mechanicId == request.auth.uid
           && request.resource.data.mechanicId == request.auth.uid
@@ -196,7 +212,7 @@ service cloud.firestore {
           || resource.data.mechanicId == request.auth.uid) && notBlocked())
           || isAdmin());
       allow update: if signedIn() && notBlocked()
-        && get(/databases/$(database)/documents/sos_requests/$(requestId)).data.mechanicId == request.auth.uid
+        && get(/databases/$(database)/documents/sos_requests/$(requestId)).data.get('mechanicId', '') == request.auth.uid
         && request.resource.data.mechanicId == request.auth.uid;
       allow delete: if false;
     }
@@ -209,8 +225,12 @@ service cloud.firestore {
       allow create: if signedIn() && notBlocked() && mechanicId == request.auth.uid
         && !request.resource.data.keys().hasAny(['status', 'warnings', 'warning_history', 'held_at', 'held_reason']);
       allow read: if signedIn() && ((mechanicId == request.auth.uid && notBlocked()) || isAdmin());
+      // update: only CHANGED fields are checked (diff().affectedKeys()) —
+      // the merged document of a held mechanic always contains status, so
+      // the old whole-document check locked held mechanics out of ALL
+      // profile edits, not just status changes.
       allow update: if (signedIn() && notBlocked() && mechanicId == request.auth.uid
-        && !request.resource.data.keys().hasAny(['status', 'warnings', 'warning_history', 'held_at', 'held_reason']))
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'warnings', 'warning_history', 'held_at', 'held_reason']))
         || isAdmin();
       allow delete: if false;
     }
