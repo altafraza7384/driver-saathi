@@ -29,7 +29,7 @@ export default function AdminPlansPage() {
   const [edit, setEdit] = useState<Plan | null>(null);
   const [form, setForm] = useState(emptyForm);
 
-  const { data: plans = [], isLoading } = useQuery({
+  const { data: plans = [], isLoading, error: plansError } = useQuery({
     queryKey: ["admin_subscription_plans"],
     queryFn: async () => {
       const { data, error } = await db.from("subscription_plans").select("*").order("sort_order");
@@ -103,6 +103,14 @@ export default function AdminPlansPage() {
 
       {isLoading ? (
         <div className="flex justify-center py-10"><div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>
+      ) : plansError ? (
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 space-y-1">
+          <p className="text-sm font-bold text-destructive">Could not load plans</p>
+          <p className="text-xs text-muted-foreground break-words">
+            {plansError instanceof Error ? plansError.message : String(plansError)}
+            {(plansError as { code?: string }).code ? ` (${(plansError as { code?: string }).code})` : ""}
+          </p>
+        </div>
       ) : plans.length === 0 ? (
         <p className="text-center text-muted-foreground py-10">No plans yet.</p>
       ) : (
