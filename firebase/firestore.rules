@@ -78,10 +78,13 @@ service cloud.firestore {
       // read active plans only.
       allow read: if signedIn() && notBlocked() && isAdmin();
       allow read: if signedIn() && notBlocked() && resource.data.is_active == true;
-      allow write: if isAdmin()
+      // Create/update keep the price checks; delete is separate because a
+      // delete has no request.resource, so the price checks would deny it.
+      allow create, update: if isAdmin()
         && request.resource.data.price_inr is number
         && ((request.resource.data.billing_interval == 'free' && request.resource.data.price_inr == 0)
           || (request.resource.data.billing_interval in ['monthly','yearly'] && request.resource.data.price_inr > 0));
+      allow delete: if isAdmin();
     }
 
     // Admin-managed discount offers shown on the plans card.
