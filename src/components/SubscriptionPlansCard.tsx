@@ -20,7 +20,7 @@ function isOfferLive(o: Offer, today: string) {
 
 export function SubscriptionPlansCard() {
   const { t } = useI18n();
-  const { data: plans = [], isLoading } = useQuery({
+  const { data: plans = [], isLoading, error: plansError } = useQuery({
     queryKey: ["subscription_plans"],
     queryFn: async () => {
       const { data, error } = await db.from("subscription_plans").select("*").eq("is_active", true).order("sort_order");
@@ -63,6 +63,11 @@ export function SubscriptionPlansCard() {
       )}
       {isLoading ? (
         <div className="h-16 animate-pulse rounded-md bg-muted" />
+      ) : plansError ? (
+        <div className="space-y-1">
+          <p className="text-sm text-destructive">{t("home.loadError")}</p>
+          <p className="text-xs text-muted-foreground break-words">{plansError instanceof Error ? plansError.message : String(plansError)}</p>
+        </div>
       ) : plans.length === 0 ? (
         <p className="text-muted-foreground">{t("plans.noPlans")}</p>
       ) : (
