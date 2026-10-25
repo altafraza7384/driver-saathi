@@ -26,9 +26,15 @@ service cloud.firestore {
     // must still read a blocked user to unblock them; a blocked admin is
     // unblocked via the other admin account or the console.
     function isBlocked() {
+      // 2026-10-25: .data.is_blocked ERRORED ("Property is_blocked is
+      // undefined") when the profile doc has no is_blocked field — which
+      // is every profile today — and that error poisoned every &&-chain
+      // using notBlocked(), denying plans reads outright (proven in the
+      // Rules Playground). .get() with a default is null-safe: a missing
+      // field counts as NOT blocked, which is the documented intent.
       return signedIn()
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.is_blocked == true;
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('is_blocked', false) == true;
     }
     function notBlocked() { return !isBlocked(); }
     function ownsPayload(uid) {
