@@ -38,11 +38,12 @@ Workflow: `.github/workflows/android-play-release.yml`
   AAB uploaded as an Actions artifact AND, when the Play secret exists,
   uploaded to Play (default track: `internal`; manual dispatch can choose
   `production`).
-- If the keystore secrets are missing, the job fails with a clear error
+- Native launcher icon: after generating `android/` and syncing, run `npx -y @capacitor/assets generate --android --icon-only` so the launcher icon comes from `assets/icon.png` (1024px logo source in the repo).
+- - If the keystore secrets are missing, the job fails with a clear error
   instead of making an unsigned bundle Play would reject.
 - If only the Play secret is missing, the signed AAB is kept as an artifact
   and the Play step is skipped, so a manual Play Console upload from that
-  exact file stays possible.
+    exact file stays possible.
 
 ## What ONLY the owner can do (the assistant cannot do these)
 
