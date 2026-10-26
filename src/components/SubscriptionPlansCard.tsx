@@ -111,6 +111,12 @@ export function SubscriptionPlansCard() {
   const offersForPlan = (planId: string) => liveOffers.filter((o) => o.plan_id === planId);
   const mrpFor = (p: Plan) => p.mrp_inr ?? DEFAULT_MRP[p.billing_interval] ?? null;
   const perFor = (p: Plan) => (p.billing_interval === "yearly" ? "yr" : "mo");
+  // Per-day cost, so the amount feels small: monthly spread over 30 days,
+  // yearly over 365 days (Rs 99/mo = Rs 3.30/day, Rs 999/yr = Rs 2.74/day).
+  const perDayFor = (p: Plan) => {
+    const days = p.billing_interval === "yearly" ? 365 : 30;
+    return `₹${(Number(p.price_inr) / days).toFixed(2)}`;
+  };
 
   return (
     <Card><CardContent className="p-4 space-y-3">
@@ -159,6 +165,9 @@ export function SubscriptionPlansCard() {
                   <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800">🔥 {t("plans.onlyForYou")}</span>
                 )}
               </div>
+              {price > 0 && (
+                <p className="mt-1 text-sm font-semibold text-primary">{t("plans.perDay", { price: perDayFor(p) })}</p>
+              )}
               {offersForPlan(p.id).map((o) => (
                 <p key={o.id} className="flex items-center gap-1 text-sm font-semibold text-primary">
                   <Tag className="h-3 w-3" />
@@ -205,6 +214,9 @@ export function SubscriptionPlansCard() {
                     )}
                     <span className="text-3xl font-extrabold">{price === 0 ? "₹0" : `${formatINR(price)}/${per}`}</span>
                   </p>
+                  {price > 0 && (
+                    <p className="text-base font-bold text-primary">{t("plans.perDay", { price: perDayFor(selected) })}</p>
+                  )}
                   <p>
                     <span className="rounded-full bg-green-100 px-3 py-1 text-sm font-bold text-green-800">✨ {t("plans.trialBadge", { days: TRIAL_DAYS })}</span>
                   </p>
