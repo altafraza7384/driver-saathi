@@ -12,7 +12,6 @@ import { useQuery } from "@tanstack/react-query";
 import { db } from "@/lib/backend";
 import { NotificationBell } from "@/components/NotificationBell";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
-import { HomeQuickAdd } from "@/components/HomeQuickAdd";
 import { currentMonth, monthRange, budgetStatus, Budget, localToday } from "@/lib/budgets";
 
 function getGreetingKey(): string {
@@ -199,8 +198,6 @@ export default function HomePage() {
           </CardContent>
         </Card>
       </div>
-
-      <HomeQuickAdd />
 
       <div>
         <Card className="border-0 shadow-sm overflow-hidden">
