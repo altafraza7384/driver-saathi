@@ -322,7 +322,7 @@ export default function HomePage() {
               {budgetAtRisk.length > 0 ? (
                 <div className="space-y-1">
                   {budgetAtRisk.map((b) => (
-                    <p key={b.id} className="text-xs text-destructive">
+                    <p key={b.id} className="text-xs text-red-600">
                       {b.category}: {formatINR(b.spent)} / {formatINR(toAmount(b.monthly_limit))}
                     </p>
                   ))}
