@@ -303,9 +303,11 @@ export default function BudgetsPage() {
                     <span>{t("budget.spent")}: {formatINR(spent)}</span>
                     <span>{t("budget.monthlyLimit")}: {formatINR(limitAmt)}</span>
                   </div>
-                  <p className={`text-xs font-bold ${status === "over" ? "text-destructive" : status === "near" ? "text-amber-600" : "text-muted-foreground"}`}>
+                  <p className={`text-xs font-bold ${status === "over" ? "text-red-600" : status === "near" ? "text-amber-600" : "text-muted-foreground"}`}>
                     {status === "over"
-                      ? `${t("budget.overBudget")}: ${t("budget.overBy")} ${formatINR(-remaining)}`
+                      ? remaining < 0
+                        ? `${t("budget.overBudget")}: ${t("budget.overBy")} ${formatINR(-remaining)}`
+                        : t("budget.overBudget")
                       : status === "near"
                         ? t("budget.nearLimit")
                         : `${t("budget.remaining")}: ${formatINR(remaining)}`}
