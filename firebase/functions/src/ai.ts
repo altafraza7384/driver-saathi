@@ -15,7 +15,7 @@ async function gemini(system: string, messages: z.infer<typeof Msgs>, key: strin
       messages: [{ role: "system", content: system }, ...messages], ...(tools ? { tools } : {}) }),
   });
   if (r.status === 429) throw new HttpsError("resource-exhausted", "Rate limit exceeded");
-  if (!r.ok) throw new HttpsError("internal", "AI provider error");
+  if (!r.ok) { console.error("gemini upstream status", r.status); throw new HttpsError("internal", "AI provider error"); }
   return r.json() as Promise<any>;
 }
 
