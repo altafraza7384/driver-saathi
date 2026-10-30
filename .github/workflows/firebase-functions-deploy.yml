@@ -1,0 +1,110 @@
+# Driver Saathi — Firebase Cloud Functions deploy (FUNCTIONS track, added 2026-10-30).
+#
+# Why this exists: Cloud Functions cannot deploy from the sandbox (no
+# Firebase CLI auth there) and must not be deployed with a personal
+# login token saved on an agent machine. So functions deploy the same
+# keyless way as Hosting: GitHub Actions + Workload Identity Federation.
+#
+# What it deploys (ONLY functions, nothing else):
+#  - chat, financeAi (AI Assistant + Finance AI, Gemini via secret)
+#  - adminListUsers, deleteAccount (callables)
+#  - sendNotifications (every 5 minutes, web push via VAPID secrets)
+#  - sendAnnouncementPush (on announcement creation, FCM via Admin SDK)
+#  - cleanupTransactions (daily 03:00 IST, chat-history cleanup only)
+#  - dedupeInsuranceLead (on insurance lead creation, spam guard)
+# It does NOT deploy Hosting, Firestore rules, or Storage rules — those
+# are separate deploys (Hosting has its own workflow; rules are
+# published from the console).
+#
+# Triggers:
+#  - Push to main touching firebase/functions/** or firebase/firebase.json
+#    (the functions config lives in firebase/firebase.json).
+#  - Manual dispatch (workflow_dispatch) — use this for the FIRST run
+#    and for retries. The workflow file itself is deliberately NOT in
+#    the trigger paths, so committing this file does not auto-run a
+#    deploy before the IAM roles and secrets below are ready.
+#
+# Prerequisites (owner does these ONCE in Cloud Console, before the
+# first run — the run FAILS with a clear error until they exist):
+#  - IAM roles on firebase-hosting-deploy@driver-saathi-app.iam.gserviceaccount.com
+#    (the SAME keyless identity the Hosting workflow already uses, so no
+#    new service account and no new WIF binding are needed):
+#      Cloud Functions Admin, Service Account User, Storage Admin,
+#      Artifact Registry Administrator, Cloud Build Editor,
+#      Cloud Scheduler Admin, Secret Manager Admin
+#    (Service Usage Consumer + Firebase Hosting Admin are already on it.)
+#    If a later deploy errors on a permission, the error names the
+#    missing role — add it and re-run.
+#  - Secret Manager secrets (exact names, created by the owner in
+#    Cloud Console -> Secret Manager; values are NEVER put in the repo,
+#    in chat, or in GitHub Secrets):
+#      GOOGLE_AI_API_KEY (owner's Gemini key, from Google AI Studio),
+#      VAPID_PUBLIC_KEY + VAPID_PRIVATE_KEY (one pair from
+#      `npx -y web-push generate-vapid-keys`).
+#    The deploy fails closed if a referenced secret has no version yet.
+#    The VAPID *public* key is publishable: it also goes into the
+#    tracked .env as VITE_VAPID_PUBLIC_KEY so web clients can subscribe.
+#
+# Authentication (KEYLESS, same WIF setup as Hosting, 2026-10-24):
+#  - Pool "github" + provider "github", limited to repo
+#    altafraza7384/driver-saathi AND branch refs/heads/main.
+#  - No key file, no GitHub secret: each run gets a short-lived token
+#    from GitHub's OIDC provider (hence id-token: write below).
+
+name: Firebase Functions Deploy
+
+"on":
+  push:
+    branches: [main]
+    paths:
+      - "firebase/functions/**"
+      - "firebase/firebase.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+# Never run two function deploys at once; queue the second.
+concurrency:
+  group: firebase-functions-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Functions runtime is nodejs20 (see firebase/firebase.json),
+      # so build and deploy with Node 20.
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install function dependencies (npm, lockfile is committed)
+        working-directory: firebase/functions
+        run: npm ci --no-audit --no-fund
+
+      # Fail fast on type errors before any cloud interaction.
+      # (The firebase.json predeploy hook runs this same build again
+      # during deploy; that duplication is intentional.)
+      - name: Build functions (tsc)
+        working-directory: firebase/functions
+        run: npm run build
+
+      - name: Authenticate to Google Cloud (keyless, Workload Identity Federation)
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/282968056888/locations/global/workloadIdentityPools/github/providers/github"
+          service_account: "firebase-hosting-deploy@driver-saathi-app.iam.gserviceaccount.com"
+
+      # firebase.json lives in firebase/ and its functions.source is
+      # "functions" (relative to firebase/), so deploy FROM firebase/.
+      # --only functions: never touches Hosting, Firestore, or Storage.
+      - name: Deploy Cloud Functions
+        working-directory: firebase
+        run: npx -y firebase-tools@latest deploy --only functions --project driver-saathi-app --non-interactive
