@@ -229,14 +229,7 @@ export default function FinanceAIPage() {
         )}
       </div>
 
-      {/* TEMPORARY — REMOVE AFTER BLAZE DEPLOY: the financeAi Cloud
-          Function is staged but not deployed (Spark plan), so every
-          message currently fails. Say so honestly and disable sending
-          instead of letting users type into a guaranteed failure
-          (audit 2026-10-24). */}
-      <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-        {t("ai.comingSoon")}
-      </div>
+      
 
       {/* Input */}
       <div className="flex gap-2 pt-2 border-t">
@@ -255,7 +248,7 @@ export default function FinanceAIPage() {
           className="flex-1 font-bold"
           disabled={isLoading}
         />
-        <Button onClick={() => send()} disabled size="icon" className="h-11 w-11 shrink-0">
+        <Button onClick={() => send()} size="icon" className="h-11 w-11 shrink-0">
           <Send className="h-5 w-5" />
         </Button>
       </div>
