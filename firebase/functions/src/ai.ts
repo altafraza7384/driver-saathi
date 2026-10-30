@@ -32,7 +32,9 @@ export const financeAi = onCall({ secrets: [GOOGLE_AI_API_KEY], region: "asia-so
     base.collection("transactions").where("transaction_date", ">=", monthStart).get(),
     base.collection("debts").where("is_active", "==", true).get(),
     base.collection("goals").get(),
+  
   ]);
+      console.log("financeAi data loaded", tx.size, debts.size, goals.size);
   const t = tx.docs.map((d) => d.data());
   const income = t.filter((x) => x.type === "income").reduce((s, x) => s + Number(x.amount), 0);
   const expense = t.filter((x) => x.type === "expense").reduce((s, x) => s + Number(x.amount), 0);
@@ -41,7 +43,9 @@ Income this month: ₹${income.toFixed(0)}; Expenses: ₹${expense.toFixed(0)}; 
 Debts: ${debts.docs.map((d) => `${d.get("name")} ₹${Number(d.get("principal")) - Number(d.get("total_paid"))} @${d.get("interest_rate")}%`).join("; ") || "none"}
 Goals: ${goals.docs.map((g) => `${g.get("title")} ₹${g.get("saved_amount")}/${g.get("target_amount")}`).join("; ") || "none"}
 Recommend an emergency fund first; flag EMI > 40% of income.`;
+      console.log("financeAi calling gemini");
   const json = await gemini(system, parsed.data, GOOGLE_AI_API_KEY.value());
+      console.log("financeAi gemini done");
   return { content: json.choices?.[0]?.message?.content ?? "" };
 });
 
