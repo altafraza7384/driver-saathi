@@ -182,11 +182,7 @@ export default function SettingsPage() {
             <AlertDialogDescription>
               {t("settings.deleteWarning")}
             </AlertDialogDescription>
-            {/* TEMPORARY — REMOVE AFTER BLAZE DEPLOY: the deleteAccount
-                callable is staged but undeployed, so deletion currently
-                always fails. Say so in the dialog instead of showing a
-                bare failure (audit 2026-10-24). */}
-            <p className="pt-2 text-amber-600 dark:text-amber-400">{t("settings.deletePending")}</p>
+            
           </AlertDialogHeader>
           <div className="py-2">
             <Label className="text-sm">{t("settings.typeDelete")} <strong>DELETE</strong></Label>
