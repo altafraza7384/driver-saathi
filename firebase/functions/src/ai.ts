@@ -8,15 +8,35 @@ const Msgs = z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.
   .min(1).max(20).refine((m) => m.reduce((s, x) => s + x.content.length, 0) <= 20000, "Conversation too long");
 
 async function gemini(system: string, messages: z.infer<typeof Msgs>, key: string, tools?: unknown[]) {
-  const r = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "gemini-3.8-flash", max_tokens: 768,
-      messages: [{ role: "system", content: system }, ...messages], ...(tools ? { tools } : {}) }),
-  });
-  if (r.status === 429) throw new HttpsError("resource-exhausted", "Rate limit exceeded");
-  if (!r.ok) { console.error("gemini upstream status", r.status); throw new HttpsError("internal", "AI provider error"); }
-  return r.json() as Promise<any>;
+  const delays = [3000, 10000];
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    let r;
+    try {
+      r = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "gemini-3.8-flash", max_tokens: 768,
+          messages: [{ role: "system", content: system }, ...messages], ...(tools ? { tools } : {}) }),
+        signal: AbortSignal.timeout(25000),
+      });
+    } catch {
+      if (attempt < 3) {
+        console.log(`gemini retry ${attempt + 1} timeout`);
+        await new Promise((resolve) => setTimeout(resolve, delays[attempt - 1]));
+        continue;
+      }
+      throw new HttpsError("internal", "AI provider error");
+    }
+    if (r.ok) return r.json() as Promise<any>;
+    if ((r.status === 429 || r.status === 503) && attempt < 3) {
+      console.log(`gemini retry ${attempt + 1} status ${r.status}`);
+      await new Promise((resolve) => setTimeout(resolve, delays[attempt - 1]));
+      continue;
+    }
+    console.error("gemini upstream status", r.status);
+    throw new HttpsError("internal", "AI provider error");
+  }
+  throw new HttpsError("internal", "AI provider error");
 }
 
 export const financeAi = onCall({ secrets: [GOOGLE_AI_API_KEY], region: "asia-south1", timeoutSeconds: 300 }, async (req) => {
