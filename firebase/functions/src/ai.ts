@@ -11,7 +11,7 @@ async function gemini(system: string, messages: z.infer<typeof Msgs>, key: strin
   const r = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "gemini-2.5-flash", max_tokens: 768,
+    body: JSON.stringify({ model: "gemini-3.8-flash", max_tokens: 768,
       messages: [{ role: "system", content: system }, ...messages], ...(tools ? { tools } : {}) }),
   });
   if (r.status === 429) throw new HttpsError("resource-exhausted", "Rate limit exceeded");
