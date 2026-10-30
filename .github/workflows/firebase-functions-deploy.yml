@@ -107,4 +107,4 @@ jobs:
       # --only functions: never touches Hosting, Firestore, or Storage.
       - name: Deploy Cloud Functions
         working-directory: firebase
-        run: npx -y firebase-tools@latest deploy --only functions --project driver-saathi-app --non-interactive
+        run: npx -y firebase-tools@latest deploy --only functions --project driver-saathi-app --non-interactive --force
