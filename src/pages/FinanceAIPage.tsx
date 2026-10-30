@@ -235,8 +235,7 @@ export default function FinanceAIPage() {
       <div className="flex gap-2 pt-2 border-t">
         <button
           onClick={toggleVoice}
-          disabled
-          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-colors ${isListening ? "bg-destructive text-destructive-foreground" : "bg-muted text-muted-foreground"}`}
+                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-colors ${isListening ? "bg-destructive text-destructive-foreground" : "bg-muted text-muted-foreground"}`}
         >
           {isListening ? <Square className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
         </button>
