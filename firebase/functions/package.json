@@ -2,7 +2,7 @@
   "name": "driver-saathi-functions",
   "private": true,
   "main": "lib/index.js",
-  "engines": { "node": "20" },
+  "engines": { "node": "22" },
   "scripts": {
     "build": "tsc",
     "test:rules": "firebase emulators:exec --only firestore --project demo-driver-saathi \"vitest run test\"",
