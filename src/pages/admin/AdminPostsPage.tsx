@@ -48,6 +48,12 @@ export default function AdminPostsPage() {
   });
 
   const uploadMedia = async (file: File): Promise<string> => {
+  const allowedExtensions = ["jpg", "jpeg", "png", "webp", "gif"];
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  if (!file.type.startsWith("image/") || !extension || !allowedExtensions.includes(extension) || file.size > 5 * 1024 * 1024) {
+    toast.error("Only JPG, JPEG, PNG, WebP or GIF images up to 5 MB are allowed.");
+    throw new Error("Only JPG, JPEG, PNG, WebP or GIF images up to 5 MB are allowed.");
+  }
     const ext = file.name.split(".").pop();
     const path = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
     const { error } = await db.storage.from("marketplace").upload(path, file);
