@@ -32,7 +32,6 @@ export const financeAi = onCall({ secrets: [GOOGLE_AI_API_KEY], region: "asia-so
     base.collection("transactions").where("transaction_date", ">=", monthStart).get(),
     base.collection("debts").where("is_active", "==", true).get(),
     base.collection("goals").get(),
-  
   ]);
       console.log("financeAi data loaded", tx.size, debts.size, goals.size);
   const t = tx.docs.map((d) => d.data());
