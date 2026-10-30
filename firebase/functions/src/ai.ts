@@ -19,7 +19,7 @@ async function gemini(system: string, messages: z.infer<typeof Msgs>, key: strin
   return r.json() as Promise<any>;
 }
 
-export const financeAi = onCall({ secrets: [GOOGLE_AI_API_KEY], region: "asia-south1" }, async (req) => {
+export const financeAi = onCall({ secrets: [GOOGLE_AI_API_KEY], region: "asia-south1", timeoutSeconds: 300 }, async (req) => {
   const uid = requireUser(req);
   const parsed = Msgs.safeParse(req.data?.messages);
   if (!parsed.success) throw new HttpsError("invalid-argument", "Invalid messages");
