@@ -8,6 +8,7 @@ import webpush from "web-push";
 import { db, auth, requireUser, requireAdmin, deleteUserData } from "./shared";
 
 export { chat, financeAi } from "./ai";
+export { dedupeInsuranceLead } from "./leads";
 
 const REGION = "asia-south1";
 const VAPID_PUBLIC_KEY = defineSecret("VAPID_PUBLIC_KEY");
