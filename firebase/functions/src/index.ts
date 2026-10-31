@@ -41,7 +41,7 @@ export const deleteAccount = onCall({ region: REGION }, async (req) => {
 
 type Due = { uid: string; source: string; id: string; notifyAt: string; title: string; body: string; url: string; item: string; label: string; desc: string | null };
 const SOURCES: Array<[string, [string, unknown] | null, string, string, string]> = [
-  ["reminders", ["is_completed", false], "🔔 Reminder: ", "/reminders", "reminder"],
+  ["reminders", null, "🔔 Reminder: ", "/reminders", "reminder"],
   ["debts", ["is_active", true], "💳 EMI due: ", "/debts", "EMI"],
   ["goals", ["is_completed", false], "🎯 Goal: ", "/goals", "goal"],
   ["car_checks", ["is_completed", false], "🚗 Car check: ", "/car-checks", "car check"],
@@ -64,6 +64,10 @@ export const sendNotifications = onSchedule(
       let q = db.collectionGroup(col).where("notify_at", ">=", from).where("notify_at", "<=", now.toISOString());
       if (filter) q = q.where(filter[0], "==", filter[1]);
       for (const d of (await q.get()).docs) {
+        // Reminders: skip completed in code, not in the query — docs
+        // created from the page before the fix carry no is_completed
+        // field, and Firestore equality does not match missing fields.
+        if (col === "reminders" && d.get("is_completed") === true) continue;
         const uid = d.ref.parent.parent!.id;
         const name = d.get("title") ?? d.get("name") ?? d.get("document_name") ?? d.get("check_type") ?? "";
         due.push({ uid, source: col, id: d.id, notifyAt: d.get("notify_at"), title: prefix + name, body: "", url, item: String(name), label, desc: (d.get("description") as string | null) ?? null });
