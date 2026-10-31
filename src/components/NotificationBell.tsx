@@ -47,10 +47,12 @@ export function NotificationBell() {
   const { data: reminders = [] } = useQuery({
     queryKey: ["notifications_reminders"],
     queryFn: async () => {
+      // No is_completed filter here: reminders created from the page
+      // before the fix lack the field entirely, and Firestore equality
+      // does not match missing fields. Completed ones are skipped below.
       const { data } = await db
         .from("reminders")
-        .select("*")
-        .eq("is_completed", false);
+        .select("*");
       return data ?? [];
     },
     enabled: !!user,
@@ -137,9 +139,11 @@ export function NotificationBell() {
 
   // Reminders with notify_at — include ALL past-due pending reminders,
   // not just the last day's: a 3-day-overdue reminder used to vanish
-  // from the bell entirely (audit 2026-10-24). The query already
-  // filters is_completed == false, so this only surfaces pending ones.
+  // from the bell entirely (audit 2026-10-24). Pending = is_completed
+  // is not true: docs created from the page before the fix carry no
+  // is_completed field at all, and must still surface.
   reminders.forEach((r: any) => {
+    if (r.is_completed === true) return;
     const notifyAt = r.notify_at ? parseISO(r.notify_at) : parseISO(r.reminder_date);
     if (isBefore(notifyAt, twoDaysLater)) {
       const dueDate = format(parseISO(r.reminder_date), "dd MMM yyyy");
