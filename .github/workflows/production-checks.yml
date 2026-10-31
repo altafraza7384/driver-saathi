@@ -14,26 +14,29 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+      # This repo's package manager is bun (bun.lock is the source of
+      # truth). The old npm steps failed at Install: package-lock.json
+      # is stale and strict `npm ci` dies on it (first the firebase 13
+      # peer conflict, then missing entries for packages bun added).
+      # The hosting workflow already installs with bun for the same
+      # reason, so this gate mirrors it instead of fighting npm.
       - name: Verify lockfile
-        run: |
-          test -f package-lock.json
-          npm config set package-lock true
-          npm --version
-          node --version
-      - name: Install
-        run: npm ci --no-audit --no-fund
+        run: test -f bun.lock
+      - name: Install dependencies (bun)
+        run: bun install
       - name: Lint
-        run: npm run lint
+        run: bun run lint
       - name: Test
-        run: npm test -- --run
+        run: bun run test
+      # Real typecheck: -p tsconfig.app.json (1015 files). Plain
+      # `tsc --noEmit` lists 0 files — the root tsconfig is
+      # solution-style with files: [] — so it would pass vacuously
+      # and must never replace this step.
       - name: Typecheck
-        run: npx tsc -p tsconfig.app.json --noEmit
+        run: bun x tsc -p tsconfig.app.json --noEmit
       - name: Production build
-        run: npm run build
+        run: bun run build
 
 # Final production gate: lint, tests, typecheck, and build.
