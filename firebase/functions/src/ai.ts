@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db, requireUser, consumeQuota } from "./shared";
 
 const GOOGLE_AI_API_KEY = defineSecret("GOOGLE_AI_API_KEY");
+const GROQ_API_KEY = defineSecret("GROQ_API_KEY");
 const Msgs = z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(4000) }))
   .min(1).max(20).refine((m) => m.reduce((s, x) => s + x.content.length, 0) <= 20000, "Conversation too long");
 
@@ -12,10 +13,10 @@ async function gemini(system: string, messages: z.infer<typeof Msgs>, key: strin
   for (let attempt = 1; attempt <= 3; attempt++) {
     let r;
     try {
-      r = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
+      r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ model: "gemini-3.8-flash", max_tokens: 768,
+          body: JSON.stringify({ model: "openai/gpt-oss-120b", max_tokens: 768,
                               messages: [{ role: "system", content: system }, ...messages], ...(tools ? { tools } : {}) }),
         signal: AbortSignal.timeout(25000),
       });
@@ -39,7 +40,7 @@ async function gemini(system: string, messages: z.infer<typeof Msgs>, key: strin
   throw new HttpsError("internal", "AI provider error");
 }
 
-export const financeAi = onCall({ secrets: [GOOGLE_AI_API_KEY], region: "asia-south1", timeoutSeconds: 300 }, async (req) => {
+export const financeAi = onCall({ secrets: [GROQ_API_KEY], region: "asia-south1", timeoutSeconds: 300 }, async (req) => {
   const uid = requireUser(req);
   const parsed = Msgs.safeParse(req.data?.messages);
   if (!parsed.success) throw new HttpsError("invalid-argument", "Invalid messages");
@@ -63,7 +64,7 @@ Debts: ${debts.docs.map((d) => `${d.get("name")} ₹${Number(d.get("principal"))
 Goals: ${goals.docs.map((g) => `${g.get("title")} ₹${g.get("saved_amount")}/${g.get("target_amount")}`).join("; ") || "none"}
 Recommend an emergency fund first; flag EMI > 40% of income.`;
       console.log("financeAi calling gemini");
-  const json = await gemini(system, parsed.data, GOOGLE_AI_API_KEY.value());
+  const json = await gemini(system, parsed.data, GROQ_API_KEY.value());
       console.log("financeAi gemini done");
   return { content: json.choices?.[0]?.message?.content ?? "" };
 });
@@ -84,14 +85,14 @@ const TOOLS = [
       title: { type: "string" }, reminder_date: { type: "string", description: "yyyy-MM-dd" }, category: { type: "string" } } } } },
 ];
 
-export const chat = onCall({ secrets: [GOOGLE_AI_API_KEY], region: "asia-south1" }, async (req) => {
+export const chat = onCall({ secrets: [GROQ_API_KEY], region: "asia-south1" }, async (req) => {
   const uid = requireUser(req);
   const parsed = Msgs.safeParse(req.data?.messages);
   if (!parsed.success) throw new HttpsError("invalid-argument", "Invalid messages");
   if (!(await consumeQuota(uid, "chat", 30))) throw new HttpsError("resource-exhausted", "AI usage limit reached");
 
   const json = await gemini("You are Driver Saathi, a Hinglish assistant for Indian drivers. Use tools to save data the user mentions.",
-    parsed.data, GOOGLE_AI_API_KEY.value(), TOOLS);
+    parsed.data, GROQ_API_KEY.value(), TOOLS);
   const msg = json.choices?.[0]?.message ?? {};
   const base = db.collection("users").doc(uid);
   const now = new Date().toISOString();
