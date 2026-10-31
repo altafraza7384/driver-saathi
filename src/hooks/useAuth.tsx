@@ -48,6 +48,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Same-user token refreshes must NOT clear the cache.
       const nextUid = nextSession?.user?.id ?? null;
       if (prevUidRef.current !== undefined && prevUidRef.current !== nextUid) {
+        // Cancel FIRST: a fetch started under the old account must not
+        // resolve after the clear and write the old account's data back.
+        queryClient.cancelQueries();
         queryClient.clear();
       }
       prevUidRef.current = nextUid;
@@ -99,6 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error("Sign out failed, clearing local session", error);
       await db.auth.signOut({ scope: "local" });
     }
+    queryClient.cancelQueries();
     queryClient.clear();
   };
 
