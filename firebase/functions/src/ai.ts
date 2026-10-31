@@ -57,7 +57,7 @@ export const financeAi = onCall({ secrets: [GROQ_API_KEY], region: "asia-south1"
   const t = tx.docs.map((d) => d.data());
   const income = t.filter((x) => x.type === "income").reduce((s, x) => s + Number(x.amount), 0);
   const expense = t.filter((x) => x.type === "expense").reduce((s, x) => s + Number(x.amount), 0);
-  const system = `You are a Personal Finance AI for Indian gig drivers. Use ₹, give specific advice from this data.
+  const system = `You are Driver Saathi's own Personal Finance AI for Indian gig drivers. If asked who made you or who your owner is, say you are Driver Saathi's assistant — never say you are OpenAI, ChatGPT, or any other company's product. Use ₹, give specific advice from this data.
 Income this month: ₹${income.toFixed(0)}; Expenses: ₹${expense.toFixed(0)}; Net: ₹${(income - expense).toFixed(0)}
 Debts: ${debts.docs.map((d) => `${d.get("name")} ₹${Number(d.get("principal")) - Number(d.get("total_paid"))} @${d.get("interest_rate")}%`).join("; ") || "none"}
 Goals: ${goals.docs.map((g) => `${g.get("title")} ₹${g.get("saved_amount")}/${g.get("target_amount")}`).join("; ") || "none"}
@@ -72,15 +72,18 @@ Reply in plain text only: never use #, *, |, backticks, tables, or any markdown 
  * (debts, health, car docs, goals updates, etc.) must be ported before cutover.
  */
 const TOOLS = [
-  { type: "function", function: { name: "add_transaction", description: "Record income or expense. Only call after the user confirms the exact details.",
+  { type: "function", function: { name: "add_transaction", description: "Record income or expense. Only call after the user confirms the exact details. Set force only after the user confirms a flagged duplicate is a separate entry.",
     parameters: { type: "object", required: ["type", "amount", "category"], properties: {
       type: { type: "string", enum: ["income", "expense"] }, amount: { type: "number" },
-      category: { type: "string" }, description: { type: "string" } } } } },
-  { type: "function", function: { name: "add_note", description: "Save a note. Only call after the user confirms the exact details.",
-    parameters: { type: "object", required: ["title", "content"], properties: { title: { type: "string" }, content: { type: "string" } } } } },
-  { type: "function", function: { name: "add_reminder", description: "Create a reminder. Only call after the user confirms the exact details.",
+      category: { type: "string" }, description: { type: "string" },
+      force: { type: "boolean", description: "True only after the user confirms a flagged duplicate is a separate entry." } } } } },
+  { type: "function", function: { name: "add_note", description: "Save a note. Only call after the user confirms the exact details. Set force only after the user confirms a flagged duplicate is a separate entry.",
+    parameters: { type: "object", required: ["title", "content"], properties: { title: { type: "string" }, content: { type: "string" },
+      force: { type: "boolean", description: "True only after the user confirms a flagged duplicate is a separate entry." } } } } },
+  { type: "function", function: { name: "add_reminder", description: "Create a reminder. Only call after the user confirms the exact details. Set force only after the user confirms a flagged duplicate is a separate entry.",
     parameters: { type: "object", required: ["title", "reminder_date"], properties: {
-      title: { type: "string" }, reminder_date: { type: "string", description: "yyyy-MM-dd" }, category: { type: "string" } } } } },
+      title: { type: "string" }, reminder_date: { type: "string", description: "yyyy-MM-dd" }, category: { type: "string" },
+      force: { type: "boolean", description: "True only after the user confirms a flagged duplicate is a separate entry." } } } } },
 ];
 
 export const chat = onCall({ secrets: [GROQ_API_KEY], region: "asia-south1" }, async (req) => {
@@ -89,32 +92,74 @@ export const chat = onCall({ secrets: [GROQ_API_KEY], region: "asia-south1" }, a
   if (!parsed.success) throw new HttpsError("invalid-argument", "Invalid messages");
   if (!(await consumeQuota(uid, "chat", (await getAiLimits(uid)).chat))) throw new HttpsError("resource-exhausted", "AI usage limit reached");
 
-  const json = await gemini("You are Driver Saathi, a Hinglish assistant for Indian drivers. You are Driver Saathi's own assistant: if asked who made you or who your owner is, say you are Driver Saathi's assistant — never say you are OpenAI, ChatGPT, or any other company's product. Use tools to save data the user mentions, but NEVER save on the first mention: before calling any save tool, first reply with exactly what you understood — amount, income or expense, category, and date — and ask the user to confirm it. If the user did not name a category, propose the most sensible one yourself in that reply (for driving income, 'Ride Earnings') so that a plain confirmation covers every field — never present a confirmation with the category missing. Call a save tool ONLY in a later message after the user confirms (for example 'haan' or 'save karo'). If the user's message is garbled, repetitive, or unclear, do NOT guess what they meant — ask them instead of saving. Never save a transaction, note, or reminder from a message the user has not confirmed. Reply in plain text only: never use #, *, |, backticks, tables, or any markdown formatting. Reply in the same language and script as the user's message: Marathi in Marathi, Hindi in Hindi, English in English, Bengali in Bengali, Kannada in Kannada. Never answer a Marathi user in Hindi or English.",
+  const json = await gemini("You are Driver Saathi, a Hinglish assistant for Indian drivers. You are Driver Saathi's own assistant: if asked who made you or who your owner is, say you are Driver Saathi's assistant — never say you are OpenAI, ChatGPT, or any other company's product. Use tools to save data the user mentions, but NEVER save on the first mention: before calling any save tool, first reply with exactly what you understood — amount, income or expense, category, and date — and ask the user to confirm it. If the user did not name a category, propose the most sensible one yourself in that reply (for driving income, 'Ride Earnings') so that a plain confirmation covers every field — never present a confirmation with the category missing. Call a save tool ONLY in a later message after the user confirms (for example 'haan' or 'save karo'). A plain 'yes', 'haan', or 'save karo' confirms ONLY the proposal in your immediately preceding message: if that message was not asking for confirmation (for example it already said an entry was saved), there is nothing to confirm — do NOT call any save tool, ask the user what they want to record instead. If you flagged an entry as already saved and the user confirms it is a separate entry, call the save tool again with force set to true. If the user's message is garbled, repetitive, or unclear, do NOT guess what they meant — ask them instead of saving. Never save a transaction, note, or reminder from a message the user has not confirmed. Reply in plain text only: never use #, *, |, backticks, tables, or any markdown formatting. Reply in the same language and script as the user's message: Marathi in Marathi, Hindi in Hindi, English in English, Bengali in Bengali, Kannada in Kannada. Never answer a Marathi user in Hindi or English.",
     parsed.data, GROQ_API_KEY.value(), TOOLS);
   const msg = json.choices?.[0]?.message ?? {};
   const base = db.collection("users").doc(uid);
   const now = new Date().toISOString();
+  const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
   const actions: string[] = [];
+  let duplicateNote: string | null = null;
+  // Duplicate guard (2026-11-01): a bare "Yes" after a completed save used to
+  // re-save an old proposal from history. An identical entry saved within the
+  // last 10 minutes is therefore NOT written again — the user is asked first,
+  // and only an explicit "separate entry" confirmation (force=true) saves it.
+  // The query uses a single created_at range only, so no composite index is
+  // needed; the exact-match filtering happens in code below.
+  const recentCache = new Map<string, any[]>();
+  async function recent(coll: string) {
+    if (!recentCache.has(coll)) {
+      const snap = await base.collection(coll).where("created_at", ">=", tenMinAgo).get();
+      recentCache.set(coll, snap.docs.map((d) => d.data()));
+    }
+    return recentCache.get(coll)!;
+  }
   for (const call of msg.tool_calls ?? []) {
     let a: any; try { a = JSON.parse(call.function.arguments); } catch { continue; }
     const today = now.slice(0, 10);
     if (call.function.name === "add_transaction" && Number(a.amount) > 0 && ["income", "expense"].includes(a.type)) {
-      await base.collection("transactions").add({ user_id: uid, type: a.type, amount: Number(a.amount),
-        category: String(a.category).slice(0, 100), description: a.description ?? null, transaction_date: today, created_at: now, updated_at: now });
+      const amt = Number(a.amount);
+      const cat = String(a.category).slice(0, 100);
+      if (!a.force) {
+        const dup = (await recent("transactions")).some((x) => x.type === a.type && Number(x.amount) === amt && x.category === cat && x.transaction_date === today);
+        if (dup) { duplicateNote = `₹${amt} ${a.type} (${cat}) on ${today}`; continue; }
+      }
+      await base.collection("transactions").add({ user_id: uid, type: a.type, amount: amt,
+        category: cat, description: a.description ?? null, transaction_date: today, created_at: now, updated_at: now });
       actions.push(`₹${a.amount} ${a.type} saved`);
     } else if (call.function.name === "add_note") {
-      await base.collection("notes").add({ user_id: uid, title: String(a.title).slice(0, 200), content: String(a.content).slice(0, 5000),
+      const title = String(a.title).slice(0, 200);
+      const content = String(a.content).slice(0, 5000);
+      if (!a.force) {
+        const dup = (await recent("notes")).some((x) => x.title === title && x.content === content);
+        if (dup) { duplicateNote = `note "${title}"`; continue; }
+      }
+      await base.collection("notes").add({ user_id: uid, title, content,
         tags: [], is_voice_note: false, created_at: now, updated_at: now });
       actions.push("Note saved");
     } else if (call.function.name === "add_reminder" && /^\d{4}-\d{2}-\d{2}$/.test(a.reminder_date)) {
       // Default notify time 09:00 IST (03:30Z) on the reminder date, so the
       // scheduler (which matches on notify_at) can actually deliver it.
       // Chat reminders previously wrote no notify_at and never notified.
-      await base.collection("reminders").add({ user_id: uid, title: String(a.title).slice(0, 200), reminder_date: a.reminder_date,
+      const title = String(a.title).slice(0, 200);
+      if (!a.force) {
+        const dup = (await recent("reminders")).some((x) => x.title === title && x.reminder_date === a.reminder_date);
+        if (dup) { duplicateNote = `reminder "${title}" on ${a.reminder_date}`; continue; }
+      }
+      await base.collection("reminders").add({ user_id: uid, title, reminder_date: a.reminder_date,
         notify_at: `${a.reminder_date}T03:30:00.000Z`,
         category: a.category ?? "general", is_completed: false, created_at: now, updated_at: now });
       actions.push("Reminder saved");
     }
+  }
+  if (duplicateNote) {
+    // The single-turn tool flow never shows the model a tool result, so ask
+    // again through a second model call — it phrases the question in the
+    // user's own language instead of leaking a hardcoded message.
+    const follow = await gemini("You are Driver Saathi's own assistant. Reply in plain text only: never use #, *, |, backticks, tables, or any markdown formatting. Reply in the same language and script as the user's messages.",
+      [...parsed.data, { role: "user" as const, content: `System note: the user just confirmed, but this was already saved a few minutes ago: ${duplicateNote}. Ask the user whether this is a separate new entry or the same one. Do not save anything yet.` }],
+      GROQ_API_KEY.value());
+    return { content: follow.choices?.[0]?.message?.content || actions.join("\n") || "Done!", actions };
   }
   return { content: msg.content || actions.join("\n") || "Done!", actions };
 });
