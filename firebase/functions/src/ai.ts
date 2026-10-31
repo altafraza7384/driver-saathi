@@ -54,7 +54,6 @@ export const financeAi = onCall({ secrets: [GROQ_API_KEY], region: "asia-south1"
     base.collection("debts").where("is_active", "==", true).get(),
     base.collection("goals").get(),
   ]);
-      console.log("financeAi data loaded", tx.size, debts.size, goals.size);
   const t = tx.docs.map((d) => d.data());
   const income = t.filter((x) => x.type === "income").reduce((s, x) => s + Number(x.amount), 0);
   const expense = t.filter((x) => x.type === "expense").reduce((s, x) => s + Number(x.amount), 0);
@@ -64,9 +63,7 @@ Debts: ${debts.docs.map((d) => `${d.get("name")} ₹${Number(d.get("principal"))
 Goals: ${goals.docs.map((g) => `${g.get("title")} ₹${g.get("saved_amount")}/${g.get("target_amount")}`).join("; ") || "none"}
 Recommend an emergency fund first; flag EMI > 40% of income.
 Reply in plain text only: never use #, *, |, backticks, tables, or any markdown formatting, because the app shows your reply as plain text. Use ONLY the figures given above: never invent a monthly income, expense, or savings figure, and show every calculation from those figures. Reply in the same language and script as the user's message: Marathi in Marathi, Hindi in Hindi, English in English, Bengali in Bengali, Kannada in Kannada. Never answer a Marathi user in Hindi or English.`;
-      console.log("financeAi calling gemini");
   const json = await gemini(system, parsed.data, GROQ_API_KEY.value());
-      console.log("financeAi gemini done");
   return { content: json.choices?.[0]?.message?.content ?? "" };
 });
 
@@ -92,7 +89,7 @@ export const chat = onCall({ secrets: [GROQ_API_KEY], region: "asia-south1" }, a
   if (!parsed.success) throw new HttpsError("invalid-argument", "Invalid messages");
   if (!(await consumeQuota(uid, "chat", (await getAiLimits(uid)).chat))) throw new HttpsError("resource-exhausted", "AI usage limit reached");
 
-  const json = await gemini("You are Driver Saathi, a Hinglish assistant for Indian drivers. You are Driver Saathi's own assistant: if asked who made you or who your owner is, say you are Driver Saathi's assistant — never say you are OpenAI, ChatGPT, or any other company's product. Use tools to save data the user mentions, but NEVER save on the first mention: before calling any save tool, first reply with exactly what you understood — amount, income or expense, category, and date — and ask the user to confirm it. If the user did not name a category, propose the most sensible one yourself in that reply (for driving income, 'Earning') so that a plain confirmation covers every field — never present a confirmation with the category missing. Call a save tool ONLY in a later message after the user confirms (for example 'haan' or 'save karo'). If the user's message is garbled, repetitive, or unclear, do NOT guess what they meant — ask them instead of saving. Never save a transaction, note, or reminder from a message the user has not confirmed. Reply in plain text only: never use #, *, |, backticks, tables, or any markdown formatting. Reply in the same language and script as the user's message: Marathi in Marathi, Hindi in Hindi, English in English, Bengali in Bengali, Kannada in Kannada. Never answer a Marathi user in Hindi or English.",
+  const json = await gemini("You are Driver Saathi, a Hinglish assistant for Indian drivers. You are Driver Saathi's own assistant: if asked who made you or who your owner is, say you are Driver Saathi's assistant — never say you are OpenAI, ChatGPT, or any other company's product. Use tools to save data the user mentions, but NEVER save on the first mention: before calling any save tool, first reply with exactly what you understood — amount, income or expense, category, and date — and ask the user to confirm it. If the user did not name a category, propose the most sensible one yourself in that reply (for driving income, 'Ride Earnings') so that a plain confirmation covers every field — never present a confirmation with the category missing. Call a save tool ONLY in a later message after the user confirms (for example 'haan' or 'save karo'). If the user's message is garbled, repetitive, or unclear, do NOT guess what they meant — ask them instead of saving. Never save a transaction, note, or reminder from a message the user has not confirmed. Reply in plain text only: never use #, *, |, backticks, tables, or any markdown formatting. Reply in the same language and script as the user's message: Marathi in Marathi, Hindi in Hindi, English in English, Bengali in Bengali, Kannada in Kannada. Never answer a Marathi user in Hindi or English.",
     parsed.data, GROQ_API_KEY.value(), TOOLS);
   const msg = json.choices?.[0]?.message ?? {};
   const base = db.collection("users").doc(uid);
