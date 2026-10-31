@@ -9,7 +9,8 @@
     { "collectionGroup": "car_checks", "queryScope": "COLLECTION_GROUP", "fields": [{ "fieldPath": "is_completed", "order": "ASCENDING" }, { "fieldPath": "notify_at", "order": "ASCENDING" }] },
     { "collectionGroup": "car_documents", "queryScope": "COLLECTION_GROUP", "fields": [{ "fieldPath": "notify_at", "order": "ASCENDING" }] },
     { "collectionGroup": "recurring_expenses", "queryScope": "COLLECTION_GROUP", "fields": [{ "fieldPath": "is_active", "order": "ASCENDING" }, { "fieldPath": "notify_at", "order": "ASCENDING" }] },
-    { "collectionGroup": "chat_messages", "queryScope": "COLLECTION_GROUP", "fields": [{ "fieldPath": "created_at", "order": "ASCENDING" }] }
+    { "collectionGroup": "chat_messages", "queryScope": "COLLECTION_GROUP", "fields": [{ "fieldPath": "created_at", "order": "ASCENDING" }] },
+    { "collectionGroup": "announcements", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "is_active", "order": "ASCENDING" }, { "fieldPath": "created_at", "order": "DESCENDING" }] }
   ],
   "fieldOverrides": []
 }
