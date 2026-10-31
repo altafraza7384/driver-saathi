@@ -62,7 +62,8 @@ export const financeAi = onCall({ secrets: [GROQ_API_KEY], region: "asia-south1"
 Income this month: ₹${income.toFixed(0)}; Expenses: ₹${expense.toFixed(0)}; Net: ₹${(income - expense).toFixed(0)}
 Debts: ${debts.docs.map((d) => `${d.get("name")} ₹${Number(d.get("principal")) - Number(d.get("total_paid"))} @${d.get("interest_rate")}%`).join("; ") || "none"}
 Goals: ${goals.docs.map((g) => `${g.get("title")} ₹${g.get("saved_amount")}/${g.get("target_amount")}`).join("; ") || "none"}
-Recommend an emergency fund first; flag EMI > 40% of income.`;
+Recommend an emergency fund first; flag EMI > 40% of income.
+Reply in plain text only: never use #, *, |, backticks, tables, or any markdown formatting, because the app shows your reply as plain text. Use ONLY the figures given above: never invent a monthly income, expense, or savings figure, and show every calculation from those figures.`;
       console.log("financeAi calling gemini");
   const json = await gemini(system, parsed.data, GROQ_API_KEY.value());
       console.log("financeAi gemini done");
