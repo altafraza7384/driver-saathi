@@ -1169,6 +1169,21 @@ export type Database = {
         }
         Relationships: []
       }
+      roles: {
+        Row: {
+          id: string
+          roles: string[]
+        }
+        Insert: {
+          id: string
+          roles: string[]
+        }
+        Update: {
+          id?: string
+          roles?: string[]
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
