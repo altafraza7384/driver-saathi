@@ -10,48 +10,51 @@ export default function AdminDashboard() {
   const navigate = useNavigate();
   const { signOut } = useAuth();
 
+  // Counters use list length, not count-exact queries: the count path
+  // returned 0 for leads/users while the detail pages showed real
+  // numbers, so this matches the detail pages (incl. held count below).
   const { data: postCount = 0 } = useQuery({
     queryKey: ["admin_post_count"],
     queryFn: async () => {
-      const { count, error } = await db.from("marketplace_posts").select("*", { count: "exact", head: true });
+      const { data, error } = await db.from("marketplace_posts").select("*");
       if (error) throw error;
-      return count || 0;
+      return (data ?? []).length;
     },
   });
 
   const { data: categoryCount = 0 } = useQuery({
     queryKey: ["admin_category_count"],
     queryFn: async () => {
-      const { count, error } = await db.from("marketplace_categories").select("*", { count: "exact", head: true });
+      const { data, error } = await db.from("marketplace_categories").select("*");
       if (error) throw error;
-      return count || 0;
+      return (data ?? []).length;
     },
   });
 
   const { data: userCount = 0 } = useQuery({
     queryKey: ["admin_user_count"],
     queryFn: async () => {
-      const { count, error } = await db.from("users").select("*", { count: "exact", head: true });
+      const { data, error } = await db.from("users").select("*");
       if (error) throw error;
-      return count || 0;
+      return (data ?? []).length;
     },
   });
 
   const { data: mechanicCount = 0 } = useQuery({
     queryKey: ["admin_mechanic_count"],
     queryFn: async () => {
-      const { count, error } = await db.from("mechanics").select("*", { count: "exact", head: true });
+      const { data, error } = await db.from("mechanics").select("*");
       if (error) throw error;
-      return count || 0;
+      return (data ?? []).length;
     },
   });
 
   const { data: pendingSosCount = 0 } = useQuery({
     queryKey: ["admin_pending_sos_count"],
     queryFn: async () => {
-      const { count, error } = await db.from("sos_requests").select("*", { count: "exact", head: true }).eq("status", "pending");
+      const { data, error } = await db.from("sos_requests").select("status");
       if (error) throw error;
-      return count || 0;
+      return (data as { status?: string }[]).filter((s) => s.status === "pending").length;
     },
   });
 
@@ -67,9 +70,9 @@ export default function AdminDashboard() {
   const { data: insuranceLeadCount = 0 } = useQuery({
     queryKey: ["admin_insurance_lead_count"],
     queryFn: async () => {
-      const { count, error } = await db.from("insurance_leads").select("*", { count: "exact", head: true });
+      const { data, error } = await db.from("insurance_leads").select("*");
       if (error) throw error;
-      return count || 0;
+      return (data ?? []).length;
     },
   });
 
