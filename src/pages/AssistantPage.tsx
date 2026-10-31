@@ -28,7 +28,7 @@ function stripMarkdown(text: string): string {
     .replace(/\*([^*]+)\*/g, "$1")
     .replace(/`([^`]+)`/g, "$1")
     .replace(/\|/g, " ")
-    .replace(/^[ :\-]+$/gm, "")
+    .replace(/^[ :-]+$/gm, "")
     .replace(/[ \t]{2,}/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();

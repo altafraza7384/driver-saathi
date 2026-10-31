@@ -49,7 +49,7 @@ function createFirestore(app: FirebaseApp): Firestore {
       return initializeFirestore(app, {
         localCache: persistentLocalCache({
           tabManager: Capacitor.isNativePlatform()
-            ? persistentSingleTabManager()
+            ? persistentSingleTabManager(undefined)
             : persistentMultipleTabManager(),
         }),
       });

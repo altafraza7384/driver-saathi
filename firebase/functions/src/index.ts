@@ -94,7 +94,7 @@ export const sendNotifications = onSchedule(
       n.body = who ? `${who}, ${detail}` : detail;
     }
     for (const n of due) {
-      const key = `${n.source}_${n.id}_${n.notifyAt}`.replace(/[\/:.]/g, "-");
+      const key = `${n.source}_${n.id}_${n.notifyAt}`.replace(/[/:.]/g, "-");
       const sentRef = db.doc(`users/${n.uid}/sentNotifications/${key}`);
       // Idempotent: create() fails if already claimed, so retries never double-send.
       try { await sentRef.create({ source_table: n.source, source_id: n.id, notify_at: n.notifyAt, sent_at: null }); }
