@@ -26,7 +26,16 @@ const SUGGESTED_PROMPTS = [
 export default function FinanceAIPage() {
   const { session } = useAuth();
   const { t } = useI18n();
-  const [messages, setMessages] = useState<Msg[]>([]);
+  const [messages, setMessages] = useState<Msg[]>(() => {
+    try {
+      const raw = localStorage.getItem("ds-finance-chat");
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter((m: any) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string");
+    } catch {
+      return [];
+    }
+  });
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -35,6 +44,17 @@ export default function FinanceAIPage() {
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages]);
+
+  // Same persistence as the Assistant tab: history survives tab switches and
+  // app restarts. Trash clears it via the empty-state branch below.
+  useEffect(() => {
+    try {
+      if (messages.length === 0) localStorage.removeItem("ds-finance-chat");
+      else localStorage.setItem("ds-finance-chat", JSON.stringify(messages.slice(-50)));
+    } catch {
+      // Private mode / full storage: chat just stays in-memory this session.
+    }
   }, [messages]);
 
   const send = useCallback(async (text?: string) => {
