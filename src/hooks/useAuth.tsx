@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { db } from "@/lib/backend";
 import type { User, Session } from "@supabase/supabase-js";
 
@@ -32,12 +33,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const queryClient = useQueryClient();
+  const prevUidRef = useRef<string | null | undefined>(undefined);
+  
   useEffect(() => {
     let isMounted = true;
     let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
 
     const applySession = (nextSession: Session | null) => {
       if (!isMounted) return;
+      // Account changed (login as another user, or logout): drop every
+      // cached query, otherwise the previous account's profile, budgets
+      // and transactions keep showing (query keys carry no user id).
+      // Same-user token refreshes must NOT clear the cache.
+      const nextUid = nextSession?.user?.id ?? null;
+      if (prevUidRef.current !== undefined && prevUidRef.current !== nextUid) {
+        queryClient.clear();
+      }
+      prevUidRef.current = nextUid;
       setSession(nextSession);
       setUser(nextSession?.user ?? null);
       setLoading(false);
@@ -86,6 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error("Sign out failed, clearing local session", error);
       await db.auth.signOut({ scope: "local" });
     }
+    queryClient.clear();
   };
 
   return <AuthContext.Provider value={{ user, session, loading, signOut }}>{children}</AuthContext.Provider>;
