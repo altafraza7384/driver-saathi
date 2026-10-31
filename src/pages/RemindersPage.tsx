@@ -53,7 +53,10 @@ export default function RemindersPage() {
       // 2026-10-24); require it when the custom option is chosen.
       if (!form.category.trim()) throw new Error("Please enter a category.");
       const notifyAt = form.notify_date && form.notify_time ? `${form.notify_date}T${form.notify_time}:00` : form.notify_date ? `${form.notify_date}T09:00:00` : null;
-      const { error } = await db.from("reminders").insert({ user_id: user.id, title: form.title, description: form.description || null, reminder_date: form.reminder_date, category: form.category, notify_at: notifyAt } as any);
+      // is_completed must be written explicitly: the bell + scheduler filter
+      // is_completed == false, and Firestore equality does not match docs
+      // where the field is missing (page reminders used to vanish).
+      const { error } = await db.from("reminders").insert({ user_id: user.id, title: form.title, description: form.description || null, reminder_date: form.reminder_date, category: form.category, is_completed: false, notify_at: notifyAt } as any);
       if (error) throw error;
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["reminders"] }); queryClient.invalidateQueries({ queryKey: ["notifications_reminders"] }); setOpen(false); setForm({ title: "", description: "", reminder_date: "", category: "general", notify_date: "", notify_time: "" }); setCustomCategory(""); setShowCustomCategory(false); toast.success("✅"); },
