@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, lazy, Suspense } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
@@ -52,7 +53,17 @@ export default function AssistantPage() {
   const { t } = useI18n();
   const { session } = useAuth();
   const [activeTab, setActiveTab] = useState<"assistant" | "finance">("assistant");
-  const [messages, setMessages] = useState<Msg[]>([]);
+  const queryClient = useQueryClient();
+  const [messages, setMessages] = useState<Msg[]>(() => {
+    try {
+      const raw = localStorage.getItem("ds-assistant-chat");
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter((m: any) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string");
+    } catch {
+      return [];
+    }
+  });
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -65,6 +76,18 @@ export default function AssistantPage() {
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages]);
+
+  // Chat history lives in localStorage so it survives tab switches and app
+  // restarts (the server does not store chat messages). Trash clears it via
+  // the empty-state branch below.
+  useEffect(() => {
+    try {
+      if (messages.length === 0) localStorage.removeItem("ds-assistant-chat");
+      else localStorage.setItem("ds-assistant-chat", JSON.stringify(messages.slice(-50)));
+    } catch {
+      // Private mode / full storage: chat just stays in-memory this session.
+    }
   }, [messages]);
 
   const speakEnabledRef = useRef(speakEnabled);
@@ -106,6 +129,27 @@ export default function AssistantPage() {
     t = t.replace(/\bpaani\s*piya\b|\bpani\s*pi\s*liya\b|\bpani\s*piya\b/gi, "drank water");
     t = t.replace(/\badd\s*karo\b|\bjodo\b|\bdaalo\b|\bdaal\s*do\b/gi, "add");
 
+    // Android's recognizer re-emits the same words as repeated final segments
+    // ("₹500 ₹500 ₹500", "isko isko isko"). Drop any phrase that repeats the
+    // phrase just emitted, so the model sees one clean instruction.
+    const tokens = t.split(/\s+/).filter(Boolean);
+    const deduped: string[] = [];
+    let i = 0;
+    while (i < tokens.length) {
+      let skipped = false;
+      for (let unit = 1; unit <= 4; unit++) {
+        if (i + unit > tokens.length || deduped.length < unit) continue;
+        const phrase = tokens.slice(i, i + unit).join(" ").toLowerCase();
+        if (deduped.slice(deduped.length - unit).join(" ").toLowerCase() === phrase) {
+          i += unit;
+          skipped = true;
+          break;
+        }
+      }
+      if (!skipped) { deduped.push(tokens[i]); i++; }
+    }
+    t = deduped.join(" ");
+
     return t;
   }, []);
 
@@ -127,6 +171,13 @@ export default function AssistantPage() {
         const content = result.content || result.actions.join("\n") || "Done!";
         assistantSoFar = content;
         setMessages((prev) => [...prev, { role: "assistant", content }]);
+        // Tool writes happen server-side, so no write-page invalidation runs
+        // for them: refresh Home, Transactions and Budgets explicitly, or the
+        // just-saved entry stays invisible until a manual refresh.
+        queryClient.invalidateQueries({ queryKey: ["transactions_today"] });
+        queryClient.invalidateQueries({ queryKey: ["transactions"] });
+        queryClient.invalidateQueries({ queryKey: ["budgets_month"] });
+        queryClient.invalidateQueries({ queryKey: ["budgets_month_tx"] });
         return;
       }
 
