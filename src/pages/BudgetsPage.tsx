@@ -229,10 +229,12 @@ export default function BudgetsPage() {
 
       <p className="text-xs text-muted-foreground">{t("budget.warningNote")}</p>
 
-      <div className="flex gap-2">
+      {/* Two equal columns that wrap their text: the old single nowrap row
+          made the page 445px wide on a 390px phone (QA 2026-11-01). */}
+      <div className="grid grid-cols-2 gap-2">
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
-            <Button onClick={openAdd} className="gap-1">
+            <Button onClick={openAdd} className="h-auto min-h-10 gap-1 whitespace-normal py-2">
               <Plus className="h-4 w-4" /> {t("budget.addBudget")}
             </Button>
           </DialogTrigger>
@@ -260,7 +262,7 @@ export default function BudgetsPage() {
             </form>
           </DialogContent>
         </Dialog>
-        <Button variant="outline" onClick={handleCopyLastMonth} disabled={copying} className="gap-1">
+        <Button variant="outline" onClick={handleCopyLastMonth} disabled={copying} className="h-auto min-h-10 gap-1 whitespace-normal py-2 text-center leading-tight">
           <Copy className="h-4 w-4" /> {t("budget.copyLastMonth")}
         </Button>
       </div>
