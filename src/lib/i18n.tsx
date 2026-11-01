@@ -523,6 +523,7 @@ const translations: Record<Language, Record<string, string>> = {
     "health.breakAdded": "☕ Break added ({count}/4)",
     "health.stepsAdded": "🚶 Steps: {count}",
     "health.logSaved": "✅ Today's health log saved",
+    "backup.exportDone": "✅ PDF downloaded",
   },
   hi: {
     "nav.home": "होम",
@@ -1021,6 +1022,7 @@ const translations: Record<Language, Record<string, string>> = {
     "health.breakAdded": "☕ ब्रेक जोड़ा ({count}/4)",
     "health.stepsAdded": "🚶 कदम: {count}",
     "health.logSaved": "✅ आज का हेल्थ लॉग सेव हो गया",
+    "backup.exportDone": "✅ PDF डाउनलोड हो गई",
   },
   mr: {
     "nav.home": "होम",
@@ -1518,6 +1520,7 @@ const translations: Record<Language, Record<string, string>> = {
     "health.breakAdded": "☕ ब्रेक जोडला ({count}/4)",
     "health.stepsAdded": "🚶 पावले: {count}",
     "health.logSaved": "✅ आजचा आरोग्य लॉग जतन झाला",
+    "backup.exportDone": "✅ PDF डाउनलोड झाली",
   },
   bn: {
     // Nav
@@ -2031,6 +2034,7 @@ const translations: Record<Language, Record<string, string>> = {
     "health.breakAdded": "☕ বিরতি যোগ হয়েছে ({count}/4)",
     "health.stepsAdded": "🚶 পদক্ষেপ: {count}",
     "health.logSaved": "✅ আজকের স্বাস্থ্য লগ সেভ হয়েছে",
+    "backup.exportDone": "✅ PDF ডাউনলোড হয়েছে",
   },
   kn: {
     "nav.home": "ಮುಖಪುಟ",
@@ -2528,6 +2532,7 @@ const translations: Record<Language, Record<string, string>> = {
     "health.breakAdded": "☕ ವಿರಾಮ ಸೇರಿಸಲಾಗಿದೆ ({count}/4)",
     "health.stepsAdded": "🚶 ಹೆಜ್ಜೆಗಳು: {count}",
     "health.logSaved": "✅ ಇಂದಿನ ಆರೋಗ್ಯ ಲಾಗ್ ಉಳಿಸಲಾಗಿದೆ",
+    "backup.exportDone": "✅ PDF ಡೌನ್‌ಲೋಡ್ ಆಯಿತು",
   },
 };
 

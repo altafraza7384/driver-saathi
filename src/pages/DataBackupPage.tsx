@@ -6,15 +6,8 @@ import { db } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
-
-const BACKUP_TABLES = [
-  { key: "transactions", label: "Transactions" }, { key: "debts", label: "Debts" }, { key: "debt_payments", label: "Debt Payments" },
-  { key: "goals", label: "Goals" }, { key: "health_logs", label: "Health Logs" }, { key: "car_checks", label: "Car Checks" },
-  { key: "reminders", label: "Reminders" }, { key: "notes", label: "Notes" }, { key: "emergency_contacts", label: "Emergency Contacts" },
-  { key: "platform_affiliations", label: "Platform Affiliations" }, { key: "profiles", label: "Profile" },
-] as const;
+import { buildBackupPdf } from "@/lib/backupPdf";
+import { localToday } from "@/lib/budgets";
 
 export default function DataBackupPage() {
   const navigate = useNavigate();
@@ -27,24 +20,20 @@ export default function DataBackupPage() {
     if (!user) return;
     setExporting(true);
     try {
-      const doc = new jsPDF();
-      let currentY = 20;
-      doc.setFontSize(18); doc.text("Driver Saathi - Data Export", 14, currentY); currentY += 8;
-      doc.setFontSize(10); doc.text(`Exported on: ${new Date().toLocaleString()}`, 14, currentY); currentY += 12;
-      for (const table of BACKUP_TABLES) {
-        const { data, error } = await db.from(table.key).select("*");
-        if (error) throw error;
-        if (!data || data.length === 0) continue;
-        if (currentY > 250) { doc.addPage(); currentY = 20; }
-        doc.setFontSize(14); doc.text(table.label, 14, currentY); currentY += 4;
-        const columns = Object.keys(data[0]).filter((k) => k !== "user_id");
-        const rows = data.map((row: any) => columns.map((col) => { const val = row[col]; if (val === null || val === undefined) return ""; if (typeof val === "object") return JSON.stringify(val); return String(val); }));
-        autoTable(doc, { startY: currentY, head: [columns], body: rows, styles: { fontSize: 7, cellPadding: 1.5 }, headStyles: { fillColor: [59, 130, 246] }, margin: { left: 14, right: 14 }, tableWidth: "auto", didDrawPage: () => {} });
-        currentY = (doc as any).lastAutoTable.finalY + 12;
-      }
-      doc.save(`driver-saathi-export-${new Date().toISOString().slice(0, 10)}.pdf`);
-      toast({ title: "✅", description: t("backup.exportDesc") });
-    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+      const doc = await buildBackupPdf(
+        async (table) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { data, error } = await db.from(table as any).select("*");
+          if (error) throw error;
+          return (data ?? []) as unknown as Record<string, unknown>[];
+        },
+        { name: user.user_metadata?.full_name ?? null, email: user.email ?? null },
+      );
+      doc.save(`DriverSaathi-backup-${localToday()}.pdf`);
+      toast({ title: t("backup.exportDone") });
+    } catch (err: unknown) {
+      toast({ title: t("auth.error"), description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    }
     finally { setExporting(false); }
   };
 
