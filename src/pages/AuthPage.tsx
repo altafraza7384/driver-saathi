@@ -18,6 +18,7 @@ import { Lock, Mail, User, Wifi, WifiOff } from "lucide-react";
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
+  const [justSignedUp, setJustSignedUp] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -52,6 +53,7 @@ export default function AuthPage() {
       // that stranded new users (audit 2026-10-24). Switch the form to
       // Login so one tap signs them in with the same credentials.
       setIsLogin(true);
+      setJustSignedUp(true);
       toast({
         title: t("auth.accountCreated"),
         description: t("auth.loginNow"),
@@ -103,6 +105,13 @@ export default function AuthPage() {
           <h1 className="font-heading text-2xl font-bold text-foreground">{t("auth.appTitle")}</h1>
           <p className="text-sm text-muted-foreground">{t("auth.subtitle")}</p>
         </div>
+
+        {justSignedUp && isLogin && (
+          <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+            <p className="font-medium">{t("auth.accountCreated")}</p>
+            <p>{t("auth.loginNow")}</p>
+          </div>
+        )}
 
         <Card>
           <CardHeader className="pb-4">
@@ -238,7 +247,7 @@ export default function AuthPage() {
               </span>
               <button
                 type="button"
-                onClick={() => setIsLogin(!isLogin)}
+                onClick={() => { setIsLogin(!isLogin); setJustSignedUp(false); }}
                 className="font-medium text-primary hover:underline"
               >
                 {isLogin ? t("auth.signup") : t("auth.login")}
