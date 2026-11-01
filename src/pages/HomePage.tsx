@@ -1,3 +1,4 @@
+import { categoryLabel } from "@/lib/categories";
 import { Plus, Minus, Car, StickyNote, ChevronRight, Target, CreditCard, Heart, AlertTriangle, Wallet } from "lucide-react";
 import { AdBanner } from "@/components/AdBanner";
 import { useNavigate } from "react-router-dom";
@@ -345,7 +346,7 @@ export default function HomePage() {
                 <div className="space-y-1">
                   {budgetAtRisk.map((b) => (
                     <p key={b.id} className="text-xs text-red-600">
-                      {b.category}: {formatINR(b.spent)} / {formatINR(toAmount(b.monthly_limit))}
+                      {categoryLabel(t, b.category)}: {formatINR(b.spent)} / {formatINR(toAmount(b.monthly_limit))}
                     </p>
                   ))}
                 </div>
@@ -376,7 +377,7 @@ export default function HomePage() {
                       {tx.type === "income" ? <Plus className="h-4 w-4" /> : <Minus className="h-4 w-4" />}
                     </div>
                     <div>
-                      <p className="text-sm font-medium">{tx.category}{tx.platform ? ` - ${tx.platform}` : ""}</p>
+                      <p className="text-sm font-medium">{categoryLabel(t, tx.category)}{tx.platform ? ` - ${tx.platform}` : ""}</p>
                       <p className="text-xs text-muted-foreground">{formatTxDate(tx.transaction_date, t)}{tx.description ? ` • ${tx.description}` : ""}</p>
                     </div>
                   </div>

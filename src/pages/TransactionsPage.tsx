@@ -1,3 +1,4 @@
+import { categoryLabel } from "@/lib/categories";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { db } from "@/lib/backend";
@@ -232,14 +233,14 @@ export default function TransactionsPage() {
                       {tx.type === "income" ? <Plus className="h-4 w-4" /> : <Minus className="h-4 w-4" />}
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{tx.category}{tx.platform ? ` • ${tx.platform}` : ""}</p>
+                      <p className="text-sm font-medium truncate">{categoryLabel(t, tx.category)}{tx.platform ? ` • ${tx.platform}` : ""}</p>
                       <p className="text-xs text-muted-foreground truncate">{format(new Date(tx.transaction_date), "dd MMM yyyy")}{tx.description ? ` • ${tx.description}` : ""}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <span className={`mr-1 text-sm font-bold ${tx.type === "income" ? "text-success" : "text-destructive"}`}>{tx.type === "income" ? "+" : "-"}{formatINR(toAmount(tx.amount))}</span>
                     <Button variant="ghost" size="icon" className="h-9 w-9" aria-label={t("common.edit")} onClick={() => openEdit(tx)}><Pencil className="h-4 w-4 text-muted-foreground" /></Button>
-                    <ConfirmDelete onConfirm={() => handleDelete(tx.id)} itemName={`${tx.category} ${formatINR(toAmount(tx.amount))}`}>
+                    <ConfirmDelete onConfirm={() => handleDelete(tx.id)} itemName={`${categoryLabel(t, tx.category)} ${formatINR(toAmount(tx.amount))}`}>
                       <Button variant="ghost" size="icon" className="ml-2 h-9 w-9" aria-label={t("common.delete")}><Trash2 className="h-4 w-4 text-destructive/80" /></Button>
                     </ConfirmDelete>
                   </div>
@@ -261,7 +262,7 @@ export default function TransactionsPage() {
           <DialogHeader><DialogTitle>{t("tx.editTransaction")}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2"><Label>{t("common.amount")} (₹)</Label><Input type="number" value={editAmount} onChange={(e) => setEditAmount(e.target.value)} min="1" /></div>
-            <div className="space-y-2"><Label>{t("common.category")}</Label><Select value={editCategory} onValueChange={setEditCategory}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{categoryOptions.map((c) => (<SelectItem key={c} value={c}>{c}</SelectItem>))}</SelectContent></Select></div>
+            <div className="space-y-2"><Label>{t("common.category")}</Label><Select value={editCategory} onValueChange={setEditCategory}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{categoryOptions.map((c) => (<SelectItem key={c} value={c}>{categoryLabel(t, c)}</SelectItem>))}</SelectContent></Select></div>
             <div className="space-y-2"><Label>{t("common.description")}</Label><Input value={editDescription} onChange={(e) => setEditDescription(e.target.value)} placeholder={t("common.optional")} /></div>
             <div className="space-y-2"><Label htmlFor="tx-edit-date">{t("common.date")}</Label><DatePicker id="tx-edit-date" label={t("common.date")} value={editDate} onChange={setEditDate} /></div>
             <Button className="w-full" onClick={handleUpdate} disabled={saving}>{saving ? t("common.saving") : t("tx.updateTransaction")}</Button>

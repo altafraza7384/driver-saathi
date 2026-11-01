@@ -1,3 +1,4 @@
+import { categoryLabel } from "@/lib/categories";
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { db } from "@/lib/backend";
@@ -135,7 +136,7 @@ export default function AddTransactionPage() {
                 <SelectTrigger><SelectValue placeholder={t("form.selectCategory")} /></SelectTrigger>
                 <SelectContent>
                   {categories.map((c) => (
-                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                    <SelectItem key={c} value={c}>{categoryLabel(t, c)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -174,7 +175,7 @@ export default function AddTransactionPage() {
               className={`w-full ${type === "income" ? "bg-success hover:bg-success/90" : ""}`}
               disabled={loading}
             >
-              {loading ? "Saving..." : type === "income" ? "Add Income" : "Add Expense"}
+              {loading ? t("common.saving") : type === "income" ? t("home.addIncome") : t("home.addExpense")}
             </Button>
           </form>
         </CardContent>

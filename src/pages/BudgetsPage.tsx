@@ -1,3 +1,4 @@
+import { categoryLabel } from "@/lib/categories";
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
@@ -251,7 +252,7 @@ export default function BudgetsPage() {
                   <SelectTrigger><SelectValue placeholder={t("budget.category")} /></SelectTrigger>
                   <SelectContent>
                     {availableCategories.map((c) => (
-                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                      <SelectItem key={c} value={c}>{categoryLabel(t, c)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -289,7 +290,7 @@ export default function BudgetsPage() {
               <Card key={b.id} className="border-0 shadow-sm">
                 <CardContent className="p-3 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="font-bold">{b.category}</span>
+                    <span className="font-bold">{categoryLabel(t, b.category)}</span>
                     <div className="flex items-center gap-1">
                       <Button variant="ghost" size="icon" onClick={() => openEdit(b)}>
                         <Pencil className="h-4 w-4" />
