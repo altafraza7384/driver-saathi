@@ -109,7 +109,7 @@ export default function GoalsPage() {
     } as any);
 
     if (error) {
-      toast({ title: "Error", description: friendlyErrorMessage(error), variant: "destructive" });
+      toast({ title: t("auth.error"), description: friendlyErrorMessage(error), variant: "destructive" });
     } else {
       toast({ title: t("goal.created") });
       setShowAdd(false);
@@ -146,7 +146,7 @@ export default function GoalsPage() {
     }).eq("id", editGoal.id);
 
     if (error) {
-      toast({ title: "Error", description: friendlyErrorMessage(error), variant: "destructive" });
+      toast({ title: t("auth.error"), description: friendlyErrorMessage(error), variant: "destructive" });
     } else {
       toast({ title: t("goal.updated") });
       setEditGoal(null);
@@ -178,15 +178,15 @@ export default function GoalsPage() {
     }).eq("id", goalId);
 
     if (error) {
-      toast({ title: "Error", description: friendlyErrorMessage(error), variant: "destructive" });
+      toast({ title: t("auth.error"), description: friendlyErrorMessage(error), variant: "destructive" });
       setSavingGoalId(null);
       return;
     }
 
     if (isCompleted) {
-      toast({ title: "🎉 Goal Completed!", description: `You've reached your target for "${goal.title}"!` });
+      toast({ title: t("goal.completedTitle"), description: t("goal.completedDesc", { name: goal.title }) });
     } else {
-      toast({ title: `₹${addAmount} added to savings!` });
+      toast({ title: t("goal.savingsAdded", { amount: formatINR(parseFloat(addAmount) || 0) }) });
     }
 
     setSavingGoalId(null);
@@ -200,10 +200,10 @@ export default function GoalsPage() {
   const handleDelete = async (id: string) => {
     const { error } = await db.from("goals").delete().eq("id", id);
     if (error) {
-      toast({ title: "Error", description: friendlyErrorMessage(error), variant: "destructive" });
+      toast({ title: t("auth.error"), description: friendlyErrorMessage(error), variant: "destructive" });
       return;
     }
-    toast({ title: "Goal deleted" });
+    toast({ title: t("goal.deleted") });
     invalidateGoalReaders();
     fetchGoals();
   };

@@ -36,13 +36,13 @@ export default function NotesPage() {
       const { error } = await db.from("notes").insert({ user_id: user!.id, title: form.title, content: form.content, tags });
       if (error) throw error;
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); setOpen(false); setForm({ title: "", content: "", tags: "" }); toast.success("✅"); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); setOpen(false); setForm({ title: "", content: "", tags: "" }); toast.success(t("note.saved")); },
     onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => { const { error } = await db.from("notes").delete().eq("id", id); if (error) throw error; },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notes"] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); toast.success(t("confirm.deleted")); },
   });
 
   const filtered = notes.filter((n) => n.title.toLowerCase().includes(search.toLowerCase()) || n.content.toLowerCase().includes(search.toLowerCase()));

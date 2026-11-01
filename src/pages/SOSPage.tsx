@@ -45,7 +45,7 @@ export default function SOSPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => { const { error } = await db.from("emergency_contacts").delete().eq("id", id); if (error) throw error; },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["emergency_contacts"] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["emergency_contacts"] }); toast.success(t("confirm.deleted")); },
   });
 
   const shareWhatsApp = () => {
