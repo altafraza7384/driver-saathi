@@ -10,9 +10,11 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { BACKEND } from "@/lib/backend";
 import { callFinanceAiFunction } from "@/lib/ai";
+import { loadChatHistory, saveChatHistory, toApiMessages, type ChatMsg } from "@/lib/chatHistory";
+import { CHAT_SCREEN_CLASS, CHAT_SCREEN_STYLE } from "@/lib/chatScreen";
 import { startNativeListening, speechLangFor, type NativeListenSession } from "@/lib/nativeSpeech";
 
-type Msg = { role: "user" | "assistant"; content: string };
+type Msg = ChatMsg;
 
 // The model still emits markdown despite the plain-text prompt, and this
 // page renders plain text — so strip markdown at display time. Deterministic:
@@ -44,7 +46,10 @@ const SUGGESTED_PROMPTS = [
   "⚠️ What are my biggest expenses?",
 ];
 
-export default function FinanceAIPage() {
+// embedded = shown inside the Assistant page's Finance AI tab, which already
+// bounds the height; the standalone /finance-ai route bounds itself the same
+// way (input row pinned above the bottom nav, only the list scrolls).
+export default function FinanceAIPage({ embedded = false }: { embedded?: boolean }) {
   const { session } = useAuth();
   const { t, language } = useI18n();
   // Per-account chat key: history must never leak across accounts sharing
@@ -73,32 +78,22 @@ export default function FinanceAIPage() {
       // ignore
     }
     if (!chatKey) return;
-    try {
-      const raw = localStorage.getItem(chatKey);
-      const parsed = raw ? JSON.parse(raw) : [];
-      if (!Array.isArray(parsed)) return;
-      setMessages(parsed.filter((m: any) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string"));
-    } catch {
-      // Corrupt stored history: start fresh.
-    }
+    // Same 24-hour rule as the Assistant tab: older messages (and ones saved
+    // before timestamps existed) are pruned silently; 50-message cap stays.
+    setMessages(loadChatHistory(chatKey));
   }, [chatKey]);
 
   // Trash clears history via the empty-state branch below.
   useEffect(() => {
     if (!chatKey) return;
-    try {
-      if (messages.length === 0) localStorage.removeItem(chatKey);
-      else localStorage.setItem(chatKey, JSON.stringify(messages.slice(-50)));
-    } catch {
-      // Private mode / full storage: chat just stays in-memory this session.
-    }
+    saveChatHistory(chatKey, messages);
   }, [messages, chatKey]);
 
   const send = useCallback(async (text?: string) => {
     const msgText = text || input.trim();
     if (!msgText || isLoading) return;
     if (!session?.access_token) { toast.error(t("ai.signInFinance")); return; }
-    const userMsg: Msg = { role: "user", content: msgText };
+    const userMsg: Msg = { role: "user", content: msgText, ts: Date.now() };
     if (!text) setInput("");
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
@@ -108,10 +103,10 @@ export default function FinanceAIPage() {
 
     try {
       if (BACKEND === "firebase") {
-        const result = await callFinanceAiFunction(allMessages);
+        const result = await callFinanceAiFunction(toApiMessages(allMessages));
         const content = result.content || "Done!";
         assistantSoFar = content;
-        setMessages((prev) => [...prev, { role: "assistant", content }]);
+        setMessages((prev) => [...prev, { role: "assistant", content, ts: Date.now() }]);
         return;
       }
 
@@ -121,7 +116,7 @@ export default function FinanceAIPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session?.access_token}`,
         },
-        body: JSON.stringify({ messages: allMessages }),
+        body: JSON.stringify({ messages: toApiMessages(allMessages) }),
       });
 
       if (!resp.ok) {
@@ -135,7 +130,7 @@ export default function FinanceAIPage() {
         const json = await resp.json();
         const content = json.choices?.[0]?.message?.content || json.response || "Done!";
         assistantSoFar = content;
-        setMessages((prev) => [...prev, { role: "assistant", content }]);
+        setMessages((prev) => [...prev, { role: "assistant", content, ts: Date.now() }]);
         return;
       }
 
@@ -168,7 +163,7 @@ export default function FinanceAIPage() {
                 if (last?.role === "assistant") {
                   return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: assistantSoFar } : m));
                 }
-                return [...prev, { role: "assistant", content: assistantSoFar }];
+                return [...prev, { role: "assistant", content: assistantSoFar, ts: Date.now() }];
               });
             }
           } catch {
@@ -252,8 +247,11 @@ export default function FinanceAIPage() {
   useEffect(() => () => { recognitionRef.current?.stop(); }, []);
 
   return (
-    <div className="flex h-full flex-col p-4 pt-2">
-      <div className="flex items-center gap-3 mb-3">
+    <div
+      className={embedded ? "flex h-full min-h-0 flex-col p-4 pt-2" : CHAT_SCREEN_CLASS}
+      style={embedded ? undefined : CHAT_SCREEN_STYLE}
+    >
+      <div className="flex shrink-0 items-center gap-3 mb-3">
         <div className="flex items-center gap-2 flex-1">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
             <TrendingUp className="h-5 w-5 text-primary" />
@@ -271,7 +269,7 @@ export default function FinanceAIPage() {
       </div>
 
       {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-3 pb-4">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-3 pb-4">
         {messages.length === 0 && (
           <div className="flex flex-col gap-4">
             <div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground">
@@ -321,7 +319,7 @@ export default function FinanceAIPage() {
       
 
       {/* Input */}
-      <div className="flex gap-2 pt-2 border-t">
+      <div className="flex shrink-0 gap-2 pt-2 border-t">
         <button
           onClick={toggleVoice}
                     className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-colors ${isListening ? "bg-destructive text-destructive-foreground" : "bg-muted text-muted-foreground"}`}

@@ -31,7 +31,24 @@ export type NativeListenOptions = {
   onError: (error: NativeSpeechError) => void;
 };
 
-export type NativeListenSession = { stop: () => void };
+export type NativeListenSession = {
+  /** Stop listening and deliver what was heard through onEnd. */
+  stop: () => void;
+  /** Abandon this listen: no onEnd/onError, nothing is delivered. */
+  cancel: () => void;
+};
+
+// The plugin has ONE recognizer, so only one listen can be live. Starting a
+// new one silently abandons the previous (Driving Mode hands over from the
+// barge-in listener to a normal listen this way), so a stale session's timers
+// can never stop or remove the listeners of the new one.
+let current: { cancel: () => void } | null = null;
+
+/** Abandon whatever native listen is running (nothing is delivered). */
+export function cancelNativeListening(): void {
+  current?.cancel();
+  current = null;
+}
 
 const SILENCE_STOP_MS = 2000; // stop this long after the last words heard
 const NO_SPEECH_MS = 8000; // give up if nothing is heard at all
@@ -54,6 +71,10 @@ export async function ensureMicPermission(): Promise<boolean> {
  * or null when listening could not start (onError has been called).
  */
 export async function startNativeListening(opts: NativeListenOptions): Promise<NativeListenSession | null> {
+  cancelNativeListening();
+  let abandoned = false;
+  const claim = { cancel: () => { abandoned = true; } };
+  current = claim;
   let SpeechRecognition: typeof import("@capacitor-community/speech-recognition").SpeechRecognition;
   try {
     ({ SpeechRecognition } = await import("@capacitor-community/speech-recognition"));
@@ -79,6 +100,8 @@ export async function startNativeListening(opts: NativeListenOptions): Promise<N
     console.warn("Speech recognition availability check failed:", e);
   }
 
+  if (abandoned) return null;
+
   let text = "";
   let heard = false;
   let finished = false;
@@ -102,9 +125,24 @@ export async function startNativeListening(opts: NativeListenOptions): Promise<N
     if (finished) return;
     finished = true;
     clearTimers();
+    if (current === claim) current = null;
     SpeechRecognition.removeAllListeners().catch(() => undefined);
     SpeechRecognition.stop().catch(() => undefined);
     opts.onEnd(text.trim());
+  };
+
+  // Abandon: stop timers and callbacks. The recognizer itself is left to the
+  // next start() (which cancels it) or stopped here when nothing replaced us.
+  claim.cancel = () => {
+    abandoned = true;
+    if (finished) return;
+    finished = true;
+    clearTimers();
+    if (current === claim) {
+      current = null;
+      SpeechRecognition.removeAllListeners().catch(() => undefined);
+      SpeechRecognition.stop().catch(() => undefined);
+    }
   };
 
   // The recognizer stopped (or was told to): give its final result a moment.
@@ -137,6 +175,7 @@ export async function startNativeListening(opts: NativeListenOptions): Promise<N
       if (data?.status === "stopped") finishSoon();
     });
 
+    if (finished) return null; // abandoned while starting
     await SpeechRecognition.start({
       language: opts.lang,
       maxResults: 5,
@@ -145,7 +184,9 @@ export async function startNativeListening(opts: NativeListenOptions): Promise<N
     });
   } catch (e) {
     clearTimers();
+    if (finished) return null; // abandoned while starting
     finished = true;
+    if (current === claim) current = null;
     SpeechRecognition.removeAllListeners().catch(() => undefined);
     const msg = e instanceof Error ? e.message : String(e);
     console.error("Native speech start failed:", msg);
@@ -163,5 +204,6 @@ export async function startNativeListening(opts: NativeListenOptions): Promise<N
   noSpeechTimer = setTimeout(() => { if (!heard) requestStop(); }, NO_SPEECH_MS);
   maxTimer = setTimeout(requestStop, MAX_LISTEN_MS);
 
-  return { stop: requestStop };
+  if (finished) return null; // abandoned while starting
+  return { stop: requestStop, cancel: () => claim.cancel() };
 }
