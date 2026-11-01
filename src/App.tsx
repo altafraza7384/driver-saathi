@@ -11,6 +11,7 @@ import { ThemeProvider } from "next-themes";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { lazyWithRetry } from "@/lib/lazyWithRetry";
+import { AndroidBackButton } from "@/components/AndroidBackButton";
 
 const HomePage = lazyWithRetry(() => import("./pages/HomePage"));
 const TransactionsPage = lazyWithRetry(() => import("./pages/TransactionsPage"));
@@ -151,6 +152,7 @@ const App = () => (
             <Toaster />
             <Sonner />
             <BrowserRouter>
+              <AndroidBackButton />
               <ErrorBoundary>
               <Suspense fallback={<BootScreen />}>
                 <Routes>
