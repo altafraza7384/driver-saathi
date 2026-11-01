@@ -4,7 +4,7 @@ import { BottomNav } from "./BottomNav";
 import { UpdatePrompt } from "@/components/UpdatePrompt";
 import { TrialPopup } from "@/components/TrialPopup";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
-import { adDebug, showBannerAd } from "@/lib/admob";
+import { showBannerAd } from "@/lib/admob";
 import { requestAllPermissions } from "@/lib/native-permissions";
 import { prefetchRoutes } from "@/lib/prefetchRoutes";
 import { isNativeContext } from "@/lib/platform";
@@ -35,11 +35,7 @@ export function AppLayout() {
       else setTimeout(fn, 2000);
     };
     defer(() => { requestAllPermissions(); });
-    adDebug("app layout mounted, ad start scheduled");
-    defer(() => {
-      adDebug("deferred start fired");
-      void showBannerAd();
-    });
+    defer(() => { void showBannerAd(); });
     // Warm the cache for daily-use pages while idle, so later taps open
     // instantly instead of downloading their chunk on the spot.
     prefetchRoutes();

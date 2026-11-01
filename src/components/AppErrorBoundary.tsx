@@ -1,8 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { DEBUG_BUILD } from "@/lib/debugOverlay";
 
 type Props = { children: ReactNode };
-type State = { error: Error | null; componentStack: string | null };
+type State = { error: Error | null };
 
 // A lazy page whose code file failed to download (flaky network, or an
 // old cached index after a new release) throws one of these. One automatic
@@ -37,7 +36,7 @@ export function reloadOnceForChunkError(): boolean {
  * bilingual instead.
  */
 export class AppErrorBoundary extends Component<Props, State> {
-  state: State = { error: null, componentStack: null };
+  state: State = { error: null };
 
   static getDerivedStateFromError(error: Error): Partial<State> {
     return { error };
@@ -45,7 +44,6 @@ export class AppErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("App crashed during render", error, info.componentStack);
-    this.setState({ componentStack: info.componentStack ?? null });
     if (isChunkLoadError(error)) reloadOnceForChunkError();
   }
 
@@ -53,12 +51,6 @@ export class AppErrorBoundary extends Component<Props, State> {
     if (!this.state.error) return this.props.children;
     const err = this.state.error;
     const message = (err && (err.message || String(err))) || "Unknown error";
-    const details = DEBUG_BUILD
-      ? [
-          ...(err?.stack ?? "").split("\n").slice(0, 6),
-          ...(this.state.componentStack ?? "").trim().split("\n").slice(0, 4),
-        ].join("\n")
-      : "";
     return (
       <div
         role="alert"
@@ -92,7 +84,6 @@ export class AppErrorBoundary extends Component<Props, State> {
           }}
         >
           {message}
-          {details ? `\n\n${details}` : ""}
         </div>
         <button
           type="button"

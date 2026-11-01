@@ -8,14 +8,12 @@ import {
   type AdMobBannerSize,
   type AdMobError,
 } from '@capacitor-community/admob';
-import { DEBUG_BUILD, debugLog } from './debugOverlay';
 
 const ADMOB_BANNER_ID = 'ca-app-pub-1994214977986364/7524617781';
 
 function adLog(message: string, isError = false): void {
   if (isError) console.warn(`[AdMob] ${message}`);
   else console.log(`[AdMob] ${message}`);
-  debugLog(`AdMob: ${message}`, isError);
 }
 
 function errText(e: unknown): string {
@@ -133,9 +131,4 @@ export async function hideBannerAd(): Promise<void> {
 
 export function isNative(): boolean {
   return Capacitor.isNativePlatform();
-}
-
-/** Test builds only: lets AppLayout report that the deferred start fired. */
-export function adDebug(message: string): void {
-  if (DEBUG_BUILD) adLog(message);
 }

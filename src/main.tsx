@@ -3,7 +3,6 @@ import { Capacitor } from "@capacitor/core";
 
 import App from "./App.tsx";
 import { AppErrorBoundary, reloadOnceForChunkError } from "./components/AppErrorBoundary";
-import { installDebugErrorCapture } from "./lib/debugOverlay";
 import { hideNativeSplash } from "./lib/splash";
 import "./index.css";
 
@@ -25,9 +24,6 @@ if ("serviceWorker" in navigator) {
       .catch(() => {});
   }
 }
-
-// Test builds (VITE_ADMOB_DEBUG=1) show uncaught errors on screen.
-installDebugErrorCapture();
 
 // Vite fires this when a lazy page's code file fails to download; one
 // automatic reload recovers instead of showing the error screen.

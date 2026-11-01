@@ -1,6 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { useI18n } from "@/lib/i18n";
-import { DEBUG_BUILD } from "@/lib/debugOverlay";
 import { isChunkLoadError, reloadOnceForChunkError } from "@/components/AppErrorBoundary";
 
 interface ErrorBoundaryInnerProps {
@@ -12,7 +11,6 @@ interface ErrorBoundaryInnerProps {
 interface ErrorBoundaryInnerState {
   hasError: boolean;
   error: Error | null;
-  componentStack: string | null;
 }
 
 // Class boundary: catches render errors (including a page chunk that
@@ -23,7 +21,7 @@ class ErrorBoundaryInner extends Component<
   ErrorBoundaryInnerProps,
   ErrorBoundaryInnerState
 > {
-  state: ErrorBoundaryInnerState = { hasError: false, error: null, componentStack: null };
+  state: ErrorBoundaryInnerState = { hasError: false, error: null };
 
   static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryInnerState> {
     return { hasError: true, error };
@@ -31,7 +29,6 @@ class ErrorBoundaryInner extends Component<
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
     console.error("ErrorBoundary caught a render error:", error, info);
-    this.setState({ componentStack: info.componentStack ?? null });
     // A page chunk that still failed after lazyWithRetry: one automatic
     // reload (guarded against loops) before showing this screen for good.
     if (isChunkLoadError(error)) reloadOnceForChunkError();
@@ -45,12 +42,6 @@ class ErrorBoundaryInner extends Component<
           {/* The error text, so a screenshot tells us what broke. */}
           <p className="max-w-sm whitespace-pre-wrap break-words text-left font-mono text-xs text-muted-foreground">
             {this.state.error?.message || String(this.state.error ?? "")}
-            {DEBUG_BUILD
-              ? `\n\n${[
-(this.state.error?.stack ?? "").split("\n").slice(0, 6),
-(this.state.componentStack ?? "").trim().split("\n").slice(0, 4),
-                ].join("\n")}`
-              : ""}
           </p>
           <button
             type="button"
