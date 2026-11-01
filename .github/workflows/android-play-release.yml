@@ -121,6 +121,29 @@ jobs:
         # (system splash only).
         run: npx -y @capacitor/assets generate --android
 
+      - name: Brand-coloured launch splash (Android 12+)
+        # Android 12+ draws the system splash on windowSplashScreenBackground
+        # (white by default). Use the app's navy so launch -> splash ->
+        # index.html loader is one continuous screen, never a white flash.
+        # The splash is hidden by the web app once its loader has painted
+        # (capacitor.config.ts SplashScreen.launchAutoHide=false).
+        run: |
+          python3 - << 'PY'
+          import os
+          os.makedirs("android/app/src/main/res/values", exist_ok=True)
+          p = "android/app/src/main/res/values/styles.xml"
+          s = open(p).read()
+          if "windowSplashScreenBackground" not in s:
+              s = s.replace(
+                  '<style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">',
+                  '<style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">\n'
+                  '        <item name="windowSplashScreenBackground">#0b2a5b</item>',
+                  1,
+              )
+              open(p, "w").write(s)
+              print("splash background set")
+          PY
+
       - name: Bump versionCode / versionName
         # Play rejects a re-uploaded versionCode, so every run gets a
         # unique one from the run number (monotonic per workflow).
