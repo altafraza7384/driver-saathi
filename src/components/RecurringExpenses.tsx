@@ -148,6 +148,7 @@ export default function RecurringExpenses() {
       due_day: Math.min(31, Math.max(1, parseInt(dueDay) || 1)),
       notify_at: nextNotifyDate(parseInt(dueDay) || 1),
       note: note || null,
+      ...(editing ? {} : { is_active: true }),
     };
 
     const { error } = editing
@@ -232,8 +233,12 @@ export default function RecurringExpenses() {
     fetchItems();
   };
 
+  // Bills created from this form never stored is_active (it was a
+  // Supabase column default), so filtering on a truthy flag excluded every
+  // bill and the total stayed ₹0 (QA 2026-11-01). Only an explicit false
+  // means inactive — same rule as debts.
   const totalMonthly = items
-    .filter((i) => i.is_active)
+    .filter((i) => i.is_active !== false)
     .reduce((s, i) => s + toAmount(i.amount), 0);
 
   return (
