@@ -1,3 +1,4 @@
+import { localToday } from "@/lib/budgets";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { db } from "@/lib/backend";
@@ -90,7 +91,7 @@ export function AnnouncementBanner() {
     enabled: !!user,
   });
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localToday(); // local date, not UTC (00:00–05:29 IST was yesterday)
   const visible = useMemo(
     () =>
       announcements.filter((a) => {
