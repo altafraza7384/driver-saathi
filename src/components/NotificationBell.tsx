@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { db } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
+import { formatINR, toAmount } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format, isToday, isTomorrow, parseISO, isBefore, addDays } from "date-fns";
@@ -169,7 +170,7 @@ export function NotificationBell() {
         notifications.push({
           id: `emi-${debt.id}`,
           title: t("notif.emiDueTitle", { name: debt.name }),
-          description: t("notif.emiDesc", { date: emiDueDate, amount: Number(debt.emi_amount || 0).toLocaleString("en-IN"), time: format(notifyAt, "hh:mm a") }),
+          description: t("notif.emiDesc", { date: emiDueDate, amount: formatINR(Math.round(toAmount(debt.emi_amount))), time: format(notifyAt, "hh:mm a") }),
           type: "emi",
           date: format(notifyAt, "yyyy-MM-dd"),
         });
@@ -189,16 +190,21 @@ export function NotificationBell() {
     const today = now.getDate();
     const tomorrowDate = addDays(now, 1);
     const tomorrow = tomorrowDate.getDate();
-    const dueToday = Math.min(startDay, daysInMonth(now)) === today;
-    const dueTomorrow = Math.min(startDay, daysInMonth(tomorrowDate)) === tomorrow;
+    // The first EMI falls one month after the loan starts. Without this,
+    // a loan added today showed "EMI is due today" right away (QA
+    // 2026-11-01), because its start day matches today's date.
+    const monthIndex = (d: Date) => d.getFullYear() * 12 + d.getMonth();
+    const afterStartMonth = (d: Date) => monthIndex(d) > monthIndex(startDate);
+    const dueToday = afterStartMonth(now) && Math.min(startDay, daysInMonth(now)) === today;
+    const dueTomorrow = afterStartMonth(tomorrowDate) && Math.min(startDay, daysInMonth(tomorrowDate)) === tomorrow;
     if (dueToday || dueTomorrow) {
       const dueLabel = dueToday ? format(now, "dd MMM yyyy") : format(addDays(now, 1), "dd MMM yyyy");
       notifications.push({
         id: `emi-day-${debt.id}`,
         title: t("notif.emiDueTitle", { name: debt.name }),
         description: dueToday
-          ? t("notif.emiDueTodayDesc", { date: dueLabel, amount: Number(debt.emi_amount || 0).toLocaleString("en-IN") })
-          : t("notif.emiDueTomorrowDesc", { date: dueLabel, amount: Number(debt.emi_amount || 0).toLocaleString("en-IN") }),
+          ? t("notif.emiDueTodayDesc", { date: dueLabel, amount: formatINR(Math.round(toAmount(debt.emi_amount))) })
+          : t("notif.emiDueTomorrowDesc", { date: dueLabel, amount: formatINR(Math.round(toAmount(debt.emi_amount))) }),
         type: "emi",
         date: format(now, "yyyy-MM-dd"),
       });

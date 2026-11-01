@@ -356,7 +356,7 @@ export default function DebtsPage() {
         <Card className="bg-warning/5 border-warning/20">
           <CardContent className="p-3">
             <p className="text-xs text-muted-foreground">{t("debt.monthlyEmi")}</p>
-            {loading ? <Skeleton className="mt-1 h-7 w-24" /> : <p className="text-lg font-bold text-warning">{formatINR(totalEMI)}</p>}
+            {loading ? <Skeleton className="mt-1 h-7 w-24" /> : <p className="text-lg font-bold text-warning">{formatINR(Math.round(totalEMI))}</p>}
           </CardContent>
         </Card>
       </div>
@@ -386,7 +386,7 @@ export default function DebtsPage() {
                         <CreditCard className="h-5 w-5 text-primary" />
                         <div>
                           <p className="font-semibold text-sm">{debt.name}</p>
-                          <p className="text-xs text-muted-foreground">{toAmount(debt.interest_rate)}% • {toAmount(debt.tenure_months)} months</p>
+                          <p className="text-xs text-muted-foreground">{toAmount(debt.interest_rate)}% • {t("debt.monthsN", { n: toAmount(debt.tenure_months) })}</p>
                         </div>
                       </div>
                       <div className="flex gap-2">
@@ -401,12 +401,12 @@ export default function DebtsPage() {
                       </div>
                     </div>
                     <div className="flex justify-between text-xs">
-                      <span>Paid: {formatINR(paidAmt)}</span>
-                      <span>Remaining: {formatINR(Math.max(0, remaining))}</span>
+                      <span>{t("home.paid")}: {formatINR(paidAmt)}</span>
+                      <span>{t("home.remaining")}: {formatINR(Math.max(0, remaining))}</span>
                     </div>
                     <Progress value={progress} className="h-2" />
                     {toAmount(debt.emi_amount) > 0 && (
-                      <p className="text-xs text-muted-foreground">EMI: {formatINR(toAmount(debt.emi_amount))}/month</p>
+                      <p className="text-xs text-muted-foreground">{t("debt.emiPerMonth", { amount: formatINR(Math.round(toAmount(debt.emi_amount))) })}</p>
                     )}
                     {debt.is_active !== false && (
                       <>

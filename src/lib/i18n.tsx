@@ -546,6 +546,8 @@ const translations: Record<Language, Record<string, string>> = {
     "home.netToday": "Net today",
     "home.today": "Today",
     "home.yesterday": "Yesterday",
+    "debt.monthsN": "{n} months",
+    "debt.emiPerMonth": "EMI: {amount}/month",
   },
   hi: {
     "nav.home": "होम",
@@ -1067,6 +1069,8 @@ const translations: Record<Language, Record<string, string>> = {
     "home.netToday": "आज का शुद्ध",
     "home.today": "आज",
     "home.yesterday": "कल",
+    "debt.monthsN": "{n} महीने",
+    "debt.emiPerMonth": "EMI: {amount}/महीना",
   },
   mr: {
     "nav.home": "होम",
@@ -1587,6 +1591,8 @@ const translations: Record<Language, Record<string, string>> = {
     "home.netToday": "आजचा निव्वळ",
     "home.today": "आज",
     "home.yesterday": "काल",
+    "debt.monthsN": "{n} महिने",
+    "debt.emiPerMonth": "EMI: {amount}/महिना",
   },
   bn: {
     // Nav
@@ -2123,6 +2129,8 @@ const translations: Record<Language, Record<string, string>> = {
     "home.netToday": "আজকের নিট",
     "home.today": "আজ",
     "home.yesterday": "গতকাল",
+    "debt.monthsN": "{n} মাস",
+    "debt.emiPerMonth": "EMI: {amount}/মাস",
   },
   kn: {
     "nav.home": "ಮುಖಪುಟ",
@@ -2643,6 +2651,8 @@ const translations: Record<Language, Record<string, string>> = {
     "home.netToday": "ಇಂದಿನ ನಿವ್ವಳ",
     "home.today": "ಇಂದು",
     "home.yesterday": "ನಿನ್ನೆ",
+    "debt.monthsN": "{n} ತಿಂಗಳು",
+    "debt.emiPerMonth": "EMI: {amount}/ತಿಂಗಳು",
   },
 };
 
