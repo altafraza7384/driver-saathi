@@ -1,3 +1,4 @@
+import { appVersionLabel } from "@/lib/appVersion";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
@@ -132,7 +133,7 @@ export default function MorePage() {
           <div className="space-y-4 text-sm">
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">{t("more.appVersion")}</span>
-              <span className="font-bold">{typeof __APP_BUILD_ID__ !== "undefined" ? __APP_BUILD_ID__ : "1.0.0"}</span>
+              <span className="font-bold">{appVersionLabel()}</span>
             </div>
             <div className="border-t pt-3 space-y-2">
               <h4 className="font-bold">{t("more.privacyPolicy")}</h4>

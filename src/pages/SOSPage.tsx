@@ -5,6 +5,7 @@ import { friendlyErrorMessage } from "@/lib/errors";
 import { isValidPhone } from "@/lib/carSos";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
+import { ConfirmDelete } from "@/components/ConfirmDelete";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +25,7 @@ export default function SOSPage() {
   const [sosTriggered, setSosTriggered] = useState(false);
   const [form, setForm] = useState({ name: "", phone: "", relationship: "" });
 
-  const { data: contacts = [] } = useQuery({
+  const { data: contacts = [], isLoading: contactsLoading } = useQuery({
     queryKey: ["emergency_contacts"],
     queryFn: async () => { const { data, error } = await db.from("emergency_contacts").select("*").order("is_primary", { ascending: false }); if (error) throw error; return data; },
     enabled: !!user,
@@ -44,7 +45,7 @@ export default function SOSPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => { const { error } = await db.from("emergency_contacts").delete().eq("id", id); if (error) throw error; },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["emergency_contacts"] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["emergency_contacts"] }); toast.success(t("confirm.deleted")); },
   });
 
   const shareWhatsApp = () => {
@@ -149,7 +150,9 @@ export default function SOSPage() {
         </Dialog>
       </div>
 
-      {contacts.length === 0 ? (
+      {contactsLoading ? (
+        <div className="flex justify-center py-6"><div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>
+      ) : contacts.length === 0 ? (
         <Card><CardContent className="p-6 text-center text-muted-foreground">{t("sos.noContacts")}</CardContent></Card>
       ) : (
         <div className="space-y-2">
@@ -159,7 +162,7 @@ export default function SOSPage() {
                 <div className="flex h-9 w-9 items-center justify-center rounded-full bg-destructive/10 text-destructive"><Phone className="h-4 w-4" /></div>
                 <div><p className="text-sm font-medium">{c.name}{c.is_primary && <span className="ml-1 text-xs text-primary">({t("sos.primary")})</span>}</p><p className="text-xs text-muted-foreground">{c.phone}{c.relationship ? ` • ${c.relationship}` : ""}</p></div>
               </div>
-              <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(c.id)}><Trash2 className="h-4 w-4 text-muted-foreground" /></Button>
+              <ConfirmDelete onConfirm={() => deleteMutation.mutate(c.id)} itemName={c.name}><Button variant="ghost" size="icon" aria-label={t("common.delete")}><Trash2 className="h-4 w-4 text-muted-foreground" /></Button></ConfirmDelete>
             </CardContent></Card>
           ))}
         </div>

@@ -1,3 +1,4 @@
+import { categoryLabel } from "@/lib/categories";
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { db } from "@/lib/backend";
@@ -46,12 +47,24 @@ export default function AddTransactionPage() {
       toast({ title: t("tx.missingFields"), variant: "destructive" });
       return;
     }
+    // Forms use noValidate (Android WebView shows no native validation
+    // bubble, so a negative amount used to do nothing at all — QA
+    // 2026-11-01); validate here and say why.
+    const parsedAmount = parseFloat(amount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      toast({ title: t("form.checkInput"), description: t("form.amountPositive"), variant: "destructive" });
+      return;
+    }
+    if (!date) {
+      toast({ title: t("tx.missingFields"), variant: "destructive" });
+      return;
+    }
     setLoading(true);
 
     const { error } = await db.from("transactions").insert({
       user_id: user.id,
       type,
-      amount: parseFloat(amount),
+      amount: parsedAmount,
       category,
       platform: platform || null,
       description: description || null,
@@ -102,7 +115,7 @@ export default function AddTransactionPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form noValidate onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label>{t("common.amount")} (₹)</Label>
               <Input
@@ -123,7 +136,7 @@ export default function AddTransactionPage() {
                 <SelectTrigger><SelectValue placeholder={t("form.selectCategory")} /></SelectTrigger>
                 <SelectContent>
                   {categories.map((c) => (
-                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                    <SelectItem key={c} value={c}>{categoryLabel(t, c)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -162,7 +175,7 @@ export default function AddTransactionPage() {
               className={`w-full ${type === "income" ? "bg-success hover:bg-success/90" : ""}`}
               disabled={loading}
             >
-              {loading ? "Saving..." : type === "income" ? "Add Income" : "Add Expense"}
+              {loading ? t("common.saving") : type === "income" ? t("home.addIncome") : t("home.addExpense")}
             </Button>
           </form>
         </CardContent>

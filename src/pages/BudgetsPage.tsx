@@ -1,3 +1,4 @@
+import { categoryLabel } from "@/lib/categories";
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
@@ -6,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { formatINR, toAmount, clampPercent } from "@/lib/currency";
 import { friendlyErrorMessage } from "@/lib/errors";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -116,7 +118,11 @@ export default function BudgetsPage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !category) return;
+    if (!user) return;
+    if (!category) {
+      toast({ title: t("form.checkInput"), description: t("budget.category"), variant: "destructive" });
+      return;
+    }
     const amt = parseFloat(limit);
     if (!Number.isFinite(amt) || amt <= 0) {
       toast({ title: "Error", description: t("budget.invalidAmount"), variant: "destructive" });
@@ -214,37 +220,39 @@ export default function BudgetsPage() {
       <div className="grid grid-cols-3 gap-2">
         <Card><CardContent className="p-3 text-center">
           <p className="text-xs text-muted-foreground">{t("budget.totalAllocated")}</p>
-          <p className="font-bold">{formatINR(totalAllocated)}</p>
+          {loading ? <Skeleton className="mx-auto mt-1 h-5 w-14" /> : <p className="font-bold">{formatINR(totalAllocated)}</p>}
         </CardContent></Card>
         <Card><CardContent className="p-3 text-center">
           <p className="text-xs text-muted-foreground">{t("budget.totalSpent")}</p>
-          <p className="font-bold">{formatINR(totalSpent)}</p>
+          {loading ? <Skeleton className="mx-auto mt-1 h-5 w-14" /> : <p className="font-bold">{formatINR(totalSpent)}</p>}
         </CardContent></Card>
         <Card><CardContent className="p-3 text-center">
           <p className="text-xs text-muted-foreground">{t("budget.remaining")}</p>
-          <p className={`font-bold ${totalRemaining < 0 ? "text-destructive" : ""}`}>{formatINR(totalRemaining)}</p>
+          {loading ? <Skeleton className="mx-auto mt-1 h-5 w-14" /> : <p className={`font-bold ${totalRemaining < 0 ? "text-destructive" : ""}`}>{formatINR(totalRemaining)}</p>}
         </CardContent></Card>
       </div>
 
       <p className="text-xs text-muted-foreground">{t("budget.warningNote")}</p>
 
-      <div className="flex gap-2">
+      {/* Two equal columns that wrap their text: the old single nowrap row
+          made the page 445px wide on a 390px phone (QA 2026-11-01). */}
+      <div className="grid grid-cols-2 gap-2">
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
-            <Button onClick={openAdd} className="gap-1">
+            <Button onClick={openAdd} className="h-auto min-h-10 gap-1 whitespace-normal py-2">
               <Plus className="h-4 w-4" /> {t("budget.addBudget")}
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader><DialogTitle>{editing ? t("budget.editBudget") : t("budget.addBudget")}</DialogTitle></DialogHeader>
-            <form onSubmit={handleSave} className="space-y-4">
+            <form noValidate onSubmit={handleSave} className="space-y-4">
               <div className="space-y-2">
                 <Label>{t("budget.category")}</Label>
                 <Select value={category} onValueChange={setCategory} disabled={!!editing}>
                   <SelectTrigger><SelectValue placeholder={t("budget.category")} /></SelectTrigger>
                   <SelectContent>
                     {availableCategories.map((c) => (
-                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                      <SelectItem key={c} value={c}>{categoryLabel(t, c)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -259,13 +267,13 @@ export default function BudgetsPage() {
             </form>
           </DialogContent>
         </Dialog>
-        <Button variant="outline" onClick={handleCopyLastMonth} disabled={copying} className="gap-1">
+        <Button variant="outline" onClick={handleCopyLastMonth} disabled={copying} className="h-auto min-h-10 gap-1 whitespace-normal py-2 text-center leading-tight">
           <Copy className="h-4 w-4" /> {t("budget.copyLastMonth")}
         </Button>
       </div>
 
       {loading ? (
-        <p className="text-center text-muted-foreground">{t("budget.loading")}</p>
+        <div className="space-y-2"><Skeleton className="h-16 w-full rounded-xl" /><Skeleton className="h-16 w-full rounded-xl" /></div>
       ) : budgets.length === 0 ? (
         <Card><CardContent className="p-4 text-center text-sm text-muted-foreground">
           {t("budget.noBudgets")} {t("budget.addFirst")}
@@ -282,7 +290,7 @@ export default function BudgetsPage() {
               <Card key={b.id} className="border-0 shadow-sm">
                 <CardContent className="p-3 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="font-bold">{b.category}</span>
+                    <span className="font-bold">{categoryLabel(t, b.category)}</span>
                     <div className="flex items-center gap-1">
                       <Button variant="ghost" size="icon" onClick={() => openEdit(b)}>
                         <Pencil className="h-4 w-4" />

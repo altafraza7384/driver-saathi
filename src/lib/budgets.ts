@@ -25,6 +25,8 @@ export const BUDGET_CATEGORIES = [
   "Tolls",
   "Insurance",
   "EMI",
+  "Rent",
+  "Bills",
   "Phone",
   "Subscription",
   "Other",

@@ -1,3 +1,4 @@
+import { categoryLabel } from "@/lib/categories";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { db } from "@/lib/backend";
@@ -5,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
 import { formatINR, toAmount } from "@/lib/currency";
 import { friendlyErrorMessage } from "@/lib/errors";
+import { ConfirmDelete } from "@/components/ConfirmDelete";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Minus, Trash2, Pencil, TrendingUp, TrendingDown } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { motion } from "framer-motion";
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO } from "date-fns";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -24,7 +27,7 @@ type Transaction = {
 };
 
 const INCOME_CATEGORIES = ["Ride Earnings", "Tips", "Incentives", "Bonus", "Other"];
-const EXPENSE_CATEGORIES = ["Fuel", "Maintenance", "Food", "Tolls", "Insurance", "EMI", "Phone", "Subscription", "Other"];
+const EXPENSE_CATEGORIES = ["Fuel", "Maintenance", "Food", "Tolls", "Insurance", "EMI", "Rent", "Bills", "Phone", "Subscription", "Other"];
 
 export default function TransactionsPage() {
   const { t } = useI18n();
@@ -48,6 +51,10 @@ export default function TransactionsPage() {
   const [allTotals, setAllTotals] = useState({ income: 0, expense: 0 });
   const [limit, setLimit] = useState(50);
   const [loading, setLoading] = useState(true);
+  // Totals and the weekly chart load separately from the list; until each
+  // lands, show a skeleton instead of ₹0 (QA 2026-11-01).
+  const [totalsLoading, setTotalsLoading] = useState(true);
+  const [weeklyLoading, setWeeklyLoading] = useState(true);
   const [editTx, setEditTx] = useState<Transaction | null>(null);
   const [editAmount, setEditAmount] = useState("");
   const [editCategory, setEditCategory] = useState("");
@@ -67,6 +74,7 @@ export default function TransactionsPage() {
       income: list.filter((t) => t.type === "income").reduce((s, t) => s + toAmount(t.amount), 0),
       expense: list.filter((t) => t.type !== "income").reduce((s, t) => s + toAmount(t.amount), 0),
     });
+    setTotalsLoading(false);
   };
 
   const fetchWeeklyData = async () => {
@@ -74,6 +82,7 @@ export default function TransactionsPage() {
     const weekEnd = format(endOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd");
     const { data } = await db.from("transactions").select("*").gte("transaction_date", weekStart).lte("transaction_date", weekEnd);
     setWeeklyTx((data as Transaction[]) || []);
+    setWeeklyLoading(false);
   };
 
   const fetchTransactions = async () => {
@@ -85,8 +94,9 @@ export default function TransactionsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    await db.from("transactions").delete().eq("id", id);
-    toast({ title: t("common.delete") });
+    const { error } = await db.from("transactions").delete().eq("id", id);
+    if (error) { toast({ title: t("auth.error"), description: friendlyErrorMessage(error), variant: "destructive" }); return; }
+    toast({ title: t("confirm.deleted") });
     invalidateHomeTransactions();
     fetchTransactions(); fetchWeeklyData(); fetchTotals();
   };
@@ -142,13 +152,13 @@ export default function TransactionsPage() {
         <Card className="border-success/20 bg-success/5">
           <CardContent className="p-3">
             <p className="text-xs text-muted-foreground">{t("tx.totalIncome")}</p>
-            <p className="text-lg font-bold text-success">{formatINR(totals.income)}</p>
+            {totalsLoading ? <Skeleton className="mt-1 h-7 w-24" /> : <p className="text-lg font-bold text-success">{formatINR(totals.income)}</p>}
           </CardContent>
         </Card>
         <Card className="border-destructive/20 bg-destructive/5">
           <CardContent className="p-3">
             <p className="text-xs text-muted-foreground">{t("tx.totalExpenses")}</p>
-            <p className="text-lg font-bold text-destructive">{formatINR(totals.expense)}</p>
+            {totalsLoading ? <Skeleton className="mt-1 h-7 w-24" /> : <p className="text-lg font-bold text-destructive">{formatINR(totals.expense)}</p>}
           </CardContent>
         </Card>
       </div>
@@ -156,7 +166,9 @@ export default function TransactionsPage() {
       <Card>
         <CardContent className="p-4 space-y-3">
           <h2 className="text-sm font-semibold">{t("tx.thisWeek")}</h2>
-          {(() => {
+          {weeklyLoading ? (
+            <div className="space-y-2"><Skeleton className="h-8 w-full" /><Skeleton className="h-16 w-full" /></div>
+          ) : (() => {
             const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
             const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
             const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
@@ -221,14 +233,16 @@ export default function TransactionsPage() {
                       {tx.type === "income" ? <Plus className="h-4 w-4" /> : <Minus className="h-4 w-4" />}
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{tx.category}{tx.platform ? ` • ${tx.platform}` : ""}</p>
+                      <p className="text-sm font-medium truncate">{categoryLabel(t, tx.category)}{tx.platform ? ` • ${tx.platform}` : ""}</p>
                       <p className="text-xs text-muted-foreground truncate">{format(new Date(tx.transaction_date), "dd MMM yyyy")}{tx.description ? ` • ${tx.description}` : ""}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <span className={`text-sm font-bold ${tx.type === "income" ? "text-success" : "text-destructive"}`}>{tx.type === "income" ? "+" : "-"}{formatINR(toAmount(tx.amount))}</span>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(tx)}><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(tx.id)}><Trash2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                    <span className={`mr-1 text-sm font-bold ${tx.type === "income" ? "text-success" : "text-destructive"}`}>{tx.type === "income" ? "+" : "-"}{formatINR(toAmount(tx.amount))}</span>
+                    <Button variant="ghost" size="icon" className="h-9 w-9" aria-label={t("common.edit")} onClick={() => openEdit(tx)}><Pencil className="h-4 w-4 text-muted-foreground" /></Button>
+                    <ConfirmDelete onConfirm={() => handleDelete(tx.id)} itemName={`${categoryLabel(t, tx.category)} ${formatINR(toAmount(tx.amount))}`}>
+                      <Button variant="ghost" size="icon" className="ml-2 h-9 w-9" aria-label={t("common.delete")}><Trash2 className="h-4 w-4 text-destructive/80" /></Button>
+                    </ConfirmDelete>
                   </div>
                 </CardContent>
               </Card>
@@ -248,7 +262,7 @@ export default function TransactionsPage() {
           <DialogHeader><DialogTitle>{t("tx.editTransaction")}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2"><Label>{t("common.amount")} (₹)</Label><Input type="number" value={editAmount} onChange={(e) => setEditAmount(e.target.value)} min="1" /></div>
-            <div className="space-y-2"><Label>{t("common.category")}</Label><Select value={editCategory} onValueChange={setEditCategory}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{categoryOptions.map((c) => (<SelectItem key={c} value={c}>{c}</SelectItem>))}</SelectContent></Select></div>
+            <div className="space-y-2"><Label>{t("common.category")}</Label><Select value={editCategory} onValueChange={setEditCategory}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{categoryOptions.map((c) => (<SelectItem key={c} value={c}>{categoryLabel(t, c)}</SelectItem>))}</SelectContent></Select></div>
             <div className="space-y-2"><Label>{t("common.description")}</Label><Input value={editDescription} onChange={(e) => setEditDescription(e.target.value)} placeholder={t("common.optional")} /></div>
             <div className="space-y-2"><Label htmlFor="tx-edit-date">{t("common.date")}</Label><DatePicker id="tx-edit-date" label={t("common.date")} value={editDate} onChange={setEditDate} /></div>
             <Button className="w-full" onClick={handleUpdate} disabled={saving}>{saving ? t("common.saving") : t("tx.updateTransaction")}</Button>

@@ -1,3 +1,4 @@
+import { localToday } from "@/lib/budgets";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { db } from "@/lib/backend";
@@ -109,7 +110,7 @@ export function SubscriptionPlansCard() {
   const isNonSubscriber = !myPlan;
   const trialState = getTrialState(myProfile);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localToday(); // local date, not UTC (00:00–05:29 IST was yesterday)
   const liveOffers = offers.filter((o) => isOfferLive(o, today));
   const offersForPlan = (planId: string) => liveOffers.filter((o) => o.plan_id === planId);
   const mrpFor = (p: Plan) => p.mrp_inr ?? DEFAULT_MRP[p.billing_interval] ?? null;

@@ -5,6 +5,7 @@ import { db } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
 import { formatINR, toAmount, clampPercent } from "@/lib/currency";
 import { friendlyErrorMessage } from "@/lib/errors";
+import { ConfirmDelete } from "@/components/ConfirmDelete";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -82,11 +83,16 @@ export default function GoalsPage() {
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+    // noValidate form: say what is missing instead of doing nothing.
+    if (!title.trim()) {
+      toast({ title: t("form.checkInput"), description: t("form.nameRequired"), variant: "destructive" });
+      return;
+    }
     setSaving(true);
 
     const targetAmt = parseFloat(target);
     if (!Number.isFinite(targetAmt) || targetAmt <= 0) {
-      toast({ title: "Error", description: "Please enter a valid target amount.", variant: "destructive" });
+      toast({ title: t("form.checkInput"), description: t("form.amountPositive"), variant: "destructive" });
       setSaving(false);
       return;
     }
@@ -103,9 +109,9 @@ export default function GoalsPage() {
     } as any);
 
     if (error) {
-      toast({ title: "Error", description: friendlyErrorMessage(error), variant: "destructive" });
+      toast({ title: t("auth.error"), description: friendlyErrorMessage(error), variant: "destructive" });
     } else {
-      toast({ title: "Goal created! 🎯" });
+      toast({ title: t("goal.created") });
       setShowAdd(false);
       setTitle(""); setTarget(""); setDeadline(""); setNotifyDate(""); setNotifyTime("");
       invalidateGoalReaders();
@@ -126,7 +132,7 @@ export default function GoalsPage() {
     setSaving(true);
     const newTarget = parseFloat(editTarget);
     if (!Number.isFinite(newTarget) || newTarget <= 0) {
-      toast({ title: "Error", description: "Please enter a valid target amount.", variant: "destructive" });
+      toast({ title: t("form.checkInput"), description: t("form.amountPositive"), variant: "destructive" });
       setSaving(false);
       return;
     }
@@ -140,9 +146,9 @@ export default function GoalsPage() {
     }).eq("id", editGoal.id);
 
     if (error) {
-      toast({ title: "Error", description: friendlyErrorMessage(error), variant: "destructive" });
+      toast({ title: t("auth.error"), description: friendlyErrorMessage(error), variant: "destructive" });
     } else {
-      toast({ title: "Goal updated!" });
+      toast({ title: t("goal.updated") });
       setEditGoal(null);
       invalidateGoalReaders();
       fetchGoals();
@@ -156,7 +162,7 @@ export default function GoalsPage() {
 
     const amount = parseFloat(addAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
-      toast({ title: "Error", description: "Please enter a valid amount.", variant: "destructive" });
+      toast({ title: t("form.checkInput"), description: t("form.amountPositive"), variant: "destructive" });
       return;
     }
     // Disable while saving: a double-tap used to compute both writes
@@ -172,15 +178,15 @@ export default function GoalsPage() {
     }).eq("id", goalId);
 
     if (error) {
-      toast({ title: "Error", description: friendlyErrorMessage(error), variant: "destructive" });
+      toast({ title: t("auth.error"), description: friendlyErrorMessage(error), variant: "destructive" });
       setSavingGoalId(null);
       return;
     }
 
     if (isCompleted) {
-      toast({ title: "🎉 Goal Completed!", description: `You've reached your target for "${goal.title}"!` });
+      toast({ title: t("goal.completedTitle"), description: t("goal.completedDesc", { name: goal.title }) });
     } else {
-      toast({ title: `₹${addAmount} added to savings!` });
+      toast({ title: t("goal.savingsAdded", { amount: formatINR(parseFloat(addAmount) || 0) }) });
     }
 
     setSavingGoalId(null);
@@ -194,10 +200,10 @@ export default function GoalsPage() {
   const handleDelete = async (id: string) => {
     const { error } = await db.from("goals").delete().eq("id", id);
     if (error) {
-      toast({ title: "Error", description: friendlyErrorMessage(error), variant: "destructive" });
+      toast({ title: t("auth.error"), description: friendlyErrorMessage(error), variant: "destructive" });
       return;
     }
-    toast({ title: "Goal deleted" });
+    toast({ title: t("goal.deleted") });
     invalidateGoalReaders();
     fetchGoals();
   };
@@ -216,7 +222,7 @@ export default function GoalsPage() {
           </DialogTrigger>
           <DialogContent>
             <DialogHeader><DialogTitle>{t("goal.createGoal")}</DialogTitle></DialogHeader>
-            <form onSubmit={handleAdd} className="space-y-4">
+            <form noValidate onSubmit={handleAdd} className="space-y-4">
               <div className="space-y-2">
                 <Label>{t("goal.goalTitle")}</Label>
                 <Input placeholder="e.g. New Tires" value={title} onChange={(e) => setTitle(e.target.value)} required />
@@ -284,13 +290,15 @@ export default function GoalsPage() {
                           )}
                         </div>
                       </div>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(goal)}>
+                      <div className="flex gap-2">
+                        <Button variant="ghost" size="icon" className="h-9 w-9" aria-label={t("common.edit")} onClick={() => openEdit(goal)}>
                           <Pencil className="h-4 w-4 text-muted-foreground" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDelete(goal.id)}>
-                          <Trash2 className="h-4 w-4 text-muted-foreground" />
-                        </Button>
+                        <ConfirmDelete onConfirm={() => handleDelete(goal.id)} itemName={goal.title}>
+                          <Button variant="ghost" size="icon" className="h-9 w-9" aria-label={t("common.delete")}>
+                            <Trash2 className="h-4 w-4 text-destructive/80" />
+                          </Button>
+                        </ConfirmDelete>
                       </div>
                     </div>
                     <div className="flex justify-between text-xs">

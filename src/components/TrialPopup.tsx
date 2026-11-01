@@ -1,3 +1,4 @@
+import { localToday } from "@/lib/budgets";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -51,7 +52,7 @@ export function TrialPopup() {
     // Paid users never see it (getTrialState returns "paid" → no milestone).
     const m = trialMilestone(getTrialState(profile));
     if (!m) return;
-    const key = `ds-trial-popup-${new Date().toISOString().slice(0, 10)}`;
+    const key = `ds-trial-popup-${localToday()}`; // once per LOCAL day
     if (localStorage.getItem(key)) return;
     localStorage.setItem(key, "1");
     setMilestone(m);

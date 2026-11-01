@@ -4,6 +4,7 @@ import { db } from "@/lib/backend";
 import { friendlyErrorMessage } from "@/lib/errors";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
+import { ConfirmDelete } from "@/components/ConfirmDelete";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,13 +36,13 @@ export default function NotesPage() {
       const { error } = await db.from("notes").insert({ user_id: user!.id, title: form.title, content: form.content, tags });
       if (error) throw error;
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); setOpen(false); setForm({ title: "", content: "", tags: "" }); toast.success("✅"); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); setOpen(false); setForm({ title: "", content: "", tags: "" }); toast.success(t("note.saved")); },
     onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => { const { error } = await db.from("notes").delete().eq("id", id); if (error) throw error; },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notes"] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); toast.success(t("confirm.deleted")); },
   });
 
   const filtered = notes.filter((n) => n.title.toLowerCase().includes(search.toLowerCase()) || n.content.toLowerCase().includes(search.toLowerCase()));
@@ -81,7 +82,7 @@ export default function NotesPage() {
                   {n.content && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{n.content}</p>}
                   {n.tags && n.tags.length > 0 && (<div className="mt-2 flex flex-wrap gap-1">{n.tags.map((tag: string) => <span key={tag} className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-medium text-accent-foreground">{tag}</span>)}</div>)}
                 </div>
-                <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(n.id)}><Trash2 className="h-4 w-4 text-muted-foreground" /></Button>
+                <ConfirmDelete onConfirm={() => deleteMutation.mutate(n.id)} itemName={n.title}><Button variant="ghost" size="icon" aria-label={t("common.delete")}><Trash2 className="h-4 w-4 text-muted-foreground" /></Button></ConfirmDelete>
               </div>
             </CardContent></Card>
           ))}

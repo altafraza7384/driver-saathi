@@ -5,6 +5,7 @@ import { formatINR, toAmount } from "@/lib/currency";
 import { localToday, currentMonth } from "@/lib/budgets";
 import { friendlyErrorMessage } from "@/lib/errors";
 import { useI18n } from "@/lib/i18n";
+import { ConfirmDelete } from "@/components/ConfirmDelete";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Pencil, Home, Banknote, Calendar } from "lucide-react";
 import { motion } from "framer-motion";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -58,7 +60,15 @@ const CATEGORIES = [
 // counts toward that budget (audit 2026-10-24: "subscription" !==
 // "Subscription" meant budget spent never moved). The bill's own name is
 // kept in the transaction description, so no detail is lost.
+// Rent and utility bills used to fall through to "Other" (QA 2026-11-01:
+// paying Room Rent showed up as Other, so a Rent budget never moved).
+// "Rent" and "Bills" are now expense/budget categories too.
 const TX_CATEGORY_MAP: Record<string, string> = {
+  rent: "Rent",
+  electricity: "Bills",
+  water: "Bills",
+  internet: "Bills",
+  gas: "Bills",
   subscription: "Subscription",
   insurance: "Insurance",
   mobile: "Phone",
@@ -130,11 +140,15 @@ export default function RecurringExpenses() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+    if (!name.trim()) {
+      toast({ title: t("form.checkInput"), description: t("form.nameRequired"), variant: "destructive" });
+      return;
+    }
     setSaving(true);
 
     const amt = parseFloat(amount);
-    if (!Number.isFinite(amt) || amt < 0) {
-      toast({ title: "Error", description: "Please enter a valid amount.", variant: "destructive" });
+    if (!Number.isFinite(amt) || amt <= 0) {
+      toast({ title: t("form.checkInput"), description: t("form.amountPositive"), variant: "destructive" });
       setSaving(false);
       return;
     }
@@ -147,6 +161,7 @@ export default function RecurringExpenses() {
       due_day: Math.min(31, Math.max(1, parseInt(dueDay) || 1)),
       notify_at: nextNotifyDate(parseInt(dueDay) || 1),
       note: note || null,
+      ...(editing ? {} : { is_active: true }),
     };
 
     const { error } = editing
@@ -156,7 +171,7 @@ export default function RecurringExpenses() {
     if (error) {
       toast({ title: "Error", description: friendlyErrorMessage(error), variant: "destructive" });
     } else {
-      toast({ title: editing ? "Expense updated!" : "Expense added!" });
+      toast({ title: editing ? t("recurring.billUpdated") : t("recurring.billAdded") });
       setShowAdd(false);
       resetForm();
       fetchItems();
@@ -170,7 +185,7 @@ export default function RecurringExpenses() {
       toast({ title: "Error", description: friendlyErrorMessage(error), variant: "destructive" });
       return;
     }
-    toast({ title: "Expense removed" });
+    toast({ title: t("recurring.billRemoved") });
     fetchItems();
   };
 
@@ -180,7 +195,7 @@ export default function RecurringExpenses() {
     // created two payment docs + two transactions (audit 2026-10-24).
     const thisMonth = currentMonth();
     if (it.last_paid_date?.slice(0, 7) === thisMonth) {
-      toast({ title: "Already paid this month" });
+      toast({ title: t("recurring.alreadyPaid") });
       return;
     }
     setPayingId(it.id);
@@ -226,13 +241,17 @@ export default function RecurringExpenses() {
     queryClient.invalidateQueries({ queryKey: ["transactions_today"] });
     queryClient.invalidateQueries({ queryKey: ["budgets_month_tx"] });
     queryClient.invalidateQueries({ queryKey: ["budgets_month"] });
-    toast({ title: `✅ Paid ${formatINR(paidAmount)}` });
+    toast({ title: t("recurring.paidToast", { amount: formatINR(paidAmount), name: it.name }) });
     setPayingId(null);
     fetchItems();
   };
 
+  // Bills created from this form never stored is_active (it was a
+  // Supabase column default), so filtering on a truthy flag excluded every
+  // bill and the total stayed ₹0 (QA 2026-11-01). Only an explicit false
+  // means inactive — same rule as debts.
   const totalMonthly = items
-    .filter((i) => i.is_active)
+    .filter((i) => i.is_active !== false)
     .reduce((s, i) => s + toAmount(i.amount), 0);
 
   return (
@@ -258,7 +277,7 @@ export default function RecurringExpenses() {
             <DialogHeader>
               <DialogTitle>{editing ? t("recurring.editBill") : t("recurring.addRecurringBill")}</DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSave} className="space-y-4">
+            <form noValidate onSubmit={handleSave} className="space-y-4">
               <div className="space-y-2">
                 <Label>{t("recurring.name")}</Label>
                 <Input
@@ -332,10 +351,12 @@ export default function RecurringExpenses() {
         </Card>
       )}
 
-      {loading ? null : items.length === 0 ? (
+      {loading ? (
+        <div className="space-y-2"><Skeleton className="h-12 w-full rounded-xl" /><Skeleton className="h-24 w-full rounded-xl" /></div>
+      ) : items.length === 0 ? (
         <Card>
           <CardContent className="p-4 text-center text-xs text-muted-foreground">
-            No recurring bills yet. Add rent, electricity, internet etc.
+            {t("recurring.empty")}
           </CardContent>
         </Card>
       ) : (
@@ -355,24 +376,26 @@ export default function RecurringExpenses() {
                       <div className="min-w-0">
                         <p className="font-semibold text-sm truncate">{it.name}</p>
                         <p className="text-[11px] text-muted-foreground capitalize flex items-center gap-1">
-                          <Calendar className="h-3 w-3" /> Day {it.due_day} · {it.category}
+                          <Calendar className="h-3 w-3" /> {t("recurring.dayN", { day: it.due_day })} · {t(CATEGORIES.find((c) => c.value === it.category)?.key ?? "recurring.catOther")}
                         </p>
                       </div>
                     </div>
-                    <div className="flex gap-0 shrink-0">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(it)}>
-                        <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                    <div className="flex gap-2 shrink-0">
+                      <Button variant="ghost" size="icon" className="h-9 w-9" aria-label={t("common.edit")} onClick={() => openEdit(it)}>
+                        <Pencil className="h-4 w-4 text-muted-foreground" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(it.id)}>
-                        <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                      </Button>
+                      <ConfirmDelete onConfirm={() => handleDelete(it.id)} itemName={it.name}>
+                        <Button variant="ghost" size="icon" className="h-9 w-9" aria-label={t("common.delete")}>
+                          <Trash2 className="h-4 w-4 text-destructive/80" />
+                        </Button>
+                      </ConfirmDelete>
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-base font-bold">{formatINR(toAmount(it.amount))}</span>
                     {it.last_paid_date && (
                       <span className="text-[10px] text-muted-foreground">
-                        Last: {new Date(it.last_paid_date).toLocaleDateString("en-IN")}
+                        {t("recurring.lastPaid", { date: new Date(it.last_paid_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) })}
                       </span>
                     )}
                   </div>

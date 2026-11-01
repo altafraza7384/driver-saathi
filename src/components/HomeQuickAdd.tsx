@@ -19,7 +19,7 @@ import { Flame, X } from "lucide-react";
 // so they are duplicated here with that comment instead of importing the
 // whole TransactionsPage into the Home chunk.
 const INCOME_CATEGORIES = ["Ride Earnings", "Tips", "Incentives", "Bonus", "Other"];
-const EXPENSE_CATEGORIES = ["Fuel", "Maintenance", "Food", "Tolls", "Insurance", "EMI", "Phone", "Subscription", "Other"];
+const EXPENSE_CATEGORIES = ["Fuel", "Maintenance", "Food", "Tolls", "Insurance", "EMI", "Rent", "Bills", "Phone", "Subscription", "Other"];
 
 function readPref(key: string, fallback: string): string {
   try {
