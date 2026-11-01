@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -9,40 +9,42 @@ import { db } from "@/lib/backend";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { ThemeProvider } from "next-themes";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { lazyWithRetry } from "@/lib/lazyWithRetry";
 
-const HomePage = lazy(() => import("./pages/HomePage"));
-const TransactionsPage = lazy(() => import("./pages/TransactionsPage"));
-const AddTransactionPage = lazy(() => import("./pages/AddTransactionPage"));
-const DebtsPage = lazy(() => import("./pages/DebtsPage"));
-const GoalsPage = lazy(() => import("./pages/GoalsPage"));
-const HealthPage = lazy(() => import("./pages/HealthPage"));
-const AssistantPage = lazy(() => import("./pages/AssistantPage"));
-const MorePage = lazy(() => import("./pages/MorePage"));
-const CarChecksPage = lazy(() => import("./pages/CarChecksPage"));
-const RemindersPage = lazy(() => import("./pages/RemindersPage"));
-const NotesPage = lazy(() => import("./pages/NotesPage"));
-const SOSPage = lazy(() => import("./pages/SOSPage"));
-const CarSosPage = lazy(() => import("./pages/CarSosPage"));
-const SettingsPage = lazy(() => import("./pages/SettingsPage"));
-const DataBackupPage = lazy(() => import("./pages/DataBackupPage"));
-const FinanceAIPage = lazy(() => import("./pages/FinanceAIPage"));
-const PrivacyPolicyPage = lazy(() => import("./pages/PrivacyPolicyPage"));
-const AuthPage = lazy(() => import("./pages/AuthPage"));
-const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
-const NotFound = lazy(() => import("./pages/NotFound"));
-const AdminLayout = lazy(() => import("./pages/admin/AdminLayout"));
-const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
-const AdminPostsPage = lazy(() => import("./pages/admin/AdminPostsPage"));
-const AdminCategoriesPage = lazy(() => import("./pages/admin/AdminCategoriesPage"));
-const AdminUsersPage = lazy(() => import("./pages/admin/AdminUsersPage"));
-const AdminPlansPage = lazy(() => import("./pages/admin/AdminPlansPage"));
-const AdminOffersPage = lazy(() => import("./pages/admin/AdminOffersPage"));
-const AdminMechanicsPage = lazy(() => import("./pages/admin/AdminMechanicsPage"));
-const AdminSosPage = lazy(() => import("./pages/admin/AdminSosPage"));
-const AdminInsuranceLeadsPage = lazy(() => import("./pages/admin/AdminInsuranceLeadsPage"));
-const AdminAnnouncementsPage = lazy(() => import("./pages/admin/AdminAnnouncementsPage"));
-const InsuranceLeadPage = lazy(() => import("./pages/InsuranceLeadPage"));
-const BudgetsPage = lazy(() => import("./pages/BudgetsPage"));
+const HomePage = lazyWithRetry(() => import("./pages/HomePage"));
+const TransactionsPage = lazyWithRetry(() => import("./pages/TransactionsPage"));
+const AddTransactionPage = lazyWithRetry(() => import("./pages/AddTransactionPage"));
+const DebtsPage = lazyWithRetry(() => import("./pages/DebtsPage"));
+const GoalsPage = lazyWithRetry(() => import("./pages/GoalsPage"));
+const HealthPage = lazyWithRetry(() => import("./pages/HealthPage"));
+const AssistantPage = lazyWithRetry(() => import("./pages/AssistantPage"));
+const MorePage = lazyWithRetry(() => import("./pages/MorePage"));
+const CarChecksPage = lazyWithRetry(() => import("./pages/CarChecksPage"));
+const RemindersPage = lazyWithRetry(() => import("./pages/RemindersPage"));
+const NotesPage = lazyWithRetry(() => import("./pages/NotesPage"));
+const SOSPage = lazyWithRetry(() => import("./pages/SOSPage"));
+const CarSosPage = lazyWithRetry(() => import("./pages/CarSosPage"));
+const SettingsPage = lazyWithRetry(() => import("./pages/SettingsPage"));
+const DataBackupPage = lazyWithRetry(() => import("./pages/DataBackupPage"));
+const FinanceAIPage = lazyWithRetry(() => import("./pages/FinanceAIPage"));
+const PrivacyPolicyPage = lazyWithRetry(() => import("./pages/PrivacyPolicyPage"));
+const AuthPage = lazyWithRetry(() => import("./pages/AuthPage"));
+const ResetPasswordPage = lazyWithRetry(() => import("./pages/ResetPasswordPage"));
+const NotFound = lazyWithRetry(() => import("./pages/NotFound"));
+const AdminLayout = lazyWithRetry(() => import("./pages/admin/AdminLayout"));
+const AdminDashboard = lazyWithRetry(() => import("./pages/admin/AdminDashboard"));
+const AdminPostsPage = lazyWithRetry(() => import("./pages/admin/AdminPostsPage"));
+const AdminCategoriesPage = lazyWithRetry(() => import("./pages/admin/AdminCategoriesPage"));
+const AdminUsersPage = lazyWithRetry(() => import("./pages/admin/AdminUsersPage"));
+const AdminPlansPage = lazyWithRetry(() => import("./pages/admin/AdminPlansPage"));
+const AdminOffersPage = lazyWithRetry(() => import("./pages/admin/AdminOffersPage"));
+const AdminMechanicsPage = lazyWithRetry(() => import("./pages/admin/AdminMechanicsPage"));
+const AdminSosPage = lazyWithRetry(() => import("./pages/admin/AdminSosPage"));
+const AdminInsuranceLeadsPage = lazyWithRetry(() => import("./pages/admin/AdminInsuranceLeadsPage"));
+const AdminAnnouncementsPage = lazyWithRetry(() => import("./pages/admin/AdminAnnouncementsPage"));
+const InsuranceLeadPage = lazyWithRetry(() => import("./pages/InsuranceLeadPage"));
+const BudgetsPage = lazyWithRetry(() => import("./pages/BudgetsPage"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -141,6 +143,7 @@ const App = () => (
             <Toaster />
             <Sonner />
             <BrowserRouter>
+              <ErrorBoundary>
               <Suspense fallback={<RouteLoader />}>
                 <Routes>
                   <Route path="/auth" element={<AuthPage />} />
@@ -183,6 +186,7 @@ const App = () => (
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               </Suspense>
+              </ErrorBoundary>
             </BrowserRouter>
           </TooltipProvider>
         </AuthProvider>
