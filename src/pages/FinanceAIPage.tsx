@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { Capacitor } from "@capacitor/core";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { BACKEND } from "@/lib/backend";
 import { callFinanceAiFunction } from "@/lib/ai";
+import { startNativeListening, speechLangFor, type NativeListenSession } from "@/lib/nativeSpeech";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -44,7 +46,7 @@ const SUGGESTED_PROMPTS = [
 
 export default function FinanceAIPage() {
   const { session } = useAuth();
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   // Per-account chat key: history must never leak across accounts sharing
   // one browser. Null until the session loads; the load effect below fills
   // messages once the key is known.
@@ -192,6 +194,35 @@ export default function FinanceAIPage() {
       setIsListening(false);
       return;
     }
+    // Android app: native speech-recognition plugin (the WebView's web
+    // Speech API fails with "not-allowed" there). Same flow as Assistant.
+    if (Capacitor.isNativePlatform()) {
+      let session: NativeListenSession | null = null;
+      let cancelled = false;
+      const handle = { stop: () => { cancelled = true; session?.stop(); } };
+      recognitionRef.current = handle;
+      setIsListening(true);
+      void startNativeListening({
+        lang: speechLangFor(language),
+        onPartial: (text) => setInput(text),
+        onEnd: (text) => {
+          if (recognitionRef.current === handle) recognitionRef.current = null;
+          setIsListening(false);
+          if (text) { setInput(""); send(text); }
+        },
+        onError: (error) => {
+          if (recognitionRef.current === handle) recognitionRef.current = null;
+          setIsListening(false);
+          if (error === "permission-denied") toast.error(t("ai.micPermissionDenied"), { duration: 10000 });
+          else if (error === "unavailable") toast.error(t("ai.speechUnavailableApp"));
+          else toast.error(t("ai.voiceError", { error }));
+        },
+      }).then((s) => {
+        session = s;
+        if (s && cancelled) s.stop();
+      });
+      return;
+    }
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) { toast.error(t("ai.voiceUnsupported")); return; }
     const recognition = new SpeechRecognition();
@@ -216,7 +247,7 @@ export default function FinanceAIPage() {
     recognitionRef.current = recognition;
     recognition.start();
     setIsListening(true);
-  }, [isListening, send]);
+  }, [isListening, send, language]);
 
   useEffect(() => () => { recognitionRef.current?.stop(); }, []);
 

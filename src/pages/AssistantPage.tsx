@@ -13,6 +13,7 @@ import { BACKEND } from "@/lib/backend";
 import { db } from "@/lib/backend";
 import { getTrialState } from "@/lib/trial";
 import { callChatFunction } from "@/lib/ai";
+import { startNativeListening, speechLangFor, type NativeListenSession } from "@/lib/nativeSpeech";
 
 const FinanceAIPage = lazy(() => import("./FinanceAIPage"));
 
@@ -125,7 +126,7 @@ function speakText(text: string): Promise<void> {
 
 // Production-verified browser voice handling.
 export default function AssistantPage() {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const { session } = useAuth();
   const [activeTab, setActiveTab] = useState<"assistant" | "finance">("assistant");
   const queryClient = useQueryClient();
@@ -388,16 +389,84 @@ export default function AssistantPage() {
   }, [input, isLoading, messages, session]);
 
   const startListening = useCallback(() => {
+    // Never listen while the AI is still speaking: the phone mic hears the
+    // speaker, so the AI's own words would come back as user input (echo
+    // loop). Mic dabane ka matlab hai "bolna band karo, meri suno".
+    stopSpeaking();
+
+    // What happens with the words once listening ends (web and native alike).
+    const handleHeard = (trimmed: string) => {
+      if (trimmed) {
+        const normalized = normalizeTranscript(trimmed);
+        // Echo guard: a long verbatim chunk of the last spoken reply is the
+        // AI's own voice leaking into the mic, not the user. Drop it instead
+        // of sending it back (which would loop forever).
+        const clean = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+        const cleanTx = clean(normalized);
+        const cleanSpoken = clean(lastSpokenRef.current);
+        if (cleanTx.length >= 40 && cleanSpoken.includes(cleanTx)) {
+          setInput("");
+          if (drivingModeRef.current) {
+            setTimeout(() => {
+              if (drivingModeRef.current && !isLoadingRef.current) {
+                startListening();
+              }
+            }, 500);
+          }
+          return;
+        }
+        setInput("");
+        send(normalized);
+      } else if (drivingModeRef.current) {
+        // No speech detected, restart listening in driving mode
+        setTimeout(() => {
+          if (drivingModeRef.current && !isLoadingRef.current) {
+            startListening();
+          }
+        }, 500);
+      }
+    };
+
+    // Android app: the WebView's web Speech API fails with "not-allowed"
+    // even when the phone allows the mic, so ask for the mic and listen
+    // through the native speech-recognition plugin (like native TTS above).
+    if (Capacitor.isNativePlatform()) {
+      let session: NativeListenSession | null = null;
+      let cancelled = false;
+      const handle = { stop: () => { cancelled = true; session?.stop(); } };
+      recognitionRef.current = handle;
+      setIsListening(true);
+      void startNativeListening({
+        lang: speechLangFor(language),
+        onPartial: (text) => setInput(text),
+        onEnd: (text) => {
+          if (recognitionRef.current === handle) recognitionRef.current = null;
+          setIsListening(false);
+          handleHeard(text);
+        },
+        onError: (error) => {
+          if (recognitionRef.current === handle) recognitionRef.current = null;
+          setIsListening(false);
+          if (error === "permission-denied") {
+            toast.error(t("ai.micPermissionDenied"), { duration: 10000 });
+          } else if (error === "unavailable") {
+            toast.error(t("ai.speechUnavailableApp"));
+          } else {
+            toast.error(t("ai.voiceError", { error }));
+          }
+        },
+      }).then((s) => {
+        session = s;
+        if (s && cancelled) s.stop();
+      });
+      return;
+    }
+
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       toast.error(t("ai.speechUnsupported"));
       return;
     }
-
-    // Never listen while the AI is still speaking: the phone mic hears the
-    // speaker, so the AI's own words would come back as user input (echo
-    // loop). Mic dabane ka matlab hai "bolna band karo, meri suno".
-    stopSpeaking();
 
     const recognition = new SpeechRecognition();
     recognition.lang = "hi-IN";
@@ -432,36 +501,7 @@ export default function AssistantPage() {
     recognition.onend = () => {
       if (silenceTimer) clearTimeout(silenceTimer);
       setIsListening(false);
-      const trimmed = finalTranscript.trim();
-      if (trimmed) {
-        const normalized = normalizeTranscript(trimmed);
-        // Echo guard: a long verbatim chunk of the last spoken reply is the
-        // AI's own voice leaking into the mic, not the user. Drop it instead
-        // of sending it back (which would loop forever).
-        const clean = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
-        const cleanTx = clean(normalized);
-        const cleanSpoken = clean(lastSpokenRef.current);
-        if (cleanTx.length >= 40 && cleanSpoken.includes(cleanTx)) {
-          setInput("");
-          if (drivingModeRef.current) {
-            setTimeout(() => {
-              if (drivingModeRef.current && !isLoadingRef.current) {
-                startListening();
-              }
-            }, 500);
-          }
-          return;
-        }
-        setInput("");
-        send(normalized);
-      } else if (drivingModeRef.current) {
-        // No speech detected, restart listening in driving mode
-        setTimeout(() => {
-          if (drivingModeRef.current && !isLoadingRef.current) {
-            startListening();
-          }
-        }, 500);
-      }
+      handleHeard(finalTranscript.trim());
     };
 
     recognition.onerror = (event: Event & { error: string }) => {
@@ -484,7 +524,7 @@ export default function AssistantPage() {
     recognitionRef.current = recognition;
     recognition.start();
     setIsListening(true);
-  }, [send, normalizeTranscript]);
+  }, [send, normalizeTranscript, language]);
 
   const toggleVoice = useCallback(() => {
     if (isListening) {
