@@ -140,10 +140,14 @@ export default function RecurringExpenses() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+    if (!name.trim()) {
+      toast({ title: t("form.checkInput"), description: t("form.nameRequired"), variant: "destructive" });
+      return;
+    }
     setSaving(true);
 
     const amt = parseFloat(amount);
-    if (!Number.isFinite(amt) || amt < 0) {
+    if (!Number.isFinite(amt) || amt <= 0) {
       toast({ title: t("form.checkInput"), description: t("form.amountPositive"), variant: "destructive" });
       setSaving(false);
       return;
@@ -273,7 +277,7 @@ export default function RecurringExpenses() {
             <DialogHeader>
               <DialogTitle>{editing ? t("recurring.editBill") : t("recurring.addRecurringBill")}</DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSave} className="space-y-4">
+            <form noValidate onSubmit={handleSave} className="space-y-4">
               <div className="space-y-2">
                 <Label>{t("recurring.name")}</Label>
                 <Input

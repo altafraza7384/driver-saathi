@@ -99,16 +99,26 @@ export default function DebtsPage() {
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+    // noValidate form: say what is missing instead of doing nothing.
+    if (!name.trim()) {
+      toast({ title: t("form.checkInput"), description: t("form.nameRequired"), variant: "destructive" });
+      return;
+    }
     setSaving(true);
 
     const p = parseFloat(principal);
     if (!Number.isFinite(p) || p <= 0) {
-      toast({ title: "Error", description: "Please enter a valid principal amount.", variant: "destructive" });
+      toast({ title: t("form.checkInput"), description: t("form.amountPositive"), variant: "destructive" });
       setSaving(false);
       return;
     }
     const r = parseFloat(rate) || 0;
     const m = parseInt(tenure) || 12;
+    if (r < 0 || r > 100 || m <= 0) {
+      toast({ title: t("form.checkInput"), description: t("form.rateTenureInvalid"), variant: "destructive" });
+      setSaving(false);
+      return;
+    }
     const calculatedEmi = calculateEMI(p, r, m);
     const parsedCustom = parseFloat(customEmi);
     // A custom EMI must be positive: a negative/zero custom EMI used to
@@ -140,7 +150,7 @@ export default function DebtsPage() {
     if (error) {
       toast({ title: "Error", description: friendlyErrorMessage(error), variant: "destructive" });
     } else {
-      toast({ title: "Loan added!" });
+      toast({ title: t("debt.loanAdded") });
       setShowAdd(false);
       setName(""); setPrincipal(""); setRate(""); setTenure(""); setNotifyDate(""); setNotifyTime(""); setCustomEmi("");
       invalidateDebtReaders();
@@ -162,7 +172,7 @@ export default function DebtsPage() {
     setSaving(true);
     const p = parseFloat(editPrincipal);
     if (!Number.isFinite(p) || p <= 0) {
-      toast({ title: "Error", description: "Please enter a valid principal amount.", variant: "destructive" });
+      toast({ title: t("form.checkInput"), description: t("form.amountPositive"), variant: "destructive" });
       setSaving(false);
       return;
     }
@@ -188,7 +198,7 @@ export default function DebtsPage() {
     if (error) {
       toast({ title: "Error", description: friendlyErrorMessage(error), variant: "destructive" });
     } else {
-      toast({ title: "Loan updated!" });
+      toast({ title: t("debt.loanUpdated") });
       setEditDebt(null);
       invalidateDebtReaders();
       fetchDebts();
@@ -203,7 +213,7 @@ export default function DebtsPage() {
 
     const amount = parseFloat(payAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
-      toast({ title: "Error", description: "Please enter a valid payment amount.", variant: "destructive" });
+      toast({ title: t("form.checkInput"), description: t("form.amountPositive"), variant: "destructive" });
       return;
     }
     // Block overpayment: paying more than the remaining balance used to
@@ -254,7 +264,7 @@ export default function DebtsPage() {
       toast({ title: "Error", description: friendlyErrorMessage(error), variant: "destructive" });
       return;
     }
-    toast({ title: "Loan deleted" });
+    toast({ title: t("debt.loanDeleted") });
     invalidateDebtReaders();
     fetchDebts();
   };
@@ -279,7 +289,7 @@ export default function DebtsPage() {
           </DialogTrigger>
           <DialogContent>
             <DialogHeader><DialogTitle>{t("debt.newLoan")}</DialogTitle></DialogHeader>
-            <form onSubmit={handleAdd} className="space-y-4">
+            <form noValidate onSubmit={handleAdd} className="space-y-4">
               <div className="space-y-2">
                 <Label>{t("debt.loanName")}</Label>
                 <Input placeholder="e.g. Car Loan" value={name} onChange={(e) => setName(e.target.value)} required />

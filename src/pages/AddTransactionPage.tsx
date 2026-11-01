@@ -46,12 +46,24 @@ export default function AddTransactionPage() {
       toast({ title: t("tx.missingFields"), variant: "destructive" });
       return;
     }
+    // Forms use noValidate (Android WebView shows no native validation
+    // bubble, so a negative amount used to do nothing at all — QA
+    // 2026-11-01); validate here and say why.
+    const parsedAmount = parseFloat(amount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      toast({ title: t("form.checkInput"), description: t("form.amountPositive"), variant: "destructive" });
+      return;
+    }
+    if (!date) {
+      toast({ title: t("tx.missingFields"), variant: "destructive" });
+      return;
+    }
     setLoading(true);
 
     const { error } = await db.from("transactions").insert({
       user_id: user.id,
       type,
-      amount: parseFloat(amount),
+      amount: parsedAmount,
       category,
       platform: platform || null,
       description: description || null,
@@ -102,7 +114,7 @@ export default function AddTransactionPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form noValidate onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label>{t("common.amount")} (₹)</Label>
               <Input

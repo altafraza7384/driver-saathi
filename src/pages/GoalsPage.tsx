@@ -83,11 +83,16 @@ export default function GoalsPage() {
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+    // noValidate form: say what is missing instead of doing nothing.
+    if (!title.trim()) {
+      toast({ title: t("form.checkInput"), description: t("form.nameRequired"), variant: "destructive" });
+      return;
+    }
     setSaving(true);
 
     const targetAmt = parseFloat(target);
     if (!Number.isFinite(targetAmt) || targetAmt <= 0) {
-      toast({ title: "Error", description: "Please enter a valid target amount.", variant: "destructive" });
+      toast({ title: t("form.checkInput"), description: t("form.amountPositive"), variant: "destructive" });
       setSaving(false);
       return;
     }
@@ -106,7 +111,7 @@ export default function GoalsPage() {
     if (error) {
       toast({ title: "Error", description: friendlyErrorMessage(error), variant: "destructive" });
     } else {
-      toast({ title: "Goal created! 🎯" });
+      toast({ title: t("goal.created") });
       setShowAdd(false);
       setTitle(""); setTarget(""); setDeadline(""); setNotifyDate(""); setNotifyTime("");
       invalidateGoalReaders();
@@ -127,7 +132,7 @@ export default function GoalsPage() {
     setSaving(true);
     const newTarget = parseFloat(editTarget);
     if (!Number.isFinite(newTarget) || newTarget <= 0) {
-      toast({ title: "Error", description: "Please enter a valid target amount.", variant: "destructive" });
+      toast({ title: t("form.checkInput"), description: t("form.amountPositive"), variant: "destructive" });
       setSaving(false);
       return;
     }
@@ -143,7 +148,7 @@ export default function GoalsPage() {
     if (error) {
       toast({ title: "Error", description: friendlyErrorMessage(error), variant: "destructive" });
     } else {
-      toast({ title: "Goal updated!" });
+      toast({ title: t("goal.updated") });
       setEditGoal(null);
       invalidateGoalReaders();
       fetchGoals();
@@ -157,7 +162,7 @@ export default function GoalsPage() {
 
     const amount = parseFloat(addAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
-      toast({ title: "Error", description: "Please enter a valid amount.", variant: "destructive" });
+      toast({ title: t("form.checkInput"), description: t("form.amountPositive"), variant: "destructive" });
       return;
     }
     // Disable while saving: a double-tap used to compute both writes
@@ -217,7 +222,7 @@ export default function GoalsPage() {
           </DialogTrigger>
           <DialogContent>
             <DialogHeader><DialogTitle>{t("goal.createGoal")}</DialogTitle></DialogHeader>
-            <form onSubmit={handleAdd} className="space-y-4">
+            <form noValidate onSubmit={handleAdd} className="space-y-4">
               <div className="space-y-2">
                 <Label>{t("goal.goalTitle")}</Label>
                 <Input placeholder="e.g. New Tires" value={title} onChange={(e) => setTitle(e.target.value)} required />

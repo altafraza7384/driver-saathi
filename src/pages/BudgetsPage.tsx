@@ -117,7 +117,11 @@ export default function BudgetsPage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !category) return;
+    if (!user) return;
+    if (!category) {
+      toast({ title: t("form.checkInput"), description: t("budget.category"), variant: "destructive" });
+      return;
+    }
     const amt = parseFloat(limit);
     if (!Number.isFinite(amt) || amt <= 0) {
       toast({ title: "Error", description: t("budget.invalidAmount"), variant: "destructive" });
@@ -240,7 +244,7 @@ export default function BudgetsPage() {
           </DialogTrigger>
           <DialogContent>
             <DialogHeader><DialogTitle>{editing ? t("budget.editBudget") : t("budget.addBudget")}</DialogTitle></DialogHeader>
-            <form onSubmit={handleSave} className="space-y-4">
+            <form noValidate onSubmit={handleSave} className="space-y-4">
               <div className="space-y-2">
                 <Label>{t("budget.category")}</Label>
                 <Select value={category} onValueChange={setCategory} disabled={!!editing}>
