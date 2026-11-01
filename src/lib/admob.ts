@@ -37,7 +37,21 @@ export async function showBannerAd(): Promise<void> {
     console.log('AdMob banner loaded');
   });
 
-  await AdMob.showBanner(options);
+  // Previously an AdMob failure here rejected unhandled and the banner
+  // silently never appeared. Catch it, retry once after a delay (the
+  // Mobile Ads SDK can be slow to initialise), then give up loudly.
+  try {
+    await AdMob.showBanner(options);
+  } catch (e) {
+    console.warn('AdMob showBanner failed, retrying once', e);
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+    if (!initialized) await initAdMob();
+    try {
+      await AdMob.showBanner(options);
+    } catch (e2) {
+      console.warn('AdMob showBanner retry failed', e2);
+    }
+  }
 }
 
 export async function hideBannerAd(): Promise<void> {
