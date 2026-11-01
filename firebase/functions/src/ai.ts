@@ -40,6 +40,34 @@ async function gemini(system: string, messages: z.infer<typeof Msgs>, key: strin
   throw new HttpsError("internal", "AI provider error");
 }
 
+// Language hint (2026-11-01): the static "reply in the user's language" rule
+// was ignored when the persona ("Hinglish assistant") pulled the other way —
+// English messages got Hindi replies in a live test. So each call now carries
+// an explicit first-line hint computed from the user's last substantive
+// message. Bare confirmations like "Yes"/"Haa" are skipped: they carry no
+// language signal and would flip an English conversation to Hindi.
+// Script ranges are \u escapes (ASCII-safe); no literal non-ASCII here.
+function languageHint(messages: z.infer<typeof Msgs>): string {
+  const bare = /^(yes|haan|haa|han|ok|okay|save karo|theek hai|barabar)\.?$/i;
+  let text = "";
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === "user" && !bare.test(messages[i].content.trim())) { text = messages[i].content; break; }
+  }
+  if (!text) {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "user") { text = messages[i].content; break; }
+    }
+  }
+  let lang: string;
+  if (/[\u0980-\u09FF]/.test(text)) lang = "Bengali (Bengali script)";
+  else if (/[\u0C80-\u0CFF]/.test(text)) lang = "Kannada (Kannada script)";
+  else if (/[\u0900-\u097F]/.test(text)) lang = "the user's exact Devanagari language (Marathi if the message uses Marathi words, otherwise Hindi)";
+  else if (/\b(mala|aahe|ahe|pahije|tumhi|tula|majha|maza|kuthe|kasa|kashi)\b/i.test(text)) lang = "Marathi (Roman script)";
+  else if (/\b(aaj|maine|meri|mera|kamai|kharcha|rupaye|rupay|paisa|haan|nahi|karo|karna|batao|kitna|kal|parso)\b/i.test(text)) lang = "Hindi (Roman script)";
+  else lang = "English";
+  return `Language rule (highest priority): the user's message is in ${lang}. Reply ONLY in that language and script. Do not switch to Hindi, Hinglish, or English unless that is the detected language. `;
+}
+
 export const financeAi = onCall({ secrets: [GROQ_API_KEY], region: "asia-south1", timeoutSeconds: 300 }, async (req) => {
   const uid = requireUser(req);
   const parsed = Msgs.safeParse(req.data?.messages);
@@ -57,7 +85,7 @@ export const financeAi = onCall({ secrets: [GROQ_API_KEY], region: "asia-south1"
   const t = tx.docs.map((d) => d.data());
   const income = t.filter((x) => x.type === "income").reduce((s, x) => s + Number(x.amount), 0);
   const expense = t.filter((x) => x.type === "expense").reduce((s, x) => s + Number(x.amount), 0);
-  const system = `You are Driver Saathi's own Personal Finance AI for Indian gig drivers. If asked who made you or who your owner is, say you are Driver Saathi's assistant — never say you are OpenAI, ChatGPT, or any other company's product. Use ₹, give specific advice from this data.
+  const system = `${languageHint(parsed.data)}You are Driver Saathi's own Personal Finance AI for Indian gig drivers. If asked who made you or who your owner is, say you are Driver Saathi's assistant — never say you are OpenAI, ChatGPT, or any other company's product. Use ₹, give specific advice from this data.
 Income this month: ₹${income.toFixed(0)}; Expenses: ₹${expense.toFixed(0)}; Net: ₹${(income - expense).toFixed(0)}
 Debts: ${debts.docs.map((d) => `${d.get("name")} ₹${Number(d.get("principal")) - Number(d.get("total_paid"))} @${d.get("interest_rate")}%`).join("; ") || "none"}
 Goals: ${goals.docs.map((g) => `${g.get("title")} ₹${g.get("saved_amount")}/${g.get("target_amount")}`).join("; ") || "none"}
@@ -92,7 +120,7 @@ export const chat = onCall({ secrets: [GROQ_API_KEY], region: "asia-south1" }, a
   if (!parsed.success) throw new HttpsError("invalid-argument", "Invalid messages");
   if (!(await consumeQuota(uid, "chat", (await getAiLimits(uid)).chat))) throw new HttpsError("resource-exhausted", "AI usage limit reached");
 
-  const json = await gemini("You are Driver Saathi, a Hinglish assistant for Indian drivers. You are Driver Saathi's own assistant: if asked who made you or who your owner is, say you are Driver Saathi's assistant — never say you are OpenAI, ChatGPT, or any other company's product. Use tools to save data the user mentions, but NEVER save on the first mention: before calling any save tool, first reply with exactly what you understood — amount, income or expense, category, and date — and ask the user to confirm it. If the user did not name a category, propose the most sensible one yourself in that reply (for driving income, 'Ride Earnings') so that a plain confirmation covers every field — never present a confirmation with the category missing. Call a save tool ONLY in a later message after the user confirms (for example 'haan' or 'save karo'). A plain 'yes', 'haan', or 'save karo' confirms ONLY the proposal in your immediately preceding message: if that message was not asking for confirmation (for example it already said an entry was saved), there is nothing to confirm — do NOT call any save tool, ask the user what they want to record instead. If you flagged an entry as already saved and the user confirms it is a separate entry, call the save tool again with force set to true. If the user's message is garbled, repetitive, or unclear, do NOT guess what they meant — ask them instead of saving. Never save a transaction, note, or reminder from a message the user has not confirmed. Reply in plain text only: never use #, *, |, backticks, tables, or any markdown formatting. Reply in the same language and script as the user's message: Marathi in Marathi, Hindi in Hindi, English in English, Bengali in Bengali, Kannada in Kannada. Never answer a Marathi user in Hindi or English.",
+  const json = await gemini(languageHint(parsed.data) + "You are Driver Saathi, a Hinglish assistant for Indian drivers. You are Driver Saathi's own assistant: if asked who made you or who your owner is, say you are Driver Saathi's assistant — never say you are OpenAI, ChatGPT, or any other company's product. Use tools to save data the user mentions, but NEVER save on the first mention: before calling any save tool, first reply with exactly what you understood — amount, income or expense, category, and date — and ask the user to confirm it. If the user did not name a category, propose the most sensible one yourself in that reply (for driving income, 'Ride Earnings') so that a plain confirmation covers every field — never present a confirmation with the category missing. Call a save tool ONLY in a later message after the user confirms (for example 'haan' or 'save karo'). A plain 'yes', 'haan', or 'save karo' confirms ONLY the proposal in your immediately preceding message: if that message was not asking for confirmation (for example it already said an entry was saved), there is nothing to confirm — do NOT call any save tool, ask the user what they want to record instead. If you flagged an entry as already saved and the user confirms it is a separate entry, call the save tool again with force set to true. If the user's message is garbled, repetitive, or unclear, do NOT guess what they meant — ask them instead of saving. Never save a transaction, note, or reminder from a message the user has not confirmed. Reply in plain text only: never use #, *, |, backticks, tables, or any markdown formatting. Reply in the same language and script as the user's message: Marathi in Marathi, Hindi in Hindi, English in English, Bengali in Bengali, Kannada in Kannada. Never answer a Marathi user in Hindi or English.",
     parsed.data, GROQ_API_KEY.value(), TOOLS);
   const msg = json.choices?.[0]?.message ?? {};
   const base = db.collection("users").doc(uid);
@@ -156,7 +184,7 @@ export const chat = onCall({ secrets: [GROQ_API_KEY], region: "asia-south1" }, a
     // The single-turn tool flow never shows the model a tool result, so ask
     // again through a second model call — it phrases the question in the
     // user's own language instead of leaking a hardcoded message.
-    const follow = await gemini("You are Driver Saathi's own assistant. Reply in plain text only: never use #, *, |, backticks, tables, or any markdown formatting. Reply in the same language and script as the user's messages.",
+    const follow = await gemini(languageHint(parsed.data) + "You are Driver Saathi's own assistant. Reply in plain text only: never use #, *, |, backticks, tables, or any markdown formatting. Reply in the same language and script as the user's messages.",
       [...parsed.data, { role: "user" as const, content: `System note: the user just confirmed, but this was already saved a few minutes ago: ${duplicateNote}. Ask the user whether this is a separate new entry or the same one. Do not save anything yet.` }],
       GROQ_API_KEY.value());
     return { content: follow.choices?.[0]?.message?.content || actions.join("\n") || "Done!", actions };
