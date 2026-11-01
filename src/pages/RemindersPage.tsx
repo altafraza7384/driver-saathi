@@ -5,6 +5,7 @@ import { friendlyErrorMessage } from "@/lib/errors";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
 import { useNavigate } from "react-router-dom";
+import { ConfirmDelete } from "@/components/ConfirmDelete";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -128,7 +129,7 @@ export default function RemindersPage() {
                       <button onClick={() => toggleMutation.mutate({ id: r.id, completed: true })} className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-warning text-warning hover:bg-warning/10"><Bell className="h-4 w-4" /></button>
                       <div><p className="text-sm font-medium">{r.title}</p><p className="text-xs text-muted-foreground">{format(parseISO(r.reminder_date), "dd MMM yyyy")} • <span className="capitalize">{categoryLabel(r.category)}</span></p></div>
                     </div>
-                    <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(r.id)}><Trash2 className="h-4 w-4 text-muted-foreground" /></Button>
+                    <ConfirmDelete onConfirm={() => deleteMutation.mutate(r.id)} itemName={r.title}><Button variant="ghost" size="icon" aria-label={t("common.delete")}><Trash2 className="h-4 w-4 text-muted-foreground" /></Button></ConfirmDelete>
                   </CardContent></Card>
                 ))}
               </div>
@@ -144,7 +145,7 @@ export default function RemindersPage() {
                       <button onClick={() => toggleMutation.mutate({ id: r.id, completed: false })} className="flex h-8 w-8 items-center justify-center rounded-full bg-success/10 text-success"><Check className="h-4 w-4" /></button>
                       <div><p className="text-sm font-medium line-through">{r.title}</p><p className="text-xs text-muted-foreground">{r.reminder_date}</p></div>
                     </div>
-                    <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(r.id)}><Trash2 className="h-4 w-4 text-muted-foreground" /></Button>
+                    <ConfirmDelete onConfirm={() => deleteMutation.mutate(r.id)} itemName={r.title}><Button variant="ghost" size="icon" aria-label={t("common.delete")}><Trash2 className="h-4 w-4 text-muted-foreground" /></Button></ConfirmDelete>
                   </CardContent></Card>
                 ))}
               </div>

@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
 import { formatINR, toAmount } from "@/lib/currency";
 import { friendlyErrorMessage } from "@/lib/errors";
+import { ConfirmDelete } from "@/components/ConfirmDelete";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -92,8 +93,9 @@ export default function TransactionsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    await db.from("transactions").delete().eq("id", id);
-    toast({ title: t("common.delete") });
+    const { error } = await db.from("transactions").delete().eq("id", id);
+    if (error) { toast({ title: t("auth.error"), description: friendlyErrorMessage(error), variant: "destructive" }); return; }
+    toast({ title: t("confirm.deleted") });
     invalidateHomeTransactions();
     fetchTransactions(); fetchWeeklyData(); fetchTotals();
   };
@@ -235,9 +237,11 @@ export default function TransactionsPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <span className={`text-sm font-bold ${tx.type === "income" ? "text-success" : "text-destructive"}`}>{tx.type === "income" ? "+" : "-"}{formatINR(toAmount(tx.amount))}</span>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(tx)}><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(tx.id)}><Trash2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                    <span className={`mr-1 text-sm font-bold ${tx.type === "income" ? "text-success" : "text-destructive"}`}>{tx.type === "income" ? "+" : "-"}{formatINR(toAmount(tx.amount))}</span>
+                    <Button variant="ghost" size="icon" className="h-9 w-9" aria-label={t("common.edit")} onClick={() => openEdit(tx)}><Pencil className="h-4 w-4 text-muted-foreground" /></Button>
+                    <ConfirmDelete onConfirm={() => handleDelete(tx.id)} itemName={`${tx.category} ${formatINR(toAmount(tx.amount))}`}>
+                      <Button variant="ghost" size="icon" className="ml-2 h-9 w-9" aria-label={t("common.delete")}><Trash2 className="h-4 w-4 text-destructive/80" /></Button>
+                    </ConfirmDelete>
                   </div>
                 </CardContent>
               </Card>

@@ -5,6 +5,7 @@ import { formatINR, toAmount } from "@/lib/currency";
 import { localToday, currentMonth } from "@/lib/budgets";
 import { friendlyErrorMessage } from "@/lib/errors";
 import { useI18n } from "@/lib/i18n";
+import { ConfirmDelete } from "@/components/ConfirmDelete";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -367,13 +368,15 @@ export default function RecurringExpenses() {
                         </p>
                       </div>
                     </div>
-                    <div className="flex gap-0 shrink-0">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(it)}>
-                        <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                    <div className="flex gap-2 shrink-0">
+                      <Button variant="ghost" size="icon" className="h-9 w-9" aria-label={t("common.edit")} onClick={() => openEdit(it)}>
+                        <Pencil className="h-4 w-4 text-muted-foreground" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(it.id)}>
-                        <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                      </Button>
+                      <ConfirmDelete onConfirm={() => handleDelete(it.id)} itemName={it.name}>
+                        <Button variant="ghost" size="icon" className="h-9 w-9" aria-label={t("common.delete")}>
+                          <Trash2 className="h-4 w-4 text-destructive/80" />
+                        </Button>
+                      </ConfirmDelete>
                     </div>
                   </div>
                   <div className="flex items-center justify-between">

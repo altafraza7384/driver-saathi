@@ -516,6 +516,9 @@ const translations: Record<Language, Record<string, string>> = {
     "blocked.title": "Account Blocked",
     "blocked.message": "Your account has been blocked by the admin. Please contact support if you think this is a mistake.",
     "more.adminPanel": "Admin Panel",
+    "confirm.deleteTitle": "Delete this?",
+    "confirm.deleteDesc": "This cannot be undone.",
+    "confirm.deleted": "Deleted",
   },
   hi: {
     "nav.home": "होम",
@@ -1007,6 +1010,9 @@ const translations: Record<Language, Record<string, string>> = {
     "blocked.title": "खाता ब्लॉक है",
     "blocked.message": "आपका खाता एडमिन द्वारा ब्लॉक कर दिया गया है। अगर आपको लगता है कि यह गलती है तो सपोर्ट से संपर्क करें।",
     "more.adminPanel": "एडमिन पैनल",
+    "confirm.deleteTitle": "इसे हटाएं?",
+    "confirm.deleteDesc": "यह वापस नहीं लाया जा सकेगा।",
+    "confirm.deleted": "हटा दिया गया",
   },
   mr: {
     "nav.home": "होम",
@@ -1497,6 +1503,9 @@ const translations: Record<Language, Record<string, string>> = {
     "blocked.title": "खाते ब्लॉक केले आहे",
     "blocked.message": "तुमचे खाते अॅडमिनने ब्लॉक केले आहे. ही चूक वाटत असल्यास सपोर्टशी संपर्क साधा.",
     "more.adminPanel": "अॅडमिन पॅनेल",
+    "confirm.deleteTitle": "हे हटवायचे?",
+    "confirm.deleteDesc": "हे परत आणता येणार नाही.",
+    "confirm.deleted": "हटवले",
   },
   bn: {
     // Nav
@@ -2003,6 +2012,9 @@ const translations: Record<Language, Record<string, string>> = {
     "blocked.title": "অ্যাকাউন্ট ব্লক করা হয়েছে",
     "blocked.message": "আপনার অ্যাকাউন্ট অ্যাডমিন ব্লক করেছেন। এটি ভুল মনে হলে সাপোর্টের সঙ্গে যোগাযোগ করুন।",
     "more.adminPanel": "অ্যাডমিন প্যানেল",
+    "confirm.deleteTitle": "এটি মুছবেন?",
+    "confirm.deleteDesc": "এটি আর ফেরানো যাবে না।",
+    "confirm.deleted": "মুছে ফেলা হয়েছে",
   },
   kn: {
     "nav.home": "ಮುಖಪುಟ",
@@ -2493,6 +2505,9 @@ const translations: Record<Language, Record<string, string>> = {
     "blocked.title": "ಖಾತೆಯನ್ನು ನಿರ್ಬಂಧಿಸಲಾಗಿದೆ",
     "blocked.message": "ನಿಮ್ಮ ಖಾತೆಯನ್ನು ನಿರ್ವಾಹಕರು ನಿರ್ಬಂಧಿಸಿದ್ದಾರೆ. ಇದು ತಪ್ಪು ಎಂದು ಭಾವಿಸಿದರೆ ಬೆಂಬಲವನ್ನು ಸಂಪರ್ಕಿಸಿ.",
     "more.adminPanel": "ನಿರ್ವಾಹಕ ಫಲಕ",
+    "confirm.deleteTitle": "ಇದನ್ನು ಅಳಿಸಬೇಕೆ?",
+    "confirm.deleteDesc": "ಇದನ್ನು ಮರಳಿ ತರಲು ಸಾಧ್ಯವಿಲ್ಲ.",
+    "confirm.deleted": "ಅಳಿಸಲಾಗಿದೆ",
   },
 };
 

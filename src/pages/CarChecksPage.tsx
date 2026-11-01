@@ -5,6 +5,7 @@ import { friendlyErrorMessage } from "@/lib/errors";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
 import { formatINR, toAmount } from "@/lib/currency";
+import { ConfirmDelete } from "@/components/ConfirmDelete";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -315,7 +316,7 @@ export default function CarChecksPage() {
                         <p className="text-xs text-muted-foreground">{c.check_date ? format(parseISO(c.check_date), "dd MMM yyyy") : "—"}{toAmount(c.cost) ? ` • ${formatINR(toAmount(c.cost))}` : ""}</p>
                       </div>
                     </div>
-                    <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(c.id)}><Trash2 className="h-4 w-4 text-muted-foreground" /></Button>
+                    <ConfirmDelete onConfirm={() => deleteMutation.mutate(c.id)} itemName={c.check_type}><Button variant="ghost" size="icon" aria-label={t("common.delete")}><Trash2 className="h-4 w-4 text-muted-foreground" /></Button></ConfirmDelete>
                   </CardContent>
                 </Card>
               ))}
@@ -380,8 +381,8 @@ export default function CarChecksPage() {
                         </div>
                       </div>
                       <div className="flex gap-0.5">
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditDoc(doc)}><Pencil className="h-4 w-4 text-muted-foreground" /></Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => deleteDocMutation.mutate(doc.id)}><Trash2 className="h-4 w-4 text-muted-foreground" /></Button>
+                        <Button variant="ghost" size="icon" className="mr-1 h-9 w-9" aria-label={t("common.edit")} onClick={() => openEditDoc(doc)}><Pencil className="h-4 w-4 text-muted-foreground" /></Button>
+                        <ConfirmDelete onConfirm={() => deleteDocMutation.mutate(doc.id)} itemName={doc.document_name}><Button variant="ghost" size="icon" className="h-9 w-9" aria-label={t("common.delete")}><Trash2 className="h-4 w-4 text-muted-foreground" /></Button></ConfirmDelete>
                       </div>
                     </CardContent>
                   </Card>

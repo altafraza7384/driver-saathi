@@ -5,6 +5,7 @@ import { db } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
 import { formatINR, toAmount, clampPercent } from "@/lib/currency";
 import { friendlyErrorMessage } from "@/lib/errors";
+import { ConfirmDelete } from "@/components/ConfirmDelete";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -378,13 +379,15 @@ export default function DebtsPage() {
                           <p className="text-xs text-muted-foreground">{toAmount(debt.interest_rate)}% • {toAmount(debt.tenure_months)} months</p>
                         </div>
                       </div>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(debt)}>
+                      <div className="flex gap-2">
+                        <Button variant="ghost" size="icon" className="h-9 w-9" aria-label={t("common.edit")} onClick={() => openEdit(debt)}>
                           <Pencil className="h-4 w-4 text-muted-foreground" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDelete(debt.id)}>
-                          <Trash2 className="h-4 w-4 text-muted-foreground" />
-                        </Button>
+                        <ConfirmDelete onConfirm={() => handleDelete(debt.id)} itemName={debt.name}>
+                          <Button variant="ghost" size="icon" className="h-9 w-9" aria-label={t("common.delete")}>
+                            <Trash2 className="h-4 w-4 text-destructive/80" />
+                          </Button>
+                        </ConfirmDelete>
                       </div>
                     </div>
                     <div className="flex justify-between text-xs">
