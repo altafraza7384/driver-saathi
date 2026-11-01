@@ -8,68 +8,14 @@ import {
   type AdMobBannerSize,
   type AdMobError,
 } from '@capacitor-community/admob';
+import { DEBUG_BUILD, debugLog } from './debugOverlay';
 
 const ADMOB_BANNER_ID = 'ca-app-pub-1994214977986364/7524617781';
 
-/**
- * Diagnostic overlay for test builds only. Build with VITE_ADMOB_DEBUG=1 to
- * get a small on-screen log of every AdMob step (init, request, loaded,
- * failed + error code). Off by default: production builds never show it.
- */
-const ADMOB_DEBUG = import.meta.env.VITE_ADMOB_DEBUG === '1';
-
-const debugLines: string[] = [];
-
 function adLog(message: string, isError = false): void {
-  // Always reaches logcat (tag "Capacitor/Console") so adb users can see it too.
   if (isError) console.warn(`[AdMob] ${message}`);
   else console.log(`[AdMob] ${message}`);
-  if (!ADMOB_DEBUG || typeof document === 'undefined') return;
-
-  const t = new Date();
-  const stamp = `${String(t.getMinutes()).padStart(2, '0')}:${String(t.getSeconds()).padStart(2, '0')}`;
-  debugLines.push(`${stamp} ${isError ? '❌ ' : ''}${message}`);
-  while (debugLines.length > 8) debugLines.shift();
-
-  let box = document.getElementById('admob-debug');
-  if (!box) {
-    box = document.createElement('div');
-    box.id = 'admob-debug';
-    box.setAttribute(
-      'style',
-      [
-        'position:fixed',
-        'top:calc(env(safe-area-inset-top, 0px) + 4px)',
-        'left:4px',
-        'right:4px',
-        'z-index:2147483647',
-        'background:rgba(0,0,0,0.82)',
-        'color:#7CFC00',
-        'font:11px/1.35 monospace',
-        'padding:6px 8px',
-        'border-radius:6px',
-        'white-space:pre-wrap',
-        'word-break:break-word',
-        'pointer-events:auto',
-      ].join(';'),
-    );
-    // Tap to collapse/expand so it never blocks the app while testing.
-    box.addEventListener('click', () => {
-      box!.dataset.collapsed = box!.dataset.collapsed === '1' ? '0' : '1';
-      render();
-    });
-    document.body.appendChild(box);
-  }
-  render();
-
-  function render() {
-    const el = document.getElementById('admob-debug');
-    if (!el) return;
-    const collapsed = el.dataset.collapsed === '1';
-    el.textContent = collapsed
-      ? `AdMob: ${debugLines[debugLines.length - 1] ?? ''} (tap)`
-      : `AdMob debug (tap to hide)\n${debugLines.join('\n')}`;
-  }
+  debugLog(`AdMob: ${message}`, isError);
 }
 
 function errText(e: unknown): string {
@@ -191,5 +137,5 @@ export function isNative(): boolean {
 
 /** Test builds only: lets AppLayout report that the deferred start fired. */
 export function adDebug(message: string): void {
-  if (ADMOB_DEBUG) adLog(message);
+  if (DEBUG_BUILD) adLog(message);
 }

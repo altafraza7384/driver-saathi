@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, lazy, Suspense } from "react";
+import { Capacitor } from "@capacitor/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
@@ -36,11 +37,48 @@ function stripMarkdown(text: string): string {
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 
-// Speak text aloud using browser TTS
+// Android's in-app WebView has NO window.speechSynthesis (it is undefined
+// there, unlike desktop/mobile Chrome). Every unguarded
+// window.speechSynthesis.cancel() threw "Cannot read properties of undefined
+// (reading 'cancel')"; the one in the unmount cleanup crashed the whole app
+// to the error screen whenever the user left this page in the APK
+// (2026-11-01). Always go through these helpers.
+function webTts(): SpeechSynthesis | null {
+  try {
+    const s = typeof window !== "undefined" ? window.speechSynthesis : undefined;
+    return s && typeof s.cancel === "function" ? s : null;
+  } catch {
+    return null;
+  }
+}
+
+function stopSpeaking(): void {
+  try { webTts()?.cancel(); } catch { /* ignore */ }
+  if (Capacitor.isNativePlatform()) {
+    import("@capacitor-community/text-to-speech")
+      .then(({ TextToSpeech }) => TextToSpeech.stop())
+      .catch(() => { /* plugin missing or nothing speaking */ });
+  }
+}
+
+// Native app: the WebView has no browser TTS, so use the native
+// text-to-speech plugin (already a dependency) for voice replies.
+async function speakNative(text: string, lang: string): Promise<void> {
+  try {
+    const { TextToSpeech } = await import("@capacitor-community/text-to-speech");
+    await TextToSpeech.stop().catch(() => undefined);
+    await TextToSpeech.speak({ text, lang, rate: 1.0, pitch: 1.0, volume: 1.0 });
+  } catch (e) {
+    console.warn("Native TTS failed:", e);
+  }
+}
+
+// Speak text aloud using browser TTS (or the native TTS plugin in the app)
 function speakText(text: string): Promise<void> {
   return new Promise((resolve) => {
-    if (!("speechSynthesis" in window)) { resolve(); return; }
-    window.speechSynthesis.cancel();
+    const synth = webTts();
+    if (!synth && !Capacitor.isNativePlatform()) { resolve(); return; }
+    try { synth?.cancel(); } catch { /* ignore */ }
 
     const cleanText = text
       .replace(/[\u{1F600}-\u{1F9FF}|\u{2600}-\u{26FF}|\u{2700}-\u{27BF}|\u{1F300}-\u{1F5FF}|\u{1F680}-\u{1F6FF}|\u{1F1E0}-\u{1F1FF}|\u{2702}-\u{27B0}|\u{FE0F}|\u{200D}]/gu, "")
@@ -50,7 +88,6 @@ function speakText(text: string): Promise<void> {
 
     if (!cleanText) { resolve(); return; }
 
-    const utterance = new SpeechSynthesisUtterance(cleanText);
     // Speak in the reply's own language, so a Marathi user hears Marathi,
     // not Hindi or English. Script detects Bengali/Kannada; Hindi and
     // Marathi share Devanagari, so Marathi marker words decide mr-IN.
@@ -64,18 +101,25 @@ function speakText(text: string): Promise<void> {
     else if (kannadaChars > cleanText.length * 0.2) lang = "kn-IN";
     else if (isMarathi) lang = "mr-IN";
     else if (hindiChars > cleanText.length * 0.2) lang = "hi-IN";
+
+    if (!synth) {
+      void speakNative(cleanText, lang).then(() => resolve());
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
     utterance.lang = lang;
     utterance.rate = 1.05;
     utterance.pitch = 1;
 
-    const voices = window.speechSynthesis.getVoices();
+    const voices = synth.getVoices();
     const langPrefix = lang.split("-")[0];
     const preferred = voices.find(v => v.lang === utterance.lang) || voices.find(v => v.lang.startsWith(langPrefix));
     if (preferred) utterance.voice = preferred;
 
     utterance.onend = () => resolve();
     utterance.onerror = () => resolve();
-    window.speechSynthesis.speak(utterance);
+    synth.speak(utterance);
   });
 }
 
@@ -353,7 +397,7 @@ export default function AssistantPage() {
     // Never listen while the AI is still speaking: the phone mic hears the
     // speaker, so the AI's own words would come back as user input (echo
     // loop). Mic dabane ka matlab hai "bolna band karo, meri suno".
-    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    stopSpeaking();
 
     const recognition = new SpeechRecognition();
     recognition.lang = "hi-IN";
@@ -457,7 +501,7 @@ export default function AssistantPage() {
       setDrivingMode(false);
       recognitionRef.current?.stop();
       setIsListening(false);
-      window.speechSynthesis.cancel();
+      stopSpeaking();
       toast(t("assistant.drivingOff"));
     } else {
       // Turn on driving mode
@@ -472,7 +516,7 @@ export default function AssistantPage() {
   useEffect(() => {
     return () => {
       recognitionRef.current?.stop();
-      window.speechSynthesis.cancel();
+      stopSpeaking();
     };
   }, []);
 
@@ -614,14 +658,14 @@ export default function AssistantPage() {
               size="icon"
               onClick={() => {
                 setSpeakEnabled(!speakEnabled);
-                if (speakEnabled) window.speechSynthesis.cancel();
+                if (speakEnabled) stopSpeaking();
               }}
               title={speakEnabled ? "Mute voice replies" : "Enable voice replies"}
             >
               {speakEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
             </Button>
             {messages.length > 0 && (
-              <Button variant="ghost" size="icon" onClick={() => { setMessages([]); window.speechSynthesis.cancel(); }}>
+              <Button variant="ghost" size="icon" onClick={() => { setMessages([]); stopSpeaking(); }}>
                 <Trash2 className="h-4 w-4" />
               </Button>
             )}
