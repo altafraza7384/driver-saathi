@@ -24,7 +24,7 @@ export default function SOSPage() {
   const [sosTriggered, setSosTriggered] = useState(false);
   const [form, setForm] = useState({ name: "", phone: "", relationship: "" });
 
-  const { data: contacts = [] } = useQuery({
+  const { data: contacts = [], isLoading: contactsLoading } = useQuery({
     queryKey: ["emergency_contacts"],
     queryFn: async () => { const { data, error } = await db.from("emergency_contacts").select("*").order("is_primary", { ascending: false }); if (error) throw error; return data; },
     enabled: !!user,
@@ -149,7 +149,9 @@ export default function SOSPage() {
         </Dialog>
       </div>
 
-      {contacts.length === 0 ? (
+      {contactsLoading ? (
+        <div className="flex justify-center py-6"><div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>
+      ) : contacts.length === 0 ? (
         <Card><CardContent className="p-6 text-center text-muted-foreground">{t("sos.noContacts")}</CardContent></Card>
       ) : (
         <div className="space-y-2">

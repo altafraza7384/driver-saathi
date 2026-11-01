@@ -25,6 +25,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import RecurringExpenses from "@/components/RecurringExpenses";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type Debt = {
   id: string;
@@ -338,13 +339,13 @@ export default function DebtsPage() {
         <Card className="bg-destructive/5 border-destructive/20">
           <CardContent className="p-3">
             <p className="text-xs text-muted-foreground">{t("debt.totalOutstanding")}</p>
-            <p className="text-lg font-bold text-destructive">{formatINR(totalLiability)}</p>
+            {loading ? <Skeleton className="mt-1 h-7 w-24" /> : <p className="text-lg font-bold text-destructive">{formatINR(totalLiability)}</p>}
           </CardContent>
         </Card>
         <Card className="bg-warning/5 border-warning/20">
           <CardContent className="p-3">
             <p className="text-xs text-muted-foreground">{t("debt.monthlyEmi")}</p>
-            <p className="text-lg font-bold text-warning">{formatINR(totalEMI)}</p>
+            {loading ? <Skeleton className="mt-1 h-7 w-24" /> : <p className="text-lg font-bold text-warning">{formatINR(totalEMI)}</p>}
           </CardContent>
         </Card>
       </div>

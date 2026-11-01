@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { formatINR, toAmount, clampPercent } from "@/lib/currency";
 import { friendlyErrorMessage } from "@/lib/errors";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -214,15 +215,15 @@ export default function BudgetsPage() {
       <div className="grid grid-cols-3 gap-2">
         <Card><CardContent className="p-3 text-center">
           <p className="text-xs text-muted-foreground">{t("budget.totalAllocated")}</p>
-          <p className="font-bold">{formatINR(totalAllocated)}</p>
+          {loading ? <Skeleton className="mx-auto mt-1 h-5 w-14" /> : <p className="font-bold">{formatINR(totalAllocated)}</p>}
         </CardContent></Card>
         <Card><CardContent className="p-3 text-center">
           <p className="text-xs text-muted-foreground">{t("budget.totalSpent")}</p>
-          <p className="font-bold">{formatINR(totalSpent)}</p>
+          {loading ? <Skeleton className="mx-auto mt-1 h-5 w-14" /> : <p className="font-bold">{formatINR(totalSpent)}</p>}
         </CardContent></Card>
         <Card><CardContent className="p-3 text-center">
           <p className="text-xs text-muted-foreground">{t("budget.remaining")}</p>
-          <p className={`font-bold ${totalRemaining < 0 ? "text-destructive" : ""}`}>{formatINR(totalRemaining)}</p>
+          {loading ? <Skeleton className="mx-auto mt-1 h-5 w-14" /> : <p className={`font-bold ${totalRemaining < 0 ? "text-destructive" : ""}`}>{formatINR(totalRemaining)}</p>}
         </CardContent></Card>
       </div>
 
@@ -265,7 +266,7 @@ export default function BudgetsPage() {
       </div>
 
       {loading ? (
-        <p className="text-center text-muted-foreground">{t("budget.loading")}</p>
+        <div className="space-y-2"><Skeleton className="h-16 w-full rounded-xl" /><Skeleton className="h-16 w-full rounded-xl" /></div>
       ) : budgets.length === 0 ? (
         <Card><CardContent className="p-4 text-center text-sm text-muted-foreground">
           {t("budget.noBudgets")} {t("budget.addFirst")}

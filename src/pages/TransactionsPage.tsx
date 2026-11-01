@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Minus, Trash2, Pencil, TrendingUp, TrendingDown } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { motion } from "framer-motion";
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO } from "date-fns";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -48,6 +49,10 @@ export default function TransactionsPage() {
   const [allTotals, setAllTotals] = useState({ income: 0, expense: 0 });
   const [limit, setLimit] = useState(50);
   const [loading, setLoading] = useState(true);
+  // Totals and the weekly chart load separately from the list; until each
+  // lands, show a skeleton instead of ₹0 (QA 2026-11-01).
+  const [totalsLoading, setTotalsLoading] = useState(true);
+  const [weeklyLoading, setWeeklyLoading] = useState(true);
   const [editTx, setEditTx] = useState<Transaction | null>(null);
   const [editAmount, setEditAmount] = useState("");
   const [editCategory, setEditCategory] = useState("");
@@ -67,6 +72,7 @@ export default function TransactionsPage() {
       income: list.filter((t) => t.type === "income").reduce((s, t) => s + toAmount(t.amount), 0),
       expense: list.filter((t) => t.type !== "income").reduce((s, t) => s + toAmount(t.amount), 0),
     });
+    setTotalsLoading(false);
   };
 
   const fetchWeeklyData = async () => {
@@ -74,6 +80,7 @@ export default function TransactionsPage() {
     const weekEnd = format(endOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd");
     const { data } = await db.from("transactions").select("*").gte("transaction_date", weekStart).lte("transaction_date", weekEnd);
     setWeeklyTx((data as Transaction[]) || []);
+    setWeeklyLoading(false);
   };
 
   const fetchTransactions = async () => {
@@ -142,13 +149,13 @@ export default function TransactionsPage() {
         <Card className="border-success/20 bg-success/5">
           <CardContent className="p-3">
             <p className="text-xs text-muted-foreground">{t("tx.totalIncome")}</p>
-            <p className="text-lg font-bold text-success">{formatINR(totals.income)}</p>
+            {totalsLoading ? <Skeleton className="mt-1 h-7 w-24" /> : <p className="text-lg font-bold text-success">{formatINR(totals.income)}</p>}
           </CardContent>
         </Card>
         <Card className="border-destructive/20 bg-destructive/5">
           <CardContent className="p-3">
             <p className="text-xs text-muted-foreground">{t("tx.totalExpenses")}</p>
-            <p className="text-lg font-bold text-destructive">{formatINR(totals.expense)}</p>
+            {totalsLoading ? <Skeleton className="mt-1 h-7 w-24" /> : <p className="text-lg font-bold text-destructive">{formatINR(totals.expense)}</p>}
           </CardContent>
         </Card>
       </div>
@@ -156,7 +163,9 @@ export default function TransactionsPage() {
       <Card>
         <CardContent className="p-4 space-y-3">
           <h2 className="text-sm font-semibold">{t("tx.thisWeek")}</h2>
-          {(() => {
+          {weeklyLoading ? (
+            <div className="space-y-2"><Skeleton className="h-8 w-full" /><Skeleton className="h-16 w-full" /></div>
+          ) : (() => {
             const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
             const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
             const days = eachDayOfInterval({ start: weekStart, end: weekEnd });

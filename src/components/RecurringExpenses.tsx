@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Pencil, Home, Banknote, Calendar } from "lucide-react";
 import { motion } from "framer-motion";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -332,7 +333,9 @@ export default function RecurringExpenses() {
         </Card>
       )}
 
-      {loading ? null : items.length === 0 ? (
+      {loading ? (
+        <div className="space-y-2"><Skeleton className="h-12 w-full rounded-xl" /><Skeleton className="h-24 w-full rounded-xl" /></div>
+      ) : items.length === 0 ? (
         <Card>
           <CardContent className="p-4 text-center text-xs text-muted-foreground">
             No recurring bills yet. Add rent, electricity, internet etc.

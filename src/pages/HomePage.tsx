@@ -82,7 +82,7 @@ export default function HomePage() {
   // capped at 5 for display, so summing it under-reports on busy days. The key
   // extends ["transactions_today"], which the write pages already invalidate
   // (react-query invalidates by key prefix), so totals refresh after mutations.
-  const { data: todayTxTotals = [], isError: todayError, refetch: refetchToday } = useQuery({
+  const { data: todayTxTotals = [], isLoading: totalsLoading, isError: todayError, refetch: refetchToday } = useQuery({
     queryKey: ["transactions_today", "totals"],
     queryFn: async () => {
       const { data, error } = await db.from("transactions").select("*").eq("transaction_date", today);
@@ -151,7 +151,10 @@ export default function HomePage() {
   const budgetTotalAllocated = monthBudgets.reduce((s, b) => s + toAmount(b.monthly_limit), 0);
   const budgetTotalSpent = monthBudgets.reduce((s, b) => s + (budgetSpent[b.category] || 0), 0);
 
-  const isInitialLoading = profileLoading && txLoading;
+  // Show the skeleton until the numbers are real: rendering before the
+  // today-totals query lands showed "₹0" and "No transactions yet" for
+  // 3–8 s on every open, which reads as lost data (QA 2026-11-01).
+  const isInitialLoading = profileLoading || txLoading || totalsLoading;
 
   if (isInitialLoading) return <HomeSkeleton />;
 
