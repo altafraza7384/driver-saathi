@@ -12,6 +12,18 @@ const config: CapacitorConfig = {
     url: 'https://driver-saathi-app.web.app',
   },
   plugins: {
+    SplashScreen: {
+      // Keep the native splash up until the WebView has painted index.html's
+      // built-in loader (same colours + logo), instead of auto-hiding onto a
+      // blank white WebView. index.html hides it on first paint (3 s safety
+      // net) and src/main.tsx again after React mounts.
+      launchAutoHide: false,
+      backgroundColor: '#0b2a5b',
+      androidScaleType: 'CENTER_CROP',
+      showSpinner: false,
+      splashFullScreen: false,
+      splashImmersive: false,
+    },
     FirebaseAuthentication: {
       // The native plugin only brokers the Google account pick and returns
       // the credential; the Firebase JS SDK performs the actual sign-in, so

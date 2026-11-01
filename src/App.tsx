@@ -11,6 +11,7 @@ import { ThemeProvider } from "next-themes";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { lazyWithRetry } from "@/lib/lazyWithRetry";
+import { AndroidBackButton } from "@/components/AndroidBackButton";
 
 const HomePage = lazyWithRetry(() => import("./pages/HomePage"));
 const TransactionsPage = lazyWithRetry(() => import("./pages/TransactionsPage"));
@@ -57,10 +58,18 @@ const queryClient = new QueryClient({
   },
 });
 
-function RouteLoader() {
+/**
+ * Full-screen branded loader for app start (auth check, first route
+ * chunk). Reuses the #boot markup/CSS that index.html paints before any
+ * JS runs, so native splash -> HTML loader -> this -> Home has no flash
+ * of white in between.
+ */
+function BootScreen() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+    <div id="boot" role="status" aria-label="Loading Driver Saathi">
+      <img src="/icon-192.png" alt="" width={96} height={96} />
+      <div className="n">Driver Saathi</div>
+      <div className="s" />
     </div>
   );
 }
@@ -115,7 +124,7 @@ function ProtectedRoutes() {
     return () => window.removeEventListener("unhandledrejection", handler);
   }, []);
 
-  if (loading) return <RouteLoader />;
+  if (loading) return <BootScreen />;
 
   if (!user) {
     return <Navigate to="/auth" replace />;
@@ -143,8 +152,9 @@ const App = () => (
             <Toaster />
             <Sonner />
             <BrowserRouter>
+              <AndroidBackButton />
               <ErrorBoundary>
-              <Suspense fallback={<RouteLoader />}>
+              <Suspense fallback={<BootScreen />}>
                 <Routes>
                   <Route path="/auth" element={<AuthPage />} />
                   <Route path="/reset-password" element={<ResetPasswordPage />} />

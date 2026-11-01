@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, lazy, Suspense } from "react";
+import { Capacitor } from "@capacitor/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
@@ -12,35 +13,81 @@ import { BACKEND } from "@/lib/backend";
 import { db } from "@/lib/backend";
 import { getTrialState } from "@/lib/trial";
 import { callChatFunction } from "@/lib/ai";
+import { startNativeListening, cancelNativeListening, speechLangFor, type NativeListenSession } from "@/lib/nativeSpeech";
+import { stripMarkdown } from "@/lib/plainText";
+import { loadChatHistory, saveChatHistory, toApiMessages, type ChatMsg } from "@/lib/chatHistory";
+import { detectBargeIn, isStopCommand, listenRetryDelay } from "@/lib/drivingVoice";
+import { CHAT_SCREEN_CLASS, CHAT_SCREEN_STYLE } from "@/lib/chatScreen";
 
 const FinanceAIPage = lazy(() => import("./FinanceAIPage"));
 
-type Msg = { role: "user" | "assistant"; content: string };
-
-// Same display-time markdown strip as FinanceAIPage: the model emits
-// markdown, this page renders plain text. User messages pass untouched.
-function stripMarkdown(text: string): string {
-  return text
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/^#{1,6}\s+/gm, "")
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/__([^_]+)__/g, "$1")
-    .replace(/\*([^*]+)\*/g, "$1")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\|/g, " ")
-    .replace(/^[ :-]+$/gm, "")
-    .replace(/[ \t]{2,}/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
+type Msg = ChatMsg;
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 
-// Speak text aloud using browser TTS
+// Android's in-app WebView has NO window.speechSynthesis (it is undefined
+// there, unlike desktop/mobile Chrome). Every unguarded
+// window.speechSynthesis.cancel() threw "Cannot read properties of undefined
+// (reading 'cancel')"; the one in the unmount cleanup crashed the whole app
+// to the error screen whenever the user left this page in the APK
+// (2026-11-01). Always go through these helpers.
+function webTts(): SpeechSynthesis | null {
+  try {
+    const s = typeof window !== "undefined" ? window.speechSynthesis : undefined;
+    return s && typeof s.cancel === "function" ? s : null;
+  } catch {
+    return null;
+  }
+}
+
+// Resolvers of speakText() calls still playing. The native TTS plugin never
+// answers a speak() that was stopped, so stopSpeaking() settles them itself —
+// otherwise an interrupted reply would leave Driving Mode waiting forever.
+const pendingSpeech = new Set<() => void>();
+
+function settlePendingSpeech(): void {
+  const all = [...pendingSpeech];
+  pendingSpeech.clear();
+  all.forEach((done) => done());
+}
+
+function stopSpeaking(): void {
+  settlePendingSpeech();
+  try { webTts()?.cancel(); } catch { /* ignore */ }
+  if (Capacitor.isNativePlatform()) {
+    import("@capacitor-community/text-to-speech")
+      .then(({ TextToSpeech }) => TextToSpeech.stop())
+      .catch(() => { /* plugin missing or nothing speaking */ });
+  }
+}
+
+// Native app: the WebView has no browser TTS, so use the native
+// text-to-speech plugin (already a dependency) for voice replies.
+async function speakNative(text: string, lang: string): Promise<void> {
+  try {
+    const { TextToSpeech } = await import("@capacitor-community/text-to-speech");
+    await TextToSpeech.stop().catch(() => undefined);
+    await TextToSpeech.speak({ text, lang, rate: 1.0, pitch: 1.0, volume: 1.0 });
+  } catch (e) {
+    console.warn("Native TTS failed:", e);
+  }
+}
+
+// Speak text aloud using browser TTS (or the native TTS plugin in the app)
 function speakText(text: string): Promise<void> {
-  return new Promise((resolve) => {
-    if (!("speechSynthesis" in window)) { resolve(); return; }
-    window.speechSynthesis.cancel();
+  settlePendingSpeech(); // a new reply replaces any voice still playing
+  return new Promise((resolveSpeech) => {
+    let settled = false;
+    const resolve = () => {
+      if (settled) return;
+      settled = true;
+      pendingSpeech.delete(resolve);
+      resolveSpeech();
+    };
+    pendingSpeech.add(resolve);
+    const synth = webTts();
+    if (!synth && !Capacitor.isNativePlatform()) { resolve(); return; }
+    try { synth?.cancel(); } catch { /* ignore */ }
 
     const cleanText = text
       .replace(/[\u{1F600}-\u{1F9FF}|\u{2600}-\u{26FF}|\u{2700}-\u{27BF}|\u{1F300}-\u{1F5FF}|\u{1F680}-\u{1F6FF}|\u{1F1E0}-\u{1F1FF}|\u{2702}-\u{27B0}|\u{FE0F}|\u{200D}]/gu, "")
@@ -50,7 +97,6 @@ function speakText(text: string): Promise<void> {
 
     if (!cleanText) { resolve(); return; }
 
-    const utterance = new SpeechSynthesisUtterance(cleanText);
     // Speak in the reply's own language, so a Marathi user hears Marathi,
     // not Hindi or English. Script detects Bengali/Kannada; Hindi and
     // Marathi share Devanagari, so Marathi marker words decide mr-IN.
@@ -64,24 +110,31 @@ function speakText(text: string): Promise<void> {
     else if (kannadaChars > cleanText.length * 0.2) lang = "kn-IN";
     else if (isMarathi) lang = "mr-IN";
     else if (hindiChars > cleanText.length * 0.2) lang = "hi-IN";
+
+    if (!synth) {
+      void speakNative(cleanText, lang).then(() => resolve());
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
     utterance.lang = lang;
     utterance.rate = 1.05;
     utterance.pitch = 1;
 
-    const voices = window.speechSynthesis.getVoices();
+    const voices = synth.getVoices();
     const langPrefix = lang.split("-")[0];
     const preferred = voices.find(v => v.lang === utterance.lang) || voices.find(v => v.lang.startsWith(langPrefix));
     if (preferred) utterance.voice = preferred;
 
     utterance.onend = () => resolve();
     utterance.onerror = () => resolve();
-    window.speechSynthesis.speak(utterance);
+    synth.speak(utterance);
   });
 }
 
 // Production-verified browser voice handling.
 export default function AssistantPage() {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const { session } = useAuth();
   const [activeTab, setActiveTab] = useState<"assistant" | "finance">("assistant");
   const queryClient = useQueryClient();
@@ -115,6 +168,26 @@ export default function AssistantPage() {
   // own voice: without headphones the phone mic hears the speaker, so a
   // verbatim replay of this text is an echo, not a user message.
   const lastSpokenRef = useRef("");
+  // Latest values for the hands-free loop. Driving Mode calls send() and
+  // startListening() from timers and plugin callbacks long after the render
+  // that created them; through these refs the loop always uses the CURRENT
+  // chat (a stale history made "haan" reach the server without the
+  // "sahi hai?" proposal it confirms).
+  const messagesRef = useRef<Msg[]>([]);
+  const sendRef = useRef<(text?: string) => Promise<void>>(async () => undefined);
+  const startListeningRef = useRef<() => void>(() => undefined);
+  const exitDrivingRef = useRef<() => void>(() => undefined);
+  const languageRef = useRef(language);
+  languageRef.current = language;
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const speakingRef = useRef(false);
+  // What the user said last in Driving Mode (shown small under the mic).
+  const [lastHeard, setLastHeard] = useState("");
+  const listenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const listenFailsRef = useRef(0);
+  const bargeSessionRef = useRef<NativeListenSession | null>(null);
+
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -123,7 +196,9 @@ export default function AssistantPage() {
   // Chat history lives in localStorage so it survives tab switches and app
   // restarts (the server does not store chat messages). It loads per-account
   // once the session is known, and the old shared key is deleted so a
-  // previous account's chat can never reappear on this browser.
+  // previous account's chat can never reappear on this browser. Messages
+  // older than 24 hours (or saved before timestamps existed) are pruned
+  // silently on load and on save; the 50-message cap stays.
   useEffect(() => {
     try {
       localStorage.removeItem("ds-assistant-chat");
@@ -131,32 +206,19 @@ export default function AssistantPage() {
       // ignore
     }
     if (!chatKey) return;
-    try {
-      const raw = localStorage.getItem(chatKey);
-      const parsed = raw ? JSON.parse(raw) : [];
-      if (!Array.isArray(parsed)) return;
-      setMessages(parsed.filter((m: any) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string"));
-    } catch {
-      // Corrupt stored history: start fresh.
-    }
+    setMessages(loadChatHistory(chatKey));
   }, [chatKey]);
 
   // Trash clears history via the empty-state branch below.
   useEffect(() => {
     if (!chatKey) return;
-    try {
-      if (messages.length === 0) localStorage.removeItem(chatKey);
-      else localStorage.setItem(chatKey, JSON.stringify(messages.slice(-50)));
-    } catch {
-      // Private mode / full storage: chat just stays in-memory this session.
-    }
+    saveChatHistory(chatKey, messages);
   }, [messages, chatKey]);
 
   const speakEnabledRef = useRef(speakEnabled);
   useEffect(() => { speakEnabledRef.current = speakEnabled; }, [speakEnabled]);
   useEffect(() => { drivingModeRef.current = drivingMode; }, [drivingMode]);
   useEffect(() => { isLoadingRef.current = isLoading; }, [isLoading]);
-
   // Normalize Hinglish transcript
   const normalizeTranscript = useCallback((text: string): string => {
     let t = text;
@@ -215,24 +277,106 @@ export default function AssistantPage() {
     return t;
   }, []);
 
+  // Driving Mode: listen again after `delay` ms, unless the loop ended, a
+  // reply is on its way, the AI is speaking, or a listen is already running.
+  const scheduleListen = (delay: number) => {
+    if (listenTimerRef.current) clearTimeout(listenTimerRef.current);
+    listenTimerRef.current = setTimeout(() => {
+      listenTimerRef.current = null;
+      if (drivingModeRef.current && !isLoadingRef.current && !speakingRef.current && !recognitionRef.current) {
+        startListeningRef.current();
+      }
+    }, delay);
+  };
+
+  const stopBargeListener = () => {
+    const s = bargeSessionRef.current;
+    bargeSessionRef.current = null;
+    s?.cancel();
+  };
+
+  // Barge-in (Driving Mode, Android app only): while the reply is spoken, a
+  // second listen runs. The phone mic also hears the speaker, so whatever
+  // matches the reply being spoken is treated as the AI's own voice and
+  // ignored; "ruko"/"stop"/"bas" or several new words stop the voice, and
+  // the loop then listens to the user. "band karo" ends Driving Mode. These
+  // words are never sent to the AI — a fresh listen takes over.
+  const startBargeListener = (spoken: string) => {
+    if (!Capacitor.isNativePlatform()) return;
+    const run = () => {
+      if (!speakingRef.current || !drivingModeRef.current) return;
+      const startedAt = Date.now();
+      const again = () => {
+        if (!speakingRef.current || !drivingModeRef.current) return;
+        // An instant end means the recognizer refused: back off.
+        setTimeout(run, Date.now() - startedAt < 1500 ? 1500 : 200);
+      };
+      void startNativeListening({
+        lang: speechLangFor(languageRef.current),
+        onPartial: (partial) => {
+          if (!speakingRef.current || !drivingModeRef.current) return;
+          const barge = detectBargeIn(partial, spoken);
+          if (barge === "exit") exitDrivingRef.current();
+          else if (barge === "interrupt") stopSpeaking();
+        },
+        onEnd: again,
+        onError: (error) => {
+          if (error === "permission-denied" || error === "unavailable") return;
+          again();
+        },
+      }).then((s) => {
+        if (!s) return;
+        if (speakingRef.current && drivingModeRef.current) bargeSessionRef.current = s;
+        else s.cancel();
+      });
+    };
+    run();
+  };
+
+  // Speak a reply in full. Resolves when the voice finishes or is
+  // interrupted (tap, mic, barge-in, exit).
+  const speakReply = async (text: string) => {
+    lastSpokenRef.current = text;
+    speakingRef.current = true;
+    setIsSpeaking(true);
+    if (drivingModeRef.current) startBargeListener(text);
+    try {
+      await speakText(text);
+    } finally {
+      speakingRef.current = false;
+      setIsSpeaking(false);
+      stopBargeListener();
+    }
+  };
+
+  // Driving Mode only: the server sends "save ho gaya" lines in `actions`;
+  // when the model's own words skip them, add them so the save is heard.
+  const withSavedLines = (content: string, actions: string[]) => {
+    const missing = actions.filter((a) => a && !content.includes(a));
+    return missing.length ? `${content}\n${missing.join("\n")}` : content;
+  };
+
   const send = useCallback(async (text?: string) => {
     const msgText = text || input.trim();
-    if (!msgText || isLoading) return;
+    if (!msgText || isLoadingRef.current) return;
     if (!session?.access_token) { toast.error(t("ai.signInAssistant")); return; }
-    const userMsg: Msg = { role: "user", content: msgText };
+    const userMsg: Msg = { role: "user", content: msgText, ts: Date.now() };
     if (!text) setInput("");
+    const allMessages = [...messagesRef.current, userMsg];
+    messagesRef.current = allMessages;
     setMessages((prev) => [...prev, userMsg]);
+    isLoadingRef.current = true;
     setIsLoading(true);
 
     let assistantSoFar = "";
-    const allMessages = [...messages, userMsg];
 
     try {
       if (BACKEND === "firebase") {
-        const result = await callChatFunction(allMessages);
-        const content = result.content || result.actions.join("\n") || "Done!";
+        const result = await callChatFunction(toApiMessages(allMessages));
+        let content = result.content || result.actions.join("\n") || "Done!";
+        if (drivingModeRef.current) content = withSavedLines(content, result.actions);
         assistantSoFar = content;
-        setMessages((prev) => [...prev, { role: "assistant", content }]);
+        setMessages((prev) => [...prev, { role: "assistant", content, ts: Date.now() }]);
         // Tool writes happen server-side, so no write-page invalidation runs
         // for them: refresh Home, Transactions, Budgets and the bell
         // explicitly, or the just-saved entry stays invisible until a
@@ -252,7 +396,7 @@ export default function AssistantPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session?.access_token}`,
         },
-        body: JSON.stringify({ messages: allMessages }),
+        body: JSON.stringify({ messages: toApiMessages(allMessages) }),
       });
 
       if (!resp.ok) {
@@ -263,7 +407,7 @@ export default function AssistantPage() {
           if (json.choices?.[0]?.message?.content) {
             const content = json.choices[0].message.content;
             assistantSoFar = content;
-            setMessages((prev) => [...prev, { role: "assistant", content }]);
+            setMessages((prev) => [...prev, { role: "assistant", content, ts: Date.now() }]);
             return;
           }
         } catch {}
@@ -276,7 +420,7 @@ export default function AssistantPage() {
         const json = await resp.json();
         const content = json.choices?.[0]?.message?.content || "Done!";
         assistantSoFar = content;
-        setMessages((prev) => [...prev, { role: "assistant", content }]);
+        setMessages((prev) => [...prev, { role: "assistant", content, ts: Date.now() }]);
         return;
       }
 
@@ -309,7 +453,7 @@ export default function AssistantPage() {
                 if (last?.role === "assistant") {
                   return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: assistantSoFar } : m));
                 }
-                return [...prev, { role: "assistant", content: assistantSoFar }];
+                return [...prev, { role: "assistant", content: assistantSoFar, ts: Date.now() }];
               });
             }
           } catch {
@@ -326,34 +470,122 @@ export default function AssistantPage() {
       const code = (e as { code?: string })?.code;
       toast.error(t(code === "resource-exhausted" ? "ai.quotaExceeded" : "ai.failedResponse"));
     } finally {
+      isLoadingRef.current = false;
       setIsLoading(false);
-      // Speak response, then auto-restart mic in driving mode
+      // Speak the whole response, then (Driving Mode) listen again at once:
+      // the user never has to tap the mic. An error still continues the loop.
       if (speakEnabledRef.current && assistantSoFar) {
-        lastSpokenRef.current = assistantSoFar;
-        await speakText(assistantSoFar);
+        await speakReply(assistantSoFar);
       }
-      // Auto-restart listening in driving mode after response
-      if (drivingModeRef.current) {
-        setTimeout(() => {
-          if (drivingModeRef.current && !isLoadingRef.current) {
-            startListening();
-          }
-        }, 800);
-      }
+      if (drivingModeRef.current) scheduleListen(assistantSoFar ? 300 : 1000);
     }
-  }, [input, isLoading, messages, session]);
+  }, [input, session, t, queryClient]);
+  sendRef.current = send;
 
   const startListening = useCallback(() => {
+    // Never listen while the AI is still speaking: the phone mic hears the
+    // speaker, so the AI's own words would come back as user input (echo
+    // loop). Mic dabane ka matlab hai "bolna band karo, meri suno".
+    stopSpeaking();
+    if (listenTimerRef.current) { clearTimeout(listenTimerRef.current); listenTimerRef.current = null; }
+    stopBargeListener();
+    const startedAt = Date.now();
+
+    // What happens with the words once listening ends (web and native alike).
+    // In Driving Mode the loop never stops here: nothing heard, an echo or an
+    // error all lead to listening again (errors with a growing pause).
+    const handleHeard = (trimmed: string, failed = false) => {
+      const driving = drivingModeRef.current;
+      if (driving && trimmed && isStopCommand(trimmed)) {
+        setInput("");
+        exitDrivingRef.current();
+        return;
+      }
+      if (trimmed) {
+        const normalized = normalizeTranscript(trimmed);
+        // Echo guard: a long verbatim chunk of the last spoken reply is the
+        // AI's own voice leaking into the mic, not the user. Drop it instead
+        // of sending it back (which would loop forever).
+        const clean = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+        const cleanTx = clean(normalized);
+        const cleanSpoken = clean(lastSpokenRef.current);
+        if (cleanTx.length >= 40 && cleanSpoken.includes(cleanTx)) {
+          setInput("");
+          if (driving) scheduleListen(500);
+          return;
+        }
+        setInput("");
+        if (driving) {
+          listenFailsRef.current = 0;
+          setLastHeard(trimmed);
+        }
+        void sendRef.current(normalized);
+      } else if (driving) {
+        // Nothing heard. A listen that ended almost at once (recognizer
+        // error, no network) counts as a failure and backs off; a normal
+        // "no speech" timeout just listens again.
+        if (failed || Date.now() - startedAt < 1500) listenFailsRef.current += 1;
+        else listenFailsRef.current = 0;
+        scheduleListen(listenRetryDelay(listenFailsRef.current));
+      }
+    };
+
+    // Android app: the WebView's web Speech API fails with "not-allowed"
+    // even when the phone allows the mic, so ask for the mic and listen
+    // through the native speech-recognition plugin (like native TTS above).
+    if (Capacitor.isNativePlatform()) {
+      let session: NativeListenSession | null = null;
+      let cancelled = false;
+      let abandoned = false;
+      const handle = {
+        stop: () => { cancelled = true; session?.stop(); },
+        cancel: () => { abandoned = true; session?.cancel(); },
+      };
+      recognitionRef.current = handle;
+      setIsListening(true);
+      void startNativeListening({
+        lang: speechLangFor(language),
+        onPartial: (text) => setInput(text),
+        onEnd: (text) => {
+          if (recognitionRef.current === handle) recognitionRef.current = null;
+          setIsListening(false);
+          handleHeard(text);
+        },
+        onError: (error) => {
+          if (recognitionRef.current === handle) recognitionRef.current = null;
+          setIsListening(false);
+          if (error === "permission-denied") {
+            toast.error(t("ai.micPermissionDenied"), { duration: 10000 });
+            // Without the mic the hands-free loop cannot run: end it rather
+            // than re-asking for permission every few seconds while driving.
+            if (drivingModeRef.current) exitDrivingRef.current();
+            return;
+          }
+          if (error === "unavailable") {
+            toast.error(t("ai.speechUnavailableApp"));
+            if (drivingModeRef.current) exitDrivingRef.current();
+            return;
+          }
+          if (drivingModeRef.current) {
+            console.warn("Driving Mode listen error, retrying:", error);
+            handleHeard("", true);
+          } else {
+            toast.error(t("ai.voiceError", { error }));
+          }
+        },
+      }).then((s) => {
+        session = s;
+        if (s && abandoned) s.cancel();
+        else if (s && cancelled) s.stop();
+      });
+      return;
+    }
+
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       toast.error(t("ai.speechUnsupported"));
       return;
     }
-
-    // Never listen while the AI is still speaking: the phone mic hears the
-    // speaker, so the AI's own words would come back as user input (echo
-    // loop). Mic dabane ka matlab hai "bolna band karo, meri suno".
-    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
 
     const recognition = new SpeechRecognition();
     recognition.lang = "hi-IN";
@@ -363,6 +595,12 @@ export default function AssistantPage() {
 
     let finalTranscript = "";
     let silenceTimer: ReturnType<typeof setTimeout> | null = null;
+    let errored = false;
+    let abandoned = false;
+    const handle = {
+      stop: () => recognition.stop(),
+      cancel: () => { abandoned = true; try { recognition.abort(); } catch { /* ignore */ } },
+    };
 
     recognition.onresult = (event: Event & { results: SpeechRecognitionResultList }) => {
       let interim = "";
@@ -385,64 +623,42 @@ export default function AssistantPage() {
       }
     };
 
+    // onend always follows onerror, so the loop continues from here only.
     recognition.onend = () => {
       if (silenceTimer) clearTimeout(silenceTimer);
+      if (recognitionRef.current === handle) recognitionRef.current = null;
       setIsListening(false);
-      const trimmed = finalTranscript.trim();
-      if (trimmed) {
-        const normalized = normalizeTranscript(trimmed);
-        // Echo guard: a long verbatim chunk of the last spoken reply is the
-        // AI's own voice leaking into the mic, not the user. Drop it instead
-        // of sending it back (which would loop forever).
-        const clean = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
-        const cleanTx = clean(normalized);
-        const cleanSpoken = clean(lastSpokenRef.current);
-        if (cleanTx.length >= 40 && cleanSpoken.includes(cleanTx)) {
-          setInput("");
-          if (drivingModeRef.current) {
-            setTimeout(() => {
-              if (drivingModeRef.current && !isLoadingRef.current) {
-                startListening();
-              }
-            }, 500);
-          }
-          return;
-        }
-        setInput("");
-        send(normalized);
-      } else if (drivingModeRef.current) {
-        // No speech detected, restart listening in driving mode
-        setTimeout(() => {
-          if (drivingModeRef.current && !isLoadingRef.current) {
-            startListening();
-          }
-        }, 500);
-      }
+      if (abandoned) return;
+      handleHeard(finalTranscript.trim(), errored);
     };
 
     recognition.onerror = (event: Event & { error: string }) => {
       console.error("Speech error:", event.error);
       if (silenceTimer) clearTimeout(silenceTimer);
       setIsListening(false);
-      if (event.error !== "no-speech" && event.error !== "aborted") {
-        toast.error(t("ai.voiceError", { error: event.error }));
-      }
-      // Retry in driving mode on no-speech
-      if (drivingModeRef.current && (event.error === "no-speech" || event.error === "aborted")) {
-        setTimeout(() => {
-          if (drivingModeRef.current && !isLoadingRef.current) {
-            startListening();
-          }
-        }, 500);
-      }
+      if (event.error === "no-speech" || event.error === "aborted") return;
+      errored = true;
+      if (drivingModeRef.current && event.error !== "not-allowed") return; // loop retries quietly
+      toast.error(t("ai.voiceError", { error: event.error }));
+      if (drivingModeRef.current) { abandoned = true; exitDrivingRef.current(); }
     };
 
-    recognitionRef.current = recognition;
+    recognitionRef.current = handle;
     recognition.start();
     setIsListening(true);
-  }, [send, normalizeTranscript]);
+  }, [normalizeTranscript, language, t]);
+  startListeningRef.current = startListening;
 
   const toggleVoice = useCallback(() => {
+    if (drivingModeRef.current) {
+      // Driving Mode mic: while the AI speaks, a tap stops the voice and the
+      // loop listens; while listening, a tap ends this listen (what was heard
+      // is sent); otherwise it listens right now.
+      if (speakingRef.current) { stopSpeaking(); return; }
+      if (isListening) { recognitionRef.current?.stop(); return; }
+      if (!isLoadingRef.current) startListening();
+      return;
+    }
     if (isListening) {
       recognitionRef.current?.stop();
       setIsListening(false);
@@ -451,37 +667,61 @@ export default function AssistantPage() {
     startListening();
   }, [isListening, startListening]);
 
+  // End the hands-free loop (Exit button or "band karo"): nothing that was
+  // half-heard is sent.
+  const exitDriving = useCallback(() => {
+    drivingModeRef.current = false;
+    setDrivingMode(false);
+    if (listenTimerRef.current) { clearTimeout(listenTimerRef.current); listenTimerRef.current = null; }
+    const r = recognitionRef.current;
+    recognitionRef.current = null;
+    r?.cancel?.();
+    stopBargeListener();
+    cancelNativeListening();
+    setIsListening(false);
+    setInput("");
+    stopSpeaking();
+    toast(t("assistant.drivingOff"));
+  }, [t]);
+  exitDrivingRef.current = exitDriving;
+
   const toggleDrivingMode = useCallback(() => {
-    if (drivingMode) {
-      // Turn off driving mode
-      setDrivingMode(false);
-      recognitionRef.current?.stop();
-      setIsListening(false);
-      window.speechSynthesis.cancel();
-      toast(t("assistant.drivingOff"));
+    if (drivingModeRef.current) {
+      exitDriving();
     } else {
       // Turn on driving mode
+      drivingModeRef.current = true;
+      speakEnabledRef.current = true;
+      listenFailsRef.current = 0;
+      setLastHeard("");
       setDrivingMode(true);
       setSpeakEnabled(true);
       toast(t("assistant.drivingOn"));
       startListening();
     }
-  }, [drivingMode, startListening]);
+  }, [exitDriving, startListening, t]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      recognitionRef.current?.stop();
-      window.speechSynthesis.cancel();
+      drivingModeRef.current = false;
+      if (listenTimerRef.current) clearTimeout(listenTimerRef.current);
+      const r = recognitionRef.current;
+      recognitionRef.current = null;
+      if (r?.cancel) r.cancel();
+      else r?.stop?.();
+      cancelNativeListening();
+      stopSpeaking();
     };
   }, []);
+
 
   // If finance tab is active, render FinanceAIPage
   if (activeTab === "finance") {
     return (
-      <div className="flex h-[calc(100vh-7rem)] flex-col p-4 pt-6">
+      <div className={CHAT_SCREEN_CLASS} style={CHAT_SCREEN_STYLE}>
         {/* Toggle Header */}
-        <div className="flex items-center justify-center mb-4">
+        <div className="flex shrink-0 items-center justify-center mb-4">
           <div className="flex items-center gap-0 rounded-xl bg-muted p-1 w-full max-w-xs">
             <button
               onClick={() => setActiveTab("assistant")}
@@ -497,9 +737,9 @@ export default function AssistantPage() {
             </button>
           </div>
         </div>
-        <div className="flex-1 -mx-4 -mb-4 overflow-hidden">
+        <div className="-mx-4 -mb-4 min-h-0 flex-1 overflow-hidden">
           <Suspense fallback={<div className="flex items-center justify-center h-full"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>}>
-            <FinanceAIPage />
+            <FinanceAIPage embedded />
           </Suspense>
         </div>
       </div>
@@ -507,79 +747,98 @@ export default function AssistantPage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-7rem)] flex-col p-4 pt-6">
-      {/* Driving Mode Full Screen Overlay */}
-      <AnimatePresence>
-        {drivingMode && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background p-6"
-          >
-            <div className="flex flex-col items-center gap-6 w-full max-w-sm">
-              <div className="flex items-center gap-2">
-                <Headphones className="h-6 w-6 text-primary" />
-                <h2 className="text-xl font-bold">{t("assistant.drivingMode")}</h2>
+    <>
+        {/* Driving Mode Full Screen Overlay. Layout (v7): title, status and the
+            big mic never move; heard text and the reply are caption-size and
+            the reply scrolls inside its own small box, so a long answer can
+            never push the mic or the status off screen. Only the screen text
+            is small — the reply is still spoken in full. While the AI speaks,
+            a tap anywhere stops the voice and the loop listens. */}
+        <AnimatePresence>
+          {drivingMode && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[60] flex flex-col bg-background px-6"
+              style={{
+                paddingTop: "max(env(safe-area-inset-top, 0px), 1rem)",
+                paddingBottom: "max(env(safe-area-inset-bottom, 0px), 1rem)",
+              }}
+              onClick={() => { if (speakingRef.current) stopSpeaking(); }}
+            >
+              <div className="mx-auto flex h-full w-full max-w-sm flex-col">
+                <div className="flex shrink-0 items-center justify-center gap-2 pt-2">
+                  <Headphones className="h-6 w-6 text-primary" />
+                  <h2 className="text-xl font-bold">{t("assistant.drivingMode")}</h2>
+                </div>
+
+                <div className="flex h-[6rem] shrink-0 flex-col items-center justify-center overflow-hidden text-center">
+                  <p className="text-lg text-foreground" aria-live="polite">
+                    {isLoading
+                      ? "Soch raha hoon... 🤔"
+                      : isSpeaking
+                        ? t("assistant.drivingSpeaking")
+                        : isListening
+                          ? "Sun raha hoon... bolo! 🎤"
+                          : "Ready — bolo kuch bhi!"}
+                  </p>
+                  <p className="text-[12px] leading-snug text-muted-foreground">{t("assistant.drivingStopHint")}</p>
+                </div>
+
+                {/* Big mic, fixed in the centre of the free space */}
+                <div className="flex min-h-0 flex-1 items-center justify-center py-4">
+                  <motion.button
+                    onClick={(e) => { e.stopPropagation(); toggleVoice(); }}
+                    disabled={isLoading}
+                    animate={isListening ? { scale: [1, 1.12, 1] } : { scale: 1 }}
+                    transition={isListening ? { repeat: Infinity, duration: 1.2 } : {}}
+                    className={`flex h-36 w-36 shrink-0 items-center justify-center rounded-full shadow-lg transition-colors ${
+                      isListening || isSpeaking
+                        ? "bg-destructive text-destructive-foreground"
+                        : "bg-primary text-primary-foreground"
+                    }`}
+                  >
+                    {isListening || isSpeaking ? <Square className="h-14 w-14" /> : <Mic className="h-14 w-14" />}
+                  </motion.button>
+                </div>
+
+                {/* Fixed-height caption area: its content can never move the mic */}
+                <div className="flex h-[36%] shrink-0 flex-col justify-end gap-2">
+                  {/* Heard transcript (live while listening, else the last thing said) */}
+                  {(input || lastHeard) && (
+                    <div className="shrink-0 rounded-lg border bg-card px-3 py-1.5">
+                      <p className="text-[11px] leading-tight text-muted-foreground">{t("assistant.heard")}</p>
+                      <p className="line-clamp-2 text-[13px] leading-snug">{input || lastHeard}</p>
+                    </div>
+                  )}
+
+                  {/* Last assistant response: caption size, scrolls inside */}
+                  {messages.length > 0 && messages[messages.length - 1].role === "assistant" && (
+                    <div className="flex min-h-0 flex-col rounded-lg border bg-card px-3 py-1.5">
+                      <p className="shrink-0 text-[11px] leading-tight text-muted-foreground">{t("assistant.response")}</p>
+                      <div className="min-h-0 overflow-y-auto overscroll-contain">
+                        <p className="whitespace-pre-wrap text-[13px] leading-snug">{stripMarkdown(messages[messages.length - 1].content)}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  <Button
+                    variant="outline"
+                    className="w-full shrink-0 gap-2"
+                    onClick={(e) => { e.stopPropagation(); exitDriving(); }}
+                  >
+                    <Square className="h-4 w-4" /> {t("assistant.exitDrivingMode")}
+                  </Button>
+                </div>
               </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-              <p className="text-center text-muted-foreground">
-                {isLoading
-                  ? "Soch raha hoon... 🤔"
-                  : isListening
-                    ? "Sun raha hoon... bolo! 🎤"
-                    : "Ready — bolo kuch bhi!"}
-              </p>
-
-              {/* Big pulsing mic */}
-              <motion.button
-                onClick={toggleVoice}
-                disabled={isLoading}
-                animate={isListening ? { scale: [1, 1.15, 1] } : {}}
-                transition={isListening ? { repeat: Infinity, duration: 1.2 } : {}}
-                className={`h-32 w-32 rounded-full flex items-center justify-center shadow-lg transition-colors ${
-                  isListening
-                    ? "bg-destructive text-destructive-foreground"
-                    : "bg-primary text-primary-foreground"
-                }`}
-              >
-                {isListening ? <Square className="h-12 w-12" /> : <Mic className="h-12 w-12" />}
-              </motion.button>
-
-              {/* Live transcript */}
-              {input && (
-                <Card className="w-full">
-                  <CardContent className="p-3 text-center">
-                    <p className="text-muted-foreground text-xs mb-1">{t("assistant.heard")}</p>
-                    <p className="font-medium">{input}</p>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Last assistant response */}
-              {messages.length > 0 && messages[messages.length - 1].role === "assistant" && (
-                <Card className="w-full">
-                  <CardContent className="p-3">
-                    <p className="text-muted-foreground text-xs mb-1">{t("assistant.response")}</p>
-                    <p className="whitespace-pre-wrap">{stripMarkdown(messages[messages.length - 1].content)}</p>
-                  </CardContent>
-                </Card>
-              )}
-
-              <Button
-                variant="outline"
-                className="w-full gap-2 mt-4"
-                onClick={toggleDrivingMode}
-              >
-                <Square className="h-4 w-4" /> {t("assistant.exitDrivingMode")}
-              </Button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
+    <div className={CHAT_SCREEN_CLASS} style={CHAT_SCREEN_STYLE}>
       {/* Toggle + chat header */}
-      <div className="flex flex-col gap-3 mb-4">
+      <div className="flex shrink-0 flex-col gap-3 mb-4">
         <div className="flex items-center justify-center">
           <div className="flex items-center gap-0 rounded-xl bg-muted p-1 w-full max-w-xs">
             <button
@@ -614,14 +873,14 @@ export default function AssistantPage() {
               size="icon"
               onClick={() => {
                 setSpeakEnabled(!speakEnabled);
-                if (speakEnabled) window.speechSynthesis.cancel();
+                if (speakEnabled) stopSpeaking();
               }}
               title={speakEnabled ? "Mute voice replies" : "Enable voice replies"}
             >
               {speakEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
             </Button>
             {messages.length > 0 && (
-              <Button variant="ghost" size="icon" onClick={() => { setMessages([]); window.speechSynthesis.cancel(); }}>
+              <Button variant="ghost" size="icon" onClick={() => { setMessages([]); stopSpeaking(); }}>
                 <Trash2 className="h-4 w-4" />
               </Button>
             )}
@@ -640,7 +899,7 @@ export default function AssistantPage() {
         <p className="text-sm font-semibold text-amber-700 mb-3">⚠️ {t("trial.limitedMode")}</p>
       )}
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-3 pb-4">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-3 pb-4">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
             <Bot className="h-12 w-12 mb-3 opacity-50" />
@@ -682,7 +941,7 @@ export default function AssistantPage() {
 
       
 
-      <div className="flex gap-2 pt-2">
+      <div className="flex shrink-0 gap-2 pt-2">
         <Button
           size="icon"
           variant={isListening ? "destructive" : "outline"}
@@ -703,5 +962,6 @@ export default function AssistantPage() {
         </Button>
       </div>
     </div>
+    </>
   );
 }
