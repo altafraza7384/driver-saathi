@@ -543,6 +543,9 @@ const translations: Record<Language, Record<string, string>> = {
     "debt.loanAdded": "✅ Loan added",
     "debt.loanUpdated": "✅ Loan updated",
     "debt.loanDeleted": "Loan deleted",
+    "home.netToday": "Net today",
+    "home.today": "Today",
+    "home.yesterday": "Yesterday",
   },
   hi: {
     "nav.home": "होम",
@@ -1061,6 +1064,9 @@ const translations: Record<Language, Record<string, string>> = {
     "debt.loanAdded": "✅ लोन जोड़ा गया",
     "debt.loanUpdated": "✅ लोन अपडेट हुआ",
     "debt.loanDeleted": "लोन हटाया गया",
+    "home.netToday": "आज का शुद्ध",
+    "home.today": "आज",
+    "home.yesterday": "कल",
   },
   mr: {
     "nav.home": "होम",
@@ -1578,6 +1584,9 @@ const translations: Record<Language, Record<string, string>> = {
     "debt.loanAdded": "✅ कर्ज जोडले",
     "debt.loanUpdated": "✅ कर्ज अपडेट झाले",
     "debt.loanDeleted": "कर्ज हटवले",
+    "home.netToday": "आजचा निव्वळ",
+    "home.today": "आज",
+    "home.yesterday": "काल",
   },
   bn: {
     // Nav
@@ -2111,6 +2120,9 @@ const translations: Record<Language, Record<string, string>> = {
     "debt.loanAdded": "✅ ঋণ যোগ হয়েছে",
     "debt.loanUpdated": "✅ ঋণ আপডেট হয়েছে",
     "debt.loanDeleted": "ঋণ মুছে ফেলা হয়েছে",
+    "home.netToday": "আজকের নিট",
+    "home.today": "আজ",
+    "home.yesterday": "গতকাল",
   },
   kn: {
     "nav.home": "ಮುಖಪುಟ",
@@ -2628,6 +2640,9 @@ const translations: Record<Language, Record<string, string>> = {
     "debt.loanAdded": "✅ ಸಾಲ ಸೇರಿಸಲಾಗಿದೆ",
     "debt.loanUpdated": "✅ ಸಾಲ ನವೀಕರಿಸಲಾಗಿದೆ",
     "debt.loanDeleted": "ಸಾಲ ಅಳಿಸಲಾಗಿದೆ",
+    "home.netToday": "ಇಂದಿನ ನಿವ್ವಳ",
+    "home.today": "ಇಂದು",
+    "home.yesterday": "ನಿನ್ನೆ",
   },
 };
 

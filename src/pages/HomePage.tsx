@@ -14,6 +14,18 @@ import { NotificationBell } from "@/components/NotificationBell";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { currentMonth, monthRange, budgetStatus, Budget, localToday } from "@/lib/budgets";
 
+/** "Today" / "Yesterday" / "28 Oct" for a yyyy-MM-dd transaction date (local). */
+function formatTxDate(value: string | null | undefined, t: (k: string) => string = (k) => k): string {
+  if (!value) return "";
+  const [y, m, d] = value.split("-").map(Number);
+  const date = new Date(y, (m || 1) - 1, d || 1);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const diff = Math.round((today.getTime() - date.getTime()) / 86400000);
+  if (diff === 0) return t("home.today");
+  if (diff === 1) return t("home.yesterday");
+  return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+}
+
 function getGreetingKey(): string {
   const hour = new Date().getHours();
   if (hour < 12) return "home.morning";
@@ -68,10 +80,14 @@ export default function HomePage() {
     enabled: !!user,
   });
 
+  // "Recent Transactions" = the 5 most recently added, any day (QA
+  // 2026-11-01: it showed only today's, so yesterday's entry read as
+  // "No transactions yet"). Key stays under ["transactions_today"] so
+  // every write page's existing invalidation refreshes it.
   const { data: todayTx = [], isLoading: txLoading } = useQuery({
-    queryKey: ["transactions_today"],
+    queryKey: ["transactions_today", "recent"],
     queryFn: async () => {
-      const { data, error } = await db.from("transactions").select("*").eq("transaction_date", today).order("created_at", { ascending: false }).limit(5);
+      const { data, error } = await db.from("transactions").select("*").order("created_at", { ascending: false }).limit(5);
       if (error) throw error;
       return data;
     },
@@ -192,11 +208,14 @@ export default function HomePage() {
       <div className="animate-in fade-in duration-300">
         <Card className="overflow-hidden border-0 bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg">
           <CardContent className="p-5">
+            {/* Earnings = today's income, so paying rent can't turn
+                "Today's Earnings" into -₹8,000 (QA 2026-11-01). Expenses
+                and the net result are shown underneath. */}
             <p className="text-sm font-medium opacity-90">{t("home.todayEarnings")}</p>
-            <p className="mt-1 text-3xl font-extrabold tracking-tight">{formatINR(todayIncome - todayExpense)}</p>
-            <div className="mt-3 flex gap-4 text-sm opacity-80">
-              <span>{t("home.income")}: {formatINR(todayIncome)}</span>
+            <p className="mt-1 text-3xl font-extrabold tracking-tight">{formatINR(todayIncome)}</p>
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm opacity-90">
               <span>{t("home.expense")}: {formatINR(todayExpense)}</span>
+              <span className="font-semibold">{t("home.netToday")}: {formatINR(todayIncome - todayExpense)}</span>
             </div>
           </CardContent>
         </Card>
@@ -358,7 +377,7 @@ export default function HomePage() {
                     </div>
                     <div>
                       <p className="text-sm font-medium">{tx.category}{tx.platform ? ` - ${tx.platform}` : ""}</p>
-                      <p className="text-xs text-muted-foreground">{tx.description || tx.category}</p>
+                      <p className="text-xs text-muted-foreground">{formatTxDate(tx.transaction_date, t)}{tx.description ? ` • ${tx.description}` : ""}</p>
                     </div>
                   </div>
                   <span className={`text-sm font-bold ${tx.type === "income" ? "text-success" : "text-destructive"}`}>
