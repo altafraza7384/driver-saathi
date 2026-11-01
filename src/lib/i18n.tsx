@@ -534,6 +534,8 @@ const translations: Record<Language, Record<string, string>> = {
     "recurring.lastPaid": "Last paid: {date}",
     "form.checkInput": "Please check",
     "form.amountPositive": "Enter an amount greater than 0.",
+    "settings.invalidPhone": "Enter a valid 10-digit mobile number (starts with 6-9).",
+    "settings.profileSaved": "✅ Profile saved",
   },
   hi: {
     "nav.home": "होम",
@@ -1043,6 +1045,8 @@ const translations: Record<Language, Record<string, string>> = {
     "recurring.lastPaid": "पिछला भुगतान: {date}",
     "form.checkInput": "कृपया जांचें",
     "form.amountPositive": "0 से ज़्यादा राशि डालें।",
+    "settings.invalidPhone": "सही 10 अंकों का मोबाइल नंबर डालें (6-9 से शुरू)।",
+    "settings.profileSaved": "✅ प्रोफ़ाइल सेव हो गई",
   },
   mr: {
     "nav.home": "होम",
@@ -1551,6 +1555,8 @@ const translations: Record<Language, Record<string, string>> = {
     "recurring.lastPaid": "मागील भरणा: {date}",
     "form.checkInput": "कृपया तपासा",
     "form.amountPositive": "0 पेक्षा जास्त रक्कम टाका.",
+    "settings.invalidPhone": "योग्य 10 अंकी मोबाईल नंबर टाका (6-9 ने सुरू).",
+    "settings.profileSaved": "✅ प्रोफाइल जतन झाले",
   },
   bn: {
     // Nav
@@ -2075,6 +2081,8 @@ const translations: Record<Language, Record<string, string>> = {
     "recurring.lastPaid": "শেষ পেমেন্ট: {date}",
     "form.checkInput": "অনুগ্রহ করে দেখুন",
     "form.amountPositive": "0-এর বেশি পরিমাণ লিখুন।",
+    "settings.invalidPhone": "সঠিক ১০ অঙ্কের মোবাইল নম্বর দিন (6-9 দিয়ে শুরু)।",
+    "settings.profileSaved": "✅ প্রোফাইল সেভ হয়েছে",
   },
   kn: {
     "nav.home": "ಮುಖಪುಟ",
@@ -2583,6 +2591,8 @@ const translations: Record<Language, Record<string, string>> = {
     "recurring.lastPaid": "ಕೊನೆಯ ಪಾವತಿ: {date}",
     "form.checkInput": "ದಯವಿಟ್ಟು ಪರಿಶೀಲಿಸಿ",
     "form.amountPositive": "0 ಕ್ಕಿಂತ ಹೆಚ್ಚಿನ ಮೊತ್ತ ನಮೂದಿಸಿ.",
+    "settings.invalidPhone": "ಸರಿಯಾದ 10 ಅಂಕಿಯ ಮೊಬೈಲ್ ಸಂಖ್ಯೆ ನಮೂದಿಸಿ (6-9 ರಿಂದ ಪ್ರಾರಂಭ).",
+    "settings.profileSaved": "✅ ಪ್ರೊಫೈಲ್ ಉಳಿಸಲಾಗಿದೆ",
   },
 };
 

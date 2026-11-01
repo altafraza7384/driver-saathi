@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Globe, User, Car, LogOut, Save, ArrowLeft, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { isValidPhone } from "@/lib/carSos";
 import { useNavigate } from "react-router-dom";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -40,10 +41,13 @@ export default function SettingsPage() {
 
   const updateMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await db.from("profiles").update({ full_name: form.full_name, phone: form.phone, vehicle_type: form.vehicle_type, vehicle_number: form.vehicle_number, license_number: form.license_number, preferred_language: language }).eq("user_id", user!.id);
+      // Same 10-digit Indian mobile rule as emergency contacts / insurance
+      // (QA 2026-11-01: "12345" was accepted). Empty stays allowed.
+      if (form.phone.trim() && !isValidPhone(form.phone)) throw new Error(t("settings.invalidPhone"));
+      const { error } = await db.from("profiles").update({ full_name: form.full_name, phone: form.phone.trim(), vehicle_type: form.vehicle_type, vehicle_number: form.vehicle_number, license_number: form.license_number, preferred_language: language }).eq("user_id", user!.id);
       if (error) throw error;
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["profile"] }); setEditing(false); toast.success("✅"); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["profile"] }); setEditing(false); toast.success(t("settings.profileSaved")); },
     onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
 
@@ -126,7 +130,7 @@ export default function SettingsPage() {
           <Card><CardContent className="space-y-3 p-4">
             <div className="flex items-center gap-2 mb-1"><User className="h-4 w-4 text-muted-foreground" /><span className="font-semibold">{t("settings.profile")}</span></div>
             <div><Label>{t("settings.fullName")}</Label><Input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} /></div>
-            <div><Label>{t("settings.phone")}</Label><Input type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+91 9876543210" /></div>
+            <div><Label>{t("settings.phone")}</Label><Input type="tel" inputMode="tel" maxLength={16} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+91 9876543210" aria-invalid={!!form.phone.trim() && !isValidPhone(form.phone)} />{form.phone.trim() && !isValidPhone(form.phone) && <p className="mt-1 text-xs text-destructive">{t("settings.invalidPhone")}</p>}</div>
             <p className="text-muted-foreground">{t("settings.email")}: {user?.email}</p>
           </CardContent></Card>
           <Card><CardContent className="space-y-3 p-4">
