@@ -6,6 +6,7 @@ import { announcementMatchesAudience, extractFcmToken, chunkTokens } from "./ann
 import { defineSecret } from "firebase-functions/params";
 import webpush from "web-push";
 import { db, auth, requireUser, requireAdmin, deleteUserData } from "./shared";
+import { notifyQueryBounds, isDueNow } from "./notifyTime";
 
 export { chat, financeAi } from "./ai";
 export { dedupeInsuranceLead } from "./leads";
@@ -58,12 +59,24 @@ export const sendNotifications = onSchedule(
     // or a missed run, must still fire on the next run instead of being
     // lost forever. Double-sends are still impossible: the sentNotifications
     // claim below fails if the item was already sent.
-    const from = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+    // The range is widened by the IST offset so page-written naive IST
+    // times ("2026-11-02T04:28:00") are fetched too; isDueNow() then reads
+    // both shapes as real instants (they used to fire 5h30m late).
+    const { from, to } = notifyQueryBounds(now);
     const due: Due[] = [];
     for (const [col, filter, prefix, url, label] of SOURCES) {
-      let q = db.collectionGroup(col).where("notify_at", ">=", from).where("notify_at", "<=", now.toISOString());
+      let q = db.collectionGroup(col).where("notify_at", ">=", from).where("notify_at", "<=", to);
       if (filter) q = q.where(filter[0], "==", filter[1]);
-      for (const d of (await q.get()).docs) {
+      // One failing source (e.g. a missing collection-group index) must not
+      // stop every other source from sending; the error names the source.
+      let docs;
+      try { docs = (await q.get()).docs; }
+      catch (e: any) {
+        console.error("sendNotifications: query failed", { source: col, code: e?.code ?? null, message: String(e?.message ?? e).slice(0, 500) });
+        continue;
+      }
+      for (const d of docs) {
+        if (!isDueNow(d.get("notify_at"), now)) continue;
         // Reminders: skip completed in code, not in the query — docs
         // created from the page before the fix carry no is_completed
         // field, and Firestore equality does not match missing fields.
@@ -93,25 +106,35 @@ export const sendNotifications = onSchedule(
       const detail = n.desc ? n.desc : `your ${n.label} "${n.item}" is due.`;
       n.body = who ? `${who}, ${detail}` : detail;
     }
+    // One log line per item and per run (never the token itself), so
+    // "was it sent, to how many devices, and why not" is answerable from
+    // Logs Explorer without reading Firestore.
+    const summary = { due: due.length, sent: 0, alreadySent: 0, noDevices: 0, failed: 0 };
     for (const n of due) {
       const key = `${n.source}_${n.id}_${n.notifyAt}`.replace(/[/:.]/g, "-");
       const sentRef = db.doc(`users/${n.uid}/sentNotifications/${key}`);
       // Idempotent: create() fails if already claimed, so retries never double-send.
       try { await sentRef.create({ source_table: n.source, source_id: n.id, notify_at: n.notifyAt, sent_at: null }); }
-      catch { continue; }
+      catch { summary.alreadySent++; continue; }
       const subs = await db.collection(`users/${n.uid}/push_subscriptions`).get();
       let ok = false;
+      const result = { fcmTokens: 0, webSubs: 0, fcmOk: 0, webOk: 0, errors: [] as string[] };
       const fcm: Array<{ token: string; ref: any }> = [];
       for (const s of subs.docs) {
         const endpoint = s.get("endpoint") as string;
         const fcmToken = extractFcmToken(endpoint);
         if (fcmToken) { fcm.push({ token: fcmToken, ref: s.ref }); continue; }
+        result.webSubs++;
         try {
           await webpush.sendNotification({ endpoint, keys: { p256dh: s.get("p256dh"), auth: s.get("auth") } },
             JSON.stringify({ title: n.title, body: n.body, url: n.url }));
-          ok = true;
-        } catch (e: any) { if (e?.statusCode === 404 || e?.statusCode === 410) await s.ref.delete(); }
+          ok = true; result.webOk++;
+        } catch (e: any) {
+          result.errors.push(`web:${e?.statusCode ?? "error"}`);
+          if (e?.statusCode === 404 || e?.statusCode === 410) await s.ref.delete();
+        }
       }
+      result.fcmTokens = fcm.length;
       // Native installed app (FCM tokens): the scheduler used to skip
       // these entirely, so installed-app users never got due notifications.
       // Send them via the Admin SDK, same as announcement push.
@@ -122,19 +145,29 @@ export const sendNotifications = onSchedule(
             token: b.token,
             notification: { title: n.title, body: n.body },
             data: { url: n.url },
-            android: { priority: "high" as const },
+            // "reminders" is the high-importance channel the app creates
+            // (heads-up + sound). On an older install without it, Android's
+            // FCM SDK falls back to its default channel, so nothing is lost.
+            android: { priority: "high" as const, notification: { channelId: "reminders", sound: "default" } },
           })));
           for (let i = 0; i < batch.length; i++) {
             const r = res.responses[i];
-            if (r.success) ok = true;
-            else if (r.error?.code === "messaging/registration-token-not-registered" || r.error?.code === "messaging/invalid-registration-token") {
-              await batch[i].ref.delete().catch(() => undefined);
+            if (r.success) { ok = true; result.fcmOk++; }
+            else {
+              result.errors.push(`fcm:${r.error?.code ?? "error"}`);
+              if (r.error?.code === "messaging/registration-token-not-registered" || r.error?.code === "messaging/invalid-registration-token") {
+                await batch[i].ref.delete().catch(() => undefined);
+              }
             }
           }
         }
       }
+      if (ok) summary.sent++; else if (!subs.size) summary.noDevices++; else summary.failed++;
+      console.log("sendNotifications: item", { uid: n.uid, source: n.source, id: n.id, notify_at: n.notifyAt,
+        outcome: ok ? "sent" : subs.size ? "failed" : "no_devices", ...result });
       if (ok) await sentRef.update({ sent_at: new Date().toISOString() }); else await sentRef.delete(); // allow retry
     }
+    console.log("sendNotifications: run", { at: now.toISOString(), ...summary });
   });
 
 // ---------------------------------------------------------------------------
