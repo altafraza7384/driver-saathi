@@ -111,12 +111,15 @@ export function NotificationBell() {
   const { data: healthLog } = useQuery({
     queryKey: ["notifications_health", todayStr],
     queryFn: async () => {
+      // Not maybeSingle(): days logged before the one-doc-per-day fix can
+      // hold duplicates, and >1 rows made maybeSingle() return nothing.
       const { data } = await db
         .from("health_logs")
         .select("*")
-        .eq("log_date", todayStr)
-        .maybeSingle();
-      return data;
+        .eq("log_date", todayStr);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rows = (data ?? []) as any[];
+      return rows.find((r) => r.id === `hl_${todayStr}`) ?? rows[0] ?? null;
     },
     enabled: !!user,
   });

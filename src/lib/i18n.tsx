@@ -519,6 +519,10 @@ const translations: Record<Language, Record<string, string>> = {
     "confirm.deleteTitle": "Delete this?",
     "confirm.deleteDesc": "This cannot be undone.",
     "confirm.deleted": "Deleted",
+    "health.waterAdded": "💧 Water added ({count}/8)",
+    "health.breakAdded": "☕ Break added ({count}/4)",
+    "health.stepsAdded": "🚶 Steps: {count}",
+    "health.logSaved": "✅ Today's health log saved",
   },
   hi: {
     "nav.home": "होम",
@@ -1013,6 +1017,10 @@ const translations: Record<Language, Record<string, string>> = {
     "confirm.deleteTitle": "इसे हटाएं?",
     "confirm.deleteDesc": "यह वापस नहीं लाया जा सकेगा।",
     "confirm.deleted": "हटा दिया गया",
+    "health.waterAdded": "💧 पानी जोड़ा ({count}/8)",
+    "health.breakAdded": "☕ ब्रेक जोड़ा ({count}/4)",
+    "health.stepsAdded": "🚶 कदम: {count}",
+    "health.logSaved": "✅ आज का हेल्थ लॉग सेव हो गया",
   },
   mr: {
     "nav.home": "होम",
@@ -1506,6 +1514,10 @@ const translations: Record<Language, Record<string, string>> = {
     "confirm.deleteTitle": "हे हटवायचे?",
     "confirm.deleteDesc": "हे परत आणता येणार नाही.",
     "confirm.deleted": "हटवले",
+    "health.waterAdded": "💧 पाणी जोडले ({count}/8)",
+    "health.breakAdded": "☕ ब्रेक जोडला ({count}/4)",
+    "health.stepsAdded": "🚶 पावले: {count}",
+    "health.logSaved": "✅ आजचा आरोग्य लॉग जतन झाला",
   },
   bn: {
     // Nav
@@ -2015,6 +2027,10 @@ const translations: Record<Language, Record<string, string>> = {
     "confirm.deleteTitle": "এটি মুছবেন?",
     "confirm.deleteDesc": "এটি আর ফেরানো যাবে না।",
     "confirm.deleted": "মুছে ফেলা হয়েছে",
+    "health.waterAdded": "💧 জল যোগ হয়েছে ({count}/8)",
+    "health.breakAdded": "☕ বিরতি যোগ হয়েছে ({count}/4)",
+    "health.stepsAdded": "🚶 পদক্ষেপ: {count}",
+    "health.logSaved": "✅ আজকের স্বাস্থ্য লগ সেভ হয়েছে",
   },
   kn: {
     "nav.home": "ಮುಖಪುಟ",
@@ -2508,6 +2524,10 @@ const translations: Record<Language, Record<string, string>> = {
     "confirm.deleteTitle": "ಇದನ್ನು ಅಳಿಸಬೇಕೆ?",
     "confirm.deleteDesc": "ಇದನ್ನು ಮರಳಿ ತರಲು ಸಾಧ್ಯವಿಲ್ಲ.",
     "confirm.deleted": "ಅಳಿಸಲಾಗಿದೆ",
+    "health.waterAdded": "💧 ನೀರು ಸೇರಿಸಲಾಗಿದೆ ({count}/8)",
+    "health.breakAdded": "☕ ವಿರಾಮ ಸೇರಿಸಲಾಗಿದೆ ({count}/4)",
+    "health.stepsAdded": "🚶 ಹೆಜ್ಜೆಗಳು: {count}",
+    "health.logSaved": "✅ ಇಂದಿನ ಆರೋಗ್ಯ ಲಾಗ್ ಉಳಿಸಲಾಗಿದೆ",
   },
 };
 

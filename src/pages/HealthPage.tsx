@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { db } from "@/lib/backend";
 import { friendlyErrorMessage } from "@/lib/errors";
@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Moon, Droplets, Coffee, Footprints, Save, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
@@ -20,27 +21,55 @@ export default function HealthPage() {
   const queryClient = useQueryClient();
   const today = localToday(); // local date, not UTC (audit 2026-10-24)
 
+  // One health log per day. Doc id is deterministic (hl_yyyy-MM-dd) so
+  // rapid taps / a tap + Save can never create duplicate docs for the same
+  // day. Before this, each quick tap that raced the first insert added
+  // another doc: maybeSingle() then saw >1 rows, errored, and the counters
+  // fell back to 0 on refresh, while "Days Logged" counted every duplicate
+  // (QA 2026-11-01: 4/7 after one day). Legacy duplicate docs from before
+  // this fix are tolerated: we pick the newest for today and dedupe by day.
+  const todayDocId = `hl_${today}`;
+  type HealthLog = { id: string; log_date: string; sleep_hours?: number; water_glasses?: number; breaks_taken?: number; steps?: number; updated_at?: string };
+  const pickLatest = (rows: HealthLog[]): HealthLog | null => {
+    if (!rows.length) return null;
+    const own = rows.find((r) => r.id === todayDocId);
+    if (own) return own;
+    return [...rows].sort((a, b) => String(b.updated_at ?? "").localeCompare(String(a.updated_at ?? "")))[0];
+  };
+
   const { data: log, isLoading } = useQuery({
     queryKey: ["health_log", today],
     queryFn: async () => {
-      const { data, error } = await db.from("health_logs").select("*").eq("user_id", user!.id).eq("log_date", today).maybeSingle();
+      const { data, error } = await db.from("health_logs").select("*").eq("log_date", today);
       if (error) throw error;
-      return data;
+      return pickLatest((data ?? []) as HealthLog[]);
     },
     enabled: !!user,
   });
 
   const [form, setForm] = useState({ sleep_hours: "0", water_glasses: "0", breaks_taken: "0", steps: "0" });
+  // Latest form values for async handlers (rapid taps must build on each
+  // other, not on a stale render's state).
+  const formRef = useRef(form);
+  formRef.current = form;
 
   useEffect(() => {
     if (log) setForm({ sleep_hours: String(log.sleep_hours || 0), water_glasses: String(log.water_glasses || 0), breaks_taken: String(log.breaks_taken || 0), steps: String(log.steps || 0) });
   }, [log]);
 
-  const upsertLog = async (updates: Partial<{ sleep_hours: number; water_glasses: number; breaks_taken: number; steps: number }>) => {
-    if (!user) return;
-    const payload = { user_id: user.id, log_date: today, sleep_hours: Number(form.sleep_hours), water_glasses: Number(form.water_glasses), breaks_taken: Number(form.breaks_taken), steps: Number(form.steps), ...updates };
-    if (log) await db.from("health_logs").update(payload).eq("id", log.id);
-    else await db.from("health_logs").insert(payload);
+  const upsertLog = async (current: typeof form) => {
+    if (!user) throw new Error("Please sign in again.");
+    const payload = {
+      id: todayDocId,
+      user_id: user.id,
+      log_date: today,
+      sleep_hours: Number(current.sleep_hours) || 0,
+      water_glasses: Number(current.water_glasses) || 0,
+      breaks_taken: Number(current.breaks_taken) || 0,
+      steps: Number(current.steps) || 0,
+    };
+    const { error } = await db.from("health_logs").upsert(payload);
+    if (error) throw error;
     queryClient.invalidateQueries({ queryKey: ["health_log"] });
     queryClient.invalidateQueries({ queryKey: ["health_logs_week"] });
     // Partial key: also matches the bell's ["notifications_health", date].
@@ -48,15 +77,24 @@ export default function HealthPage() {
   };
 
   const quickMark = async (key: "water_glasses" | "breaks_taken" | "steps", increment: number) => {
-    const newVal = Number(form[key]) + increment;
-    setForm(prev => ({ ...prev, [key]: String(newVal) }));
-    await upsertLog({ [key]: newVal });
-    toast.success(key === "water_glasses" ? "💧" : key === "breaks_taken" ? "☕" : "🚶");
+    const next = { ...formRef.current, [key]: String((Number(formRef.current[key]) || 0) + increment) };
+    formRef.current = next;
+    setForm(next);
+    try {
+      await upsertLog(next);
+      toast.success(
+        key === "water_glasses" ? t("health.waterAdded", { count: next.water_glasses })
+        : key === "breaks_taken" ? t("health.breakAdded", { count: next.breaks_taken })
+        : t("health.stepsAdded", { count: Number(next.steps).toLocaleString("en-IN") })
+      );
+    } catch (e) {
+      toast.error(friendlyErrorMessage(e as Error));
+    }
   };
 
   const saveMutation = useMutation({
-    mutationFn: async () => { await upsertLog({}); },
-    onSuccess: () => toast.success("✅"),
+    mutationFn: async () => { await upsertLog(formRef.current); },
+    onSuccess: () => toast.success(t("health.logSaved")),
     onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
 
@@ -68,12 +106,21 @@ export default function HealthPage() {
     queryFn: async () => {
       const { data, error } = await db.from("health_logs").select("*").gte("log_date", format(weekStart, "yyyy-MM-dd")).lte("log_date", format(weekEnd, "yyyy-MM-dd")).order("log_date", { ascending: true });
       if (error) throw error;
-      return data;
+      // One entry per day (legacy duplicates collapse to the newest), so
+      // "Days Logged" counts days, not documents.
+      const byDay = new Map<string, HealthLog[]>();
+      for (const row of (data ?? []) as HealthLog[]) {
+        byDay.set(row.log_date, [...(byDay.get(row.log_date) ?? []), row]);
+      }
+      return [...byDay.values()].map((rows) => {
+        const own = rows.find((r) => r.id === `hl_${rows[0].log_date}`);
+        return own ?? [...rows].sort((a, b) => String(b.updated_at ?? "").localeCompare(String(a.updated_at ?? "")))[0];
+      });
     },
     enabled: !!user,
   });
 
-  const avgSleep = weeklyLogs.length > 0 ? weeklyLogs.reduce((s, l) => s + Number(l.sleep_hours), 0) / weeklyLogs.length : 0;
+  const avgSleep = weeklyLogs.length > 0 ? weeklyLogs.reduce((s, l) => s + (Number(l.sleep_hours) || 0), 0) / weeklyLogs.length : 0;
   const avgWater = weeklyLogs.length > 0 ? weeklyLogs.reduce((s, l) => s + (l.water_glasses || 0), 0) / weeklyLogs.length : 0;
 
   const metrics = [
@@ -86,6 +133,13 @@ export default function HealthPage() {
   return (
     <div className="space-y-5 p-4 pt-6">
       <h1 className="text-2xl font-bold">{t("nav.health")}</h1>
+      {isLoading ? (
+        <div className="space-y-3">
+          <Skeleton className="h-20 w-full rounded-xl" />
+          <Skeleton className="h-16 w-full rounded-xl" />
+          <Skeleton className="h-16 w-full rounded-xl" />
+        </div>
+      ) : (<>
       <div className="grid grid-cols-3 gap-2">
         <Button variant="outline" className="flex-col h-auto py-3 gap-1" onClick={() => quickMark("water_glasses", 1)}>
           <Droplets className="h-5 w-5 text-cyan-500" /><span className="text-xs font-medium">{t("health.addWater")}</span><span className="text-[10px] text-muted-foreground">{form.water_glasses}/8</span>
@@ -120,7 +174,9 @@ export default function HealthPage() {
         })}
       </div>
 
-      <Button className="w-full gap-2" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+      </>)}
+
+      <Button className="w-full gap-2" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || isLoading}>
         <Save className="h-4 w-4" /> {saveMutation.isPending ? t("common.saving") : t("health.saveTodayLog")}
       </Button>
 
