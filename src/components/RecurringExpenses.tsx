@@ -60,7 +60,15 @@ const CATEGORIES = [
 // counts toward that budget (audit 2026-10-24: "subscription" !==
 // "Subscription" meant budget spent never moved). The bill's own name is
 // kept in the transaction description, so no detail is lost.
+// Rent and utility bills used to fall through to "Other" (QA 2026-11-01:
+// paying Room Rent showed up as Other, so a Rent budget never moved).
+// "Rent" and "Bills" are now expense/budget categories too.
 const TX_CATEGORY_MAP: Record<string, string> = {
+  rent: "Rent",
+  electricity: "Bills",
+  water: "Bills",
+  internet: "Bills",
+  gas: "Bills",
   subscription: "Subscription",
   insurance: "Insurance",
   mobile: "Phone",
@@ -136,7 +144,7 @@ export default function RecurringExpenses() {
 
     const amt = parseFloat(amount);
     if (!Number.isFinite(amt) || amt < 0) {
-      toast({ title: "Error", description: "Please enter a valid amount.", variant: "destructive" });
+      toast({ title: t("form.checkInput"), description: t("form.amountPositive"), variant: "destructive" });
       setSaving(false);
       return;
     }
@@ -159,7 +167,7 @@ export default function RecurringExpenses() {
     if (error) {
       toast({ title: "Error", description: friendlyErrorMessage(error), variant: "destructive" });
     } else {
-      toast({ title: editing ? "Expense updated!" : "Expense added!" });
+      toast({ title: editing ? t("recurring.billUpdated") : t("recurring.billAdded") });
       setShowAdd(false);
       resetForm();
       fetchItems();
@@ -173,7 +181,7 @@ export default function RecurringExpenses() {
       toast({ title: "Error", description: friendlyErrorMessage(error), variant: "destructive" });
       return;
     }
-    toast({ title: "Expense removed" });
+    toast({ title: t("recurring.billRemoved") });
     fetchItems();
   };
 
@@ -183,7 +191,7 @@ export default function RecurringExpenses() {
     // created two payment docs + two transactions (audit 2026-10-24).
     const thisMonth = currentMonth();
     if (it.last_paid_date?.slice(0, 7) === thisMonth) {
-      toast({ title: "Already paid this month" });
+      toast({ title: t("recurring.alreadyPaid") });
       return;
     }
     setPayingId(it.id);
@@ -229,7 +237,7 @@ export default function RecurringExpenses() {
     queryClient.invalidateQueries({ queryKey: ["transactions_today"] });
     queryClient.invalidateQueries({ queryKey: ["budgets_month_tx"] });
     queryClient.invalidateQueries({ queryKey: ["budgets_month"] });
-    toast({ title: `✅ Paid ${formatINR(paidAmount)}` });
+    toast({ title: t("recurring.paidToast", { amount: formatINR(paidAmount), name: it.name }) });
     setPayingId(null);
     fetchItems();
   };
@@ -344,7 +352,7 @@ export default function RecurringExpenses() {
       ) : items.length === 0 ? (
         <Card>
           <CardContent className="p-4 text-center text-xs text-muted-foreground">
-            No recurring bills yet. Add rent, electricity, internet etc.
+            {t("recurring.empty")}
           </CardContent>
         </Card>
       ) : (
@@ -364,7 +372,7 @@ export default function RecurringExpenses() {
                       <div className="min-w-0">
                         <p className="font-semibold text-sm truncate">{it.name}</p>
                         <p className="text-[11px] text-muted-foreground capitalize flex items-center gap-1">
-                          <Calendar className="h-3 w-3" /> Day {it.due_day} · {it.category}
+                          <Calendar className="h-3 w-3" /> {t("recurring.dayN", { day: it.due_day })} · {t(CATEGORIES.find((c) => c.value === it.category)?.key ?? "recurring.catOther")}
                         </p>
                       </div>
                     </div>
@@ -383,7 +391,7 @@ export default function RecurringExpenses() {
                     <span className="text-base font-bold">{formatINR(toAmount(it.amount))}</span>
                     {it.last_paid_date && (
                       <span className="text-[10px] text-muted-foreground">
-                        Last: {new Date(it.last_paid_date).toLocaleDateString("en-IN")}
+                        {t("recurring.lastPaid", { date: new Date(it.last_paid_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) })}
                       </span>
                     )}
                   </div>
