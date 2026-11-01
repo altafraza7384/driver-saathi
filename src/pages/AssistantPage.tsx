@@ -14,6 +14,7 @@ import { db } from "@/lib/backend";
 import { getTrialState } from "@/lib/trial";
 import { callChatFunction } from "@/lib/ai";
 import { startNativeListening, cancelNativeListening, speechLangFor, type NativeListenSession } from "@/lib/nativeSpeech";
+import { stripMarkdown } from "@/lib/plainText";
 import { loadChatHistory, saveChatHistory, toApiMessages, type ChatMsg } from "@/lib/chatHistory";
 import { detectBargeIn, isStopCommand, listenRetryDelay } from "@/lib/drivingVoice";
 import { CHAT_SCREEN_CLASS, CHAT_SCREEN_STYLE } from "@/lib/chatScreen";
@@ -21,23 +22,6 @@ import { CHAT_SCREEN_CLASS, CHAT_SCREEN_STYLE } from "@/lib/chatScreen";
 const FinanceAIPage = lazy(() => import("./FinanceAIPage"));
 
 type Msg = ChatMsg;
-
-// Same display-time markdown strip as FinanceAIPage: the model emits
-// markdown, this page renders plain text. User messages pass untouched.
-function stripMarkdown(text: string): string {
-  return text
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/^#{1,6}\s+/gm, "")
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/__([^_]+)__/g, "$1")
-    .replace(/\*([^*]+)\*/g, "$1")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\|/g, " ")
-    .replace(/^[ :-]+$/gm, "")
-    .replace(/[ \t]{2,}/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 

@@ -10,30 +10,12 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { BACKEND } from "@/lib/backend";
 import { callFinanceAiFunction } from "@/lib/ai";
+import { stripMarkdown } from "@/lib/plainText";
 import { loadChatHistory, saveChatHistory, toApiMessages, type ChatMsg } from "@/lib/chatHistory";
 import { CHAT_SCREEN_CLASS, CHAT_SCREEN_STYLE } from "@/lib/chatScreen";
 import { startNativeListening, speechLangFor, type NativeListenSession } from "@/lib/nativeSpeech";
 
 type Msg = ChatMsg;
-
-// The model still emits markdown despite the plain-text prompt, and this
-// page renders plain text — so strip markdown at display time. Deterministic:
-// every reply is clean no matter what the model emits. User messages pass
-// through untouched, and stored history is cleaned on display too.
-function stripMarkdown(text: string): string {
-  return text
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/^#{1,6}\s+/gm, "")
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/__([^_]+)__/g, "$1")
-    .replace(/\*([^*]+)\*/g, "$1")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\|/g, " ")
-    .replace(/^[ :-]+$/gm, "")
-    .replace(/[ \t]{2,}/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
 
 const FINANCE_CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/finance-ai`;
 
