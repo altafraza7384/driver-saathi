@@ -8,6 +8,27 @@ import { db } from "@/lib/backend";
  * Falls back to web push (VAPID) on non-native platforms.
  */
 
+/** Android channel the server's reminder pushes target (high importance:
+ *  heads-up banner + sound). Must match channelId in sendNotifications. */
+export const PUSH_CHANNEL_ID = "reminders";
+
+/** Local-notification ids are Java ints on Android (32-bit). Date.now()
+ *  (~1.7e12) is rejected with "The identifier should be a Java int", which
+ *  is why a push that arrived while the app was open never showed. */
+export function foregroundNotificationId(now: number = Date.now()): number {
+  return Math.floor(now % 2_000_000_000) + 1;
+}
+
+/** Open an in-app path from a notification tap. The app uses BrowserRouter,
+ *  so setting location.hash (the old code) never changed the page. Only
+ *  same-app paths ("/reminders") are followed. */
+export function openPushUrl(url: unknown): void {
+  if (typeof url !== "string" || !url.startsWith("/") || url.startsWith("//")) return;
+  if (typeof window === "undefined") return;
+  window.history.pushState({}, "", url);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
 export async function registerNativePush(userId: string): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
 
@@ -18,13 +39,23 @@ export async function registerNativePush(userId: string): Promise<void> {
     return;
   }
 
-  // Register with FCM
-  await PushNotifications.register();
+  try {
+    await PushNotifications.createChannel({
+      id: PUSH_CHANNEL_ID,
+      name: "Reminders",
+      description: "Reminders, EMI, bills and document expiry",
+      importance: 5,
+      visibility: 1,
+      vibration: true,
+    });
+  } catch (err) {
+    console.warn("Push channel create failed:", err);
+  }
 
-  // Listen for the FCM token
-  PushNotifications.addListener("registration", async (token) => {
+  // Listeners first, then register, so the token event is never missed.
+  await PushNotifications.addListener("registration", async (token) => {
     // Store FCM token in push_subscriptions (reuse the table)
-    await db.from("push_subscriptions").upsert(
+    const { error } = await db.from("push_subscriptions").upsert(
       {
         user_id: userId,
         endpoint: `fcm://${token.value}`,
@@ -33,34 +64,43 @@ export async function registerNativePush(userId: string): Promise<void> {
       },
       { onConflict: "user_id,endpoint" }
     );
+    if (error) console.error("Saving FCM token failed:", error);
   });
 
-  PushNotifications.addListener("registrationError", (err) => {
+  await PushNotifications.addListener("registrationError", (err) => {
     console.error("FCM registration error:", err);
   });
 
-  // Handle incoming notifications when app is open
-  PushNotifications.addListener("pushNotificationReceived", async (notification) => {
-    // Show as local notification so user sees it
-    await LocalNotifications.schedule({
-      notifications: [
-        {
-          title: notification.title || "Driver Saathi",
-          body: notification.body || "",
-          id: Date.now(),
-          extra: notification.data,
-        },
-      ],
-    });
-  });
-
-  // Handle notification tap
-  PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
-    const url = action.notification.data?.url;
-    if (url && typeof window !== "undefined") {
-      window.location.hash = url;
+  // Android does not show a push itself while the app is open: show it
+  // as a local notification on the same channel.
+  await PushNotifications.addListener("pushNotificationReceived", async (notification) => {
+    try {
+      await LocalNotifications.schedule({
+        notifications: [
+          {
+            title: notification.title || "Driver Saathi",
+            body: notification.body || "",
+            id: foregroundNotificationId(),
+            channelId: PUSH_CHANNEL_ID,
+            extra: notification.data,
+          },
+        ],
+      });
+    } catch (err) {
+      console.error("Showing foreground push failed:", err);
     }
   });
+
+  // Notification tap (closed-app push, or the foreground copy above).
+  await PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
+    openPushUrl(action.notification.data?.url);
+  });
+  await LocalNotifications.addListener("localNotificationActionPerformed", (action) => {
+    openPushUrl(action.notification.extra?.url);
+  });
+
+  // Register with FCM
+  await PushNotifications.register();
 }
 
 export async function requestLocalNotificationPermission(): Promise<boolean> {
