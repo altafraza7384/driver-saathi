@@ -2,6 +2,7 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { getMessaging } from "firebase-admin/messaging";
+import { getApp } from "firebase-admin/app";
 import { announcementMatchesAudience, extractFcmToken, chunkTokens } from "./announcements";
 import { defineSecret } from "firebase-functions/params";
 import webpush from "web-push";
@@ -108,7 +109,26 @@ export const sendNotifications = onSchedule(
     }
     // One log line per item and per run (never the token itself), so
     // "was it sent, to how many devices, and why not" is answerable from
-    // Logs Explorer without reading Firestore.
+    // Logs Explorer without reading Firest
+    // DIAGNOSTIC (2026-11-02, temporary, push-behaviour unchanged):
+        // Scheduler FCM sends fail with mismatched-credential for every token
+        // (old and fresh-install alike) while a Firebase console test to the
+        // same fresh token SUCCEEDS. Log the Admin SDK's own project identity
+        // and the FULL FCM error message once per run, so the next run shows
+        // whether the runtime credential's project differs from this one.
+        // No token, key, or credential value is ever logged here.
+        try {
+                const appOpts: any = (getApp() as any).options ?? {};
+                let cfgProject: string | null = null;
+                try { cfgProject = JSON.parse(process.env.FIREBASE_CONFIG ?? "{}").projectId ?? null; } catch { cfgProject = null; }
+                console.log("sendNotifications: diag", {
+                          adminProjectId: appOpts.projectId ?? null,
+                          gcloudProject: process.env.GCLOUD_PROJECT ?? null,
+                          firebaseConfigProject: cfgProject,
+                });
+        } catch (e: any) {
+                console.log("sendNotifications: diag failed", { message: String(e?.message ?? e).slice(0, 200) });
+        }
     const summary = { due: due.length, sent: 0, alreadySent: 0, noDevices: 0, failed: 0 };
     for (const n of due) {
       const key = `${n.source}_${n.id}_${n.notifyAt}`.replace(/[/:.]/g, "-");
@@ -155,6 +175,12 @@ export const sendNotifications = onSchedule(
             if (r.success) { ok = true; result.fcmOk++; }
             else {
               result.errors.push(`fcm:${r.error?.code ?? "error"}`);
+              // DIAGNOSTIC: log the full FCM error message (never the token).
+                            console.error("sendNotifications: fcm error detail", {
+                                              source: n.source, id: n.id,
+                                              code: r.error?.code ?? null,
+                                              message: String(r.error?.message ?? r.error ?? "").slice(0, 500),
+                            });
               if (r.error?.code === "messaging/registration-token-not-registered" || r.error?.code === "messaging/invalid-registration-token") {
                 await batch[i].ref.delete().catch(() => undefined);
               }
