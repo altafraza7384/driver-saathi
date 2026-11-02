@@ -178,6 +178,12 @@ jobs:
           else:
               print("AdMob App ID already present, skipped")
           PY
+                - name: Inject location permissions into AndroidManifest
+                        # The Geolocation plugin does not add these itself; without them a
+                                # fresh cap add+sync build ships with no location permission and Car
+                                        # SOS cannot get GPS (found in v13). Same script hand builds run.
+                                                run: python3 scripts/inject-android-location-permissions.py
+          
 
       - name: Add google-services.json if secret exists, else warn
         env:
