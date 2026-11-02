@@ -14,6 +14,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { formatAuthError, useAuthActions } from "@/hooks/useAuthActions";
 import { BACKEND } from "@/lib/backend";
+import { isAdminOnlyAccount } from "@/lib/admin-only";
 import { Lock, Mail, User, Wifi, WifiOff } from "lucide-react";
 
 export default function AuthPage() {
@@ -42,7 +43,8 @@ export default function AuthPage() {
     try {
       if (isLogin) {
         await signInWithPassword(email, password, handleRetry);
-        navigate("/");
+        // Admin-only account lands on the admin panel, never driver Home.
+        navigate(isAdminOnlyAccount(email) ? "/admin" : "/");
         return;
       }
 
