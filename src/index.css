@@ -169,7 +169,13 @@
   }
 }
 
-/* Safe area for mobile PWA & Despia native */
+/* Safe area for mobile PWA & Despia native.
+   NOTE (2026-11-02 status-bar fix): on Android WebView
+   env(safe-area-inset-top) is 0, so .pt-safe alone cannot keep the
+   header out from under the status bar there. Android is handled by
+   src/lib/status-bar.ts (StatusBar plugin: dark icons, white bar,
+   overlaysWebView=false, so the WebView is inset below the bar).
+   .pt-safe stays for iOS/PWA, where the env() inset is real. */
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
   .pb-safe {
     padding-bottom: calc(env(safe-area-inset-bottom) + 5rem);
