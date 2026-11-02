@@ -109,7 +109,7 @@ export const sendNotifications = onSchedule(
     }
     // One log line per item and per run (never the token itself), so
     // "was it sent, to how many devices, and why not" is answerable from
-    // Logs Explorer without reading Firest
+    // Logs Explorer without reading Firestore.
     // DIAGNOSTIC (2026-11-02, temporary, push-behaviour unchanged):
         // Scheduler FCM sends fail with mismatched-credential for every token
         // (old and fresh-install alike) while a Firebase console test to the
