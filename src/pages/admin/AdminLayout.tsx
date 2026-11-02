@@ -1,11 +1,12 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { db } from "@/lib/backend";
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
 
 export default function AdminLayout() {
-  const { user, loading } = useAuth();
-
+  const { user, loading, signOut } = useAuth();
+  const navigate = useNavigate();
   const { data: isAdmin, isLoading: roleLoading } = useQuery({
     queryKey: ["is_admin", user?.id],
     queryFn: async () => {
@@ -28,12 +29,22 @@ export default function AdminLayout() {
   }
 
   if (!user) return <Navigate to="/auth" replace />;
+
   if (!isAdmin) {
     return (
       <div className="flex min-h-screen items-center justify-center p-4">
         <div className="text-center space-y-2">
           <h1 className="text-2xl font-bold text-destructive">Access Denied</h1>
           <p className="text-muted-foreground">You don't have admin privileges.</p>
+          <Button
+            variant="outline"
+            onClick={async () => {
+              await signOut();
+              navigate("/auth");
+            }}
+          >
+            Sign Out
+          </Button>
         </div>
       </div>
     );
