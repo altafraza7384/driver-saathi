@@ -4,6 +4,7 @@ import { Capacitor } from "@capacitor/core";
 import App from "./App.tsx";
 import { AppErrorBoundary, reloadOnceForChunkError } from "./components/AppErrorBoundary";
 import { hideNativeSplash } from "./lib/splash";
+import { initStatusBar } from "./lib/status-bar";
 import "./index.css";
 
 // Register service worker for offline support & push notifications.
@@ -41,3 +42,8 @@ createRoot(document.getElementById("root")!).render(
 
 // Release the native splash once the first frame with the app is on screen.
 requestAnimationFrame(() => requestAnimationFrame(hideNativeSplash));
+
+// Status bar first, on every launch (including /auth, which is outside
+// AppLayout): light bar + dark icons, WebView below the bar. See
+// src/lib/status-bar.ts for why CSS alone cannot do this on Android.
+initStatusBar();
