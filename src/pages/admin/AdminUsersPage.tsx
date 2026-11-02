@@ -5,6 +5,7 @@ import { db } from "@/lib/backend";
 import { firebaseDb } from "@/integrations/firebase/client";
 import { friendlyErrorMessage } from "@/lib/errors";
 import { useAuth } from "@/hooks/useAuth";
+import { isAdminOnlyAccount } from "@/lib/admin-only";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -137,7 +138,9 @@ export default function AdminUsersPage() {
     setPlanChoice(u.subscription_plan_id ?? "none");
   };
 
-  const filtered = users.filter((u) => {
+  // Admin-only account is not a driver user: never listed or counted here.
+  const visibleUsers = users.filter((u) => !isAdminOnlyAccount(u.email));
+  const filtered = visibleUsers.filter((u) => {
     const q = search.toLowerCase();
     return (
       (u.email ?? "").toLowerCase().includes(q) ||
@@ -158,7 +161,7 @@ export default function AdminUsersPage() {
 
       <div className="flex items-center gap-2">
         <UsersIcon className="h-6 w-6 text-primary" />
-        <h1 className="text-2xl font-bold">{"Users"} ({users.length})</h1>
+        <h1 className="text-2xl font-bold">{"Users"} ({visibleUsers.length})</h1>
       </div>
 
       <div className="relative">
