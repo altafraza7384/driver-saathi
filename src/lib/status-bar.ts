@@ -24,7 +24,7 @@ let started = false;
  *
  * Safe on web and on older builds: the import is dynamic and every
  * failure is swallowed, so a build without the synced plugin behaves
- * exactly like today instead of crashing. v11 bundle verification must
+ * exactly like today instead of crashing. v12 bundle verification must
  * still confirm the plugin IS present (see the marker in the report),
  * otherwise this is a no-op and the bug stays.
  */
@@ -34,8 +34,12 @@ export function initStatusBar(): void {
   import("@capacitor/status-bar")
     .then(async ({ StatusBar, Style }) => {
       if (!Capacitor.isPluginAvailable("StatusBar")) return;
-      // Dark icons on a light background (Style.Dark = dark content).
-      await StatusBar.setStyle({ style: Style.Dark });
+      // Dark icons on a light background. Official plugin semantics:
+      // Style.Light = dark text for light backgrounds (what we need
+      // for our white bar); Style.Dark = light text for dark
+      // backgrounds. The previous Style.Dark value was inverted and
+      // gave white icons on white, i.e. invisible.
+      await StatusBar.setStyle({ style: Style.Light });
       await StatusBar.show();
       if (Capacitor.getPlatform() === "android") {
         // Light status bar, never navy.
