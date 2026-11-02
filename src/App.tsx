@@ -13,6 +13,8 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { lazyWithRetry } from "@/lib/lazyWithRetry";
 import { AndroidBackButton } from "@/components/AndroidBackButton";
 
+import { isAdminOnlyAccount } from "@/lib/admin-only";
+
 const HomePage = lazyWithRetry(() => import("./pages/HomePage"));
 const TransactionsPage = lazyWithRetry(() => import("./pages/TransactionsPage"));
 const AddTransactionPage = lazyWithRetry(() => import("./pages/AddTransactionPage"));
@@ -124,6 +126,8 @@ function ProtectedRoutes() {
     return () => window.removeEventListener("unhandledrejection", handler);
   }, []);
 
+  
+
   if (loading) return <BootScreen />;
 
   if (!user) {
@@ -132,6 +136,13 @@ function ProtectedRoutes() {
 
   if (blockedProfile?.is_blocked === true) {
     return <BlockedScreen />;
+  }
+
+  // Admin-only account (altafraza7384@gmail.com, scope 2026-11-02): this
+  // account never sees the driver app — any non-admin route bounces to
+  // /admin. razakhan.chino@gmail.com is NOT affected (stays user + admin).
+  if (isAdminOnlyAccount(user?.email) && !location.pathname.startsWith("/admin")) {
+    return <Navigate to="/admin" replace />;
   }
 
   // Admin pages render without the main app's bottom navigation: the
