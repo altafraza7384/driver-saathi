@@ -16,6 +16,9 @@ type Mechanic = {
   id: string;
   name?: string | null;
   shopName?: string | null;
+  phone?: string | null;
+  phoneVerified?: boolean | null;
+  phoneVerifiedAt?: string | null;
   categories?: string[] | null;
   isOnline?: boolean | null;
   status?: string | null;
@@ -167,7 +170,18 @@ export default function AdminMechanicsPage() {
     );
   };
 
-  const resetWarnings = (m: Mechanic) => {
+  const verifyPhone = (m: Mechanic) => {
+    updateMechanic.mutate(
+      { id: m.id, patch: { phoneVerified: true, phoneVerifiedAt: new Date().toISOString() } },
+      {
+        onSuccess: () => {
+          toast.success("Phone verified");
+          setSelected((s) => (s && s.id === m.id ? { ...s, phoneVerified: true } as Mechanic : s));
+        },
+      },
+  );
+  };
+  const resetWarnings = (m: Mechanic) =>
     updateMechanic.mutate(
       { id: m.id, patch: { warnings: 0 } },
       {
@@ -235,6 +249,11 @@ export default function AdminMechanicsPage() {
                           {s.acceptRate !== null && ` • ${"Accept rate"}: ${s.acceptRate}%`}
                           {s.avgRating !== null && ` • ⭐ ${s.avgRating.toFixed(1)}`}
                         </p>
+                        {m.phone && (
+                <p className="text-xs text-muted-foreground">
+                  📞 {m.phone} • {m.phoneVerified ? "Verified" : "Pending verification"}
+                </p>
+            )}
                       </div>
                     </div>
                     <div className="shrink-0 text-right">
@@ -279,6 +298,11 @@ export default function AdminMechanicsPage() {
                     {s.avgRating !== null && ` • ⭐ ${s.avgRating.toFixed(1)}`}
                   </p>
                   <p className="text-xs text-muted-foreground">{"Warnings"}: {selected.warnings ?? 0} (limit: {strikeLimit})</p>
+                  {selected.phone && (
+                <p className="text-xs text-muted-foreground">
+                  <Phone className="mr-1 inline h-3 w-3" /> {selected.phone} • {selected.phoneVerified ? "Verified" : "Pending verification"}
+                </p>
+            )}
                   <p className="text-[10px] text-muted-foreground break-all">ID: {selected.id}</p>
                 </div>
 
@@ -297,6 +321,9 @@ export default function AdminMechanicsPage() {
                 )}
 
                 <div className="grid grid-cols-2 gap-2">
+                  {selected.phone && !selected.phoneVerified && (
+                <Button onClick={() => verifyPhone(selected)}>{"Verify phone"}</Button>
+            )}
                   <Button variant="outline" onClick={() => warn(selected)}>{"Warn"}</Button>
                   {selected.status === "held" ? (
                     <Button onClick={() => unhold(selected)}>{"Unhold account"}</Button>
