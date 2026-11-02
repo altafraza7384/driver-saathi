@@ -64,6 +64,7 @@ import {
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { httpsCallable } from "firebase/functions";
 import { firebaseAuth, firebaseDb, firebaseStorage, firebaseFunctions } from "./client";
+import { isAdminOnlyAccount } from "@/lib/admin-only";
 
 /* ---------------------------------- errors --------------------------------- */
 
@@ -176,6 +177,8 @@ async function buildSession(u: FirebaseUser | null) {
  * unblocks on auth state alone and the profile merges when it lands.
  */
 async function ensureProfile(u: FirebaseUser, fullName?: string) {
+  // Admin-only account is never created as a driver user profile.
+  if (isAdminOnlyAccount(u.email)) return;
   try {
     const ref = doc(firebaseDb, "users", u.uid);
     const snap = await getDoc(ref);
