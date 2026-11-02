@@ -221,18 +221,18 @@ service cloud.firestore {
 
     // Mechanic profiles (Mechanic Saathi app). A mechanic owns exactly one
     // doc, keyed by their Firebase Auth uid. Admin-managed fields
-    // (status/warnings/hold info) are excluded from owner writes, so a
+    // (status/warnings/hold info/isVerified) are excluded from owner writes, so a
     // mechanic can never clear their own strikes or unhold themselves.
     match /mechanics/{mechanicId} {
       allow create: if signedIn() && notBlocked() && mechanicId == request.auth.uid
-        && !request.resource.data.keys().hasAny(['status', 'warnings', 'warning_history', 'held_at', 'held_reason']);
+        && !request.resource.data.keys().hasAny(['status', 'warnings', 'warning_history', 'held_at', 'held_reason', 'isVerified']);
       allow read: if signedIn() && ((mechanicId == request.auth.uid && notBlocked()) || isAdmin());
       // update: only CHANGED fields are checked (diff().affectedKeys()) —
       // the merged document of a held mechanic always contains status, so
       // the old whole-document check locked held mechanics out of ALL
       // profile edits, not just status changes.
       allow update: if (signedIn() && notBlocked() && mechanicId == request.auth.uid
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'warnings', 'warning_history', 'held_at', 'held_reason']))
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'warnings', 'warning_history', 'held_at', 'held_reason', 'isVerified']))
         || isAdmin();
       allow delete: if false;
     }
