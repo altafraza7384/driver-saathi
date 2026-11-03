@@ -42,6 +42,22 @@ function asString(v: unknown): string | null {
   return typeof v === "string" && v.length > 0 ? v : null;
 }
 
+function toHex(buf: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function hmacHex(secret: string, raw: string): Promise<string> {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return toHex(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(raw)));
+}
+
+function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
 // Plans are created once via the API and their ids stored in
 // config/razorpay_plans, so repeat calls never duplicate plans.
 async function ensurePlanId(interval: PlanInterval): Promise<string> {
@@ -85,6 +101,7 @@ export const createRazorpaySubscription = onCall(
       total_count: PLANS[interval as PlanInterval].totalCount,
       start_at: startAt,
       customer_notify: 1,
+      notes: { userId: uid },
     });
     const subscriptionId = asString(sub.id);
     if (!subscriptionId) throw new HttpsError("internal", "Subscription creation failed");
@@ -116,12 +133,21 @@ export const confirmRazorpaySubscription = onCall(
     const uid = requireUser(req);
     const subscriptionId = asString(req.data?.subscriptionId);
     if (!subscriptionId) throw new HttpsError("invalid-argument", "Invalid subscription");
+    const stored = await db.doc(`subscriptions/${uid}`).get();
+    const storedData = stored.data();
+    if (!storedData || asString(storedData.razorpaySubscriptionId) !== subscriptionId) {
+      throw new HttpsError("invalid-argument", "Invalid subscription");
+    }
+    const paymentId = asString(req.data?.paymentId);
+    const signature = asString(req.data?.signature);
+    if (!paymentId || !signature) throw new HttpsError("invalid-argument", "Invalid payment");
+    const expected = await hmacHex(RAZORPAY_KEY_SECRET.value(), paymentId + "|" + subscriptionId);
+    if (!safeEqual(expected, signature)) throw new HttpsError("invalid-argument", "Invalid signature");
     const sub = await rzp("/subscriptions/" + subscriptionId, "GET");
     const status = asString(sub.status);
-    const ok = status === "authenticated" || status === "active" || status === "created";
-    if (!ok) return { verified: false, status };
+    if (status !== "authenticated" && status !== "active") return { verified: false, status };
     await db.doc(`subscriptions/${uid}`).set(
-      { status: "authenticated", updatedAt: FieldValue.serverTimestamp() },
+      { status, updatedAt: FieldValue.serverTimestamp() },
       { merge: true },
     );
     return { verified: true, status, testMode: testMode() };
