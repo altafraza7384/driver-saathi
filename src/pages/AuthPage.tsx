@@ -58,7 +58,7 @@ export default function AuthPage() {
       toast({
         title: t("auth.checkEmail"),
                 description: t("auth.verifyEmail"),
-      })  ;
+      }) ;
     } catch (error) {
       console.error("Auth submit failed", error);
       toast({
