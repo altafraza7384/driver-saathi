@@ -198,7 +198,7 @@ function ProtectedRoutes() {
 
   if (!user) {
     return <Navigate to="/auth" replace />;
-      }
+  }
   // HARD email verification (2026-11-03): a password (email) account whose
   // email is not verified sees ONLY the Verify screen — no app, no admin
   // panel — until the link is opened. Google sign-in users are exempt
