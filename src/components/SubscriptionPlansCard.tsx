@@ -99,7 +99,7 @@ export function SubscriptionPlansCard() {
       const data = res.data as { subscriptionId: string; keyId: string };
       if (!(await loadRazorpay())) throw new Error("checkout-load");
       const RazorpayCtor = (window as unknown as { Razorpay: new (o: Record<string, unknown>) => { open: () => void } }).Razorpay;
-      let checkoutResp: { razorpay_payment_id?: string; razorpay_subscription_id?: string; razorpay_signature?: string } | null = null;
+      let checkoutResp : { razorpay_payment_id?: string; razorpay_subscription_id?: string; razorpay_signature?: string } | null = null;
       await new Promise<void>((resolve, reject) => {
         const rz = new RazorpayCtor({
           key: data.keyId,
@@ -108,50 +108,26 @@ export function SubscriptionPlansCard() {
           description: plan.name,
           prefill: {
             email: user.email ?? undefined,
-            contact: user.phone ?? undefined,
+            contact: user.phone ? user.phone : undefined,
           },
-          handler: (resp: typeof checkoutResp) => {
-            checkoutResp = resp;
-            resolve();
-          },
-          theme: { color: "#F59E0B" },
-          modal: {
-            ondismiss: () => reject(new Error("checkout-dismissed")),
-          },
+          handler: (resp: { razorpay_payment_id?: string; razorpay_subscription_id?: string; razorpay_signature?: string }) => { checkoutResp = resp; resolve(); },
+          modal: { ondismiss: () => reject(new Error("dismissed")) },
+          theme: { color: "#142F57" },
         });
         rz.open();
       });
-      if (!checkoutResp) throw new Error("no-checkout-response");
       const confirm = httpsCallable(firebaseFunctions, "confirmRazorpaySubscription");
-      const cres = await confirm({
-        subscriptionId: data.subscriptionId,
-        paymentId: checkoutResp.razorpay_payment_id,
-        signature: checkoutResp.razorpay_signature,
-      });
+      const cres = await confirm({ subscriptionId: data.subscriptionId, paymentId: checkoutResp?.razorpay_payment_id, signature: checkoutResp?.razorpay_signature });
       const cdata = cres.data as { verified: boolean };
-      if (!cdata.verified) throw new Error("subscription-not-verified");
+      if (!cdata.verified) throw new Error("not-verified");
       setPayMsg("success");
-    } catch (e) {
-      console.error("startTrial failed", e);
+    } catch {
       setPayMsg("error");
     } finally {
       setPaying(false);
     }
   }
 
-  const { data: offers = [] } = useQuery({
-    queryKey: ["plans_offers"],
-    queryFn: async () => {
-      try {
-        const { data, error } = await db.from("offers").select("*").order("sort_order");
-        if (error) throw error;
-        return (data ?? []) as Offer[];
-      } catch (e) {
-        console.error("Failed to load offers", e);
-        return [] as Offer[];
-      }
-    },
-  });
   const { data: plans = [], isLoading, error: plansError } = useQuery({
     queryKey: ["subscription_plans"],
     queryFn: async () => {
@@ -160,18 +136,31 @@ export function SubscriptionPlansCard() {
       return data as Plan[];
     },
   });
-  const { data: myProfile } = useQuery({
-    queryKey: ["my_profile"],
+  // Fail-soft: if offers cannot load (old rules, no collection yet), the plans list still renders exactly as before.
+  const { data: offers = [] } = useQuery({
+    queryKey: ["offers"],
     queryFn: async () => {
-      if (!user) return null;
-      // users/{uid}.subscription_plan_id is null when the user has no plan,
-      // and never needs a plans-table join; the plan id alone decides
-      // current-plan state in the card below.
-      const { data, error } = await db.from("users").select("subscription_plan_id, trial_start_date, subscription_status").eq("id", user.uid).maybeSingle();
-      if (error) throw error;
-      return data as Record<string, unknown> | null;
+      try {
+        const { data, error } = await db.from("offers").select("*").eq("is_active", true).order("sort_order");
+        if (error) return [];
+        return data as Offer[];
+      } catch {
+        return [];
+      }
     },
-    enabled: !!user,
+  });
+  // The current user's plan + trial dates: users/{uid}.subscription_plan_id is null when the user has no plan (see AdminUsersPage). Fail-open for marketing: if the profile cannot be read, the "Only for You" badge still shows — a subscriber seeing an offer badge is harmless, a non-subscriber missing one loses a sale.
+  const { data: myProfile } = useQuery({
+    queryKey: ["plans_my_plan"],
+    queryFn: async () => {
+      try {
+        const { data } = await db.from("users").select("*").eq("id", user!.id);
+        const row = Array.isArray(data) ? data[0] : data;
+        return row as { subscription_plan_id?: string | null; trial_ends_at?: unknown } | null;
+      } catch {
+        return null;
+      }
+    },
   });
   const { data: subStatusData } = useQuery({
     queryKey: ["plans_sub_status"],
@@ -229,7 +218,7 @@ export function SubscriptionPlansCard() {
             <p className="flex items-center gap-1 text-sm font-bold"><Tag className="h-4 w-4" /> {t("plans.currentOffers")}</p>
             {liveOffers.map((o) => (
               <p key={o.id} className="text-sm text-muted-foreground">
-                {`${o.title} - ${o.discount_percent}% off`}
+                {`${o.title} — ${o.discount_percent}% off`}
               </p>
             ))}
           </div>
@@ -274,7 +263,7 @@ export function SubscriptionPlansCard() {
                 {offersForPlan(p.id).map((o) => (
                   <p key={o.id} className="flex items-center gap-1 text-sm font-semibold text-primary">
                     <Tag className="h-3 w-3" />
-                    {`${o.title} - ${o.discount_percent}% off`}
+                    {`${o.title} — ${o.discount_percent}% off`}
                   </p>
                 ))}
                 {p.features?.length > 0 && (
@@ -287,78 +276,78 @@ export function SubscriptionPlansCard() {
           })
         )}
         <p className="text-xs text-muted-foreground">{t("plans.comingSoon")}</p>
-      </CardContent>
-      {/* Offer poster popup: opens when a plan is tapped. Poster-style card
-      with the struck MRP, the offer price, the free trial, and a live
-      countdown to midnight. Tapping the plan card opens the popup. */}
-      <Dialog open={!!selected} onOpenChange={(open) => { if (!open) { setSelected(null); setPayMsg(null); } }}>
-        <DialogContent className="max-w-sm overflow-hidden p-0">
-          {selected && (() => {
-            const price = Number(selected.price_inr);
-            const mrp = mrpFor(selected);
-            const per = perFor(selected);
-            return (
-              <div>
-                <DialogTitle className="sr-only">{selected.name}</DialogTitle>
-                <div className="bg-gradient-to-r from-amber-500 to-yellow-400 px-5 py-4 text-center">
-                  <p className="text-2xl">🎉</p>
-                  <p className="text-lg font-extrabold text-amber-950">{t("plans.currentOffers")}</p>
-                  {isNonSubscriber && (
-                    <p className="text-sm font-bold text-amber-950">🔥 {t("plans.onlyForYou")}</p>
-                  )}
-                </div>
-                <div className="space-y-3 p-5 text-center">
-                  <p className="text-lg font-bold">{selected.name}</p>
-                  <p>
-                    {mrp !== null && mrp > price && (
-                      <span className="mr-2 text-muted-foreground line-through">MRP {formatINR(mrp)}</span>
+        {/* Offer poster popup: opens when a plan is tapped. Poster-style card
+        with the struck MRP, the offer price, the free trial, and a live
+        countdown to tonight's midnight ("valid only today"). The trial
+        button runs the real Razorpay checkout (test mode while the backend holds test keys). */}
+        <Dialog open={selected !== null} onOpenChange={(open) => { if (!open) setSelected(null); }}>
+          <DialogContent className="max-w-sm overflow-hidden p-0">
+            {selected && (() => {
+              const price = Number(selected.price_inr);
+              const mrp = mrpFor(selected);
+              const per = perFor(selected);
+              return (
+                <div>
+                  <DialogTitle className="sr-only">{selected.name}</DialogTitle>
+                  <div className="bg-gradient-to-r from-amber-500 to-yellow-400 px-5 py-4 text-center">
+                    <p className="text-2xl">🎉</p>
+                    <p className="text-lg font-extrabold text-amber-950">{t("plans.currentOffers")}</p>
+                    {isNonSubscriber && (
+                      <p className="text-sm font-bold text-amber-950">🔥 {t("plans.onlyForYou")}</p>
                     )}
-                    <span className="text-3xl font-extrabold">{price === 0 ? "₹0" : `${formatINR(price)}/${per}`}</span>
-                  </p>
-                  {price > 0 && (
-                    <p className="text-base font-bold text-primary">{t("plans.perDay", { price: perDayFor(selected) })}</p>
-                  )}
-                  <p>
-                    <span className="rounded-full bg-green-100 px-3 py-1 text-sm font-bold text-green-800">✨ {t("plans.trialBadge", { days: TRIAL_DAYS })}</span>
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {t("plans.thenAfterTrial", { price: formatINR(price), per })}
-                  </p>
-                  <div className="rounded-lg border border-red-200 bg-red-50 p-3">
-                    <p className="flex items-center justify-center gap-1 font-bold text-red-600"><Timer className="h-4 w-4" /> {t("plans.validOnlyToday")}</p>
-                    <p className="mt-1 font-mono text-3xl font-bold tabular-nums text-red-600">{countdown}</p>
-                    <p className="text-xs text-muted-foreground">{t("plans.endsTonight")}</p>
                   </div>
-                  {isTrial ? (
-                    <p className="text-sm font-semibold text-primary">
-                      {isSubTrial && subPlanName ? t("plans.onSubTrial", { plan: subPlanName }) : trialState.kind === "trial" ? t("trial.daysLeft", { days: trialState.daysLeft }) : null}
+                  <div className="space-y-3 p-5 text-center">
+                    <p className="text-lg font-bold">{selected.name}</p>
+                    <p>
+                      {mrp !== null && mrp > price && (
+                        <span className="mr-2 text-muted-foreground line-through">MRP {formatINR(mrp)}</span>
+                      )}
+                      <span className="text-3xl font-extrabold">{price === 0 ? "₹0" : `${formatINR(price)}/${per}`}</span>
                     </p>
-                  ) : paidInterval ? (
-                    paidInterval === "monthly" && selected.billing_interval === "yearly" ? (
+                    {price > 0 && (
+                      <p className="text-base font-bold text-primary">{t("plans.perDay", { price: perDayFor(selected) })}</p>
+                    )}
+                    <p>
+                      <span className="rounded-full bg-green-100 px-3 py-1 text-sm font-bold text-green-800">✨ {t("plans.trialBadge", { days: TRIAL_DAYS })}</span>
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {t("plans.thenAfterTrial", { price: formatINR(price), per })}
+                    </p>
+                    <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+                      <p className="flex items-center justify-center gap-1 font-bold text-red-600"><Timer className="h-4 w-4" /> {t("plans.validOnlyToday")}</p>
+                      <p className="mt-1 font-mono text-3xl font-bold tabular-nums text-red-600">{countdown}</p>
+                      <p className="text-xs text-muted-foreground">{t("plans.endsTonight")}</p>
+                    </div>
+                    {isTrial ? (
+                      <p className="text-sm font-semibold text-primary">
+                        {isSubTrial && subPlanName ? t("plans.onSubTrial", { plan: subPlanName }) : trialState.kind === "trial" ? t("trial.daysLeft", { days: trialState.daysLeft }) : null}
+                      </p>
+                    ) : paidInterval ? (
+                      paidInterval === "monthly" && selected.billing_interval === "yearly" ? (
+                        <Button disabled={paying} onClick={() => selected && startTrial(selected)} className="w-full">
+                          <Flame className="mr-2 h-4 w-4" /> {t("plans.upgradeToYearly")}
+                        </Button>
+                      ) : selected.billing_interval === paidInterval ? (
+                        <p className="text-sm font-semibold text-primary">{t("plans.currentPlan")}</p>
+                      ) : null
+                    ) : (
                       <Button disabled={paying} onClick={() => selected && startTrial(selected)} className="w-full">
-                        <Flame className="mr-2 h-4 w-4" /> {t("plans.upgradeToYearly")}
+                        <Flame className="mr-2 h-4 w-4" /> {t("plans.startTrial", { days: TRIAL_DAYS })}
                       </Button>
-                    ) : selected.billing_interval === paidInterval ? (
-                      <p className="text-sm font-semibold text-primary">{t("plans.currentPlan")}</p>
-                    ) : null
-                  ) : (
-                    <Button disabled={paying} onClick={() => selected && startTrial(selected)} className="w-full">
-                      <Flame className="mr-2 h-4 w-4" /> {t("plans.startTrial", { days: TRIAL_DAYS })}
-                    </Button>
-                  )}
-                  <p className="text-xs font-semibold text-amber-700">{t("plans.testModeNote")}</p>
-                  {payMsg === "success" && (
-                    <p className="text-sm font-semibold text-primary">{t("plans.paySuccess")}</p>
-                  )}
-                  {payMsg === "error" && (
-                    <p className="text-sm font-semibold text-destructive">{t("plans.payFailed")}</p>
-                  )}
+                    )}
+                    <p className="text-xs font-semibold text-amber-700">{t("plans.testModeNote")}</p>
+                    {payMsg === "success" && (
+                      <p className="text-sm font-semibold text-green-700">{t("plans.paySuccess")}</p>
+                    )}
+                    {payMsg === "error" && (
+                      <p className="text-sm font-semibold text-red-600">{t("plans.payFailed")}</p>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })()}
-        </DialogContent>
-      </Dialog>
-    </Card>
+              );
+            })()}
+          </DialogContent>
+        </Dialog>
+      </CardContent></Card>
   );
 }
