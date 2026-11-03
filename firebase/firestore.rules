@@ -197,7 +197,14 @@ service cloud.firestore {
         || (resource.data.mechanicId == request.auth.uid
           && request.resource.data.mechanicId == request.auth.uid
           && request.resource.data.driverId == resource.data.driverId
-          && request.resource.data.status in ['onway', 'completed'])
+          && request.resource.data.status in ['onway', 'arrived', 'completed'])
+         // Assigned mechanic: cancel an active job, with a reason recorded.        
+        || (resource.data.mechanicId == request.auth.uid
+            && request.resource.data.mechanicId == request.auth.uid
+        && request.resource.data.driverId == resource.data.driverId
+        && resource.data.status in ['accepted', 'onway', 'arrived']
+        && request.resource.data.status == 'cancelled'
+        && request.resource.data.keys().hasAny(['cancelReason']))
       );
       allow delete: if false;
     }
@@ -240,3 +247,4 @@ service cloud.firestore {
     match /{document=**} { allow read, write: if false; }
   }
 }
+
