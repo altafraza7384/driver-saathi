@@ -32,6 +32,7 @@ async function rzp(path: string, method: "GET" | "POST", body?: unknown): Promis
   const json = (await res.json().catch(() => ({}))) as RzpJson;
   if (!res.ok) {
     const err = json.error as { description?: string } | undefined;
+    console.error("Razorpay API failed:", path, res.status, err?.description ?? "unknown");
     throw new HttpsError("internal", err?.description ?? "Razorpay request failed");
   }
   return json;
