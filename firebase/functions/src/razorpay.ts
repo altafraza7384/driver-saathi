@@ -101,10 +101,12 @@ export const createRazorpaySubscription = onCall(
       total_count: PLANS[interval as PlanInterval].totalCount,
       start_at: startAt,
       customer_notify: 1,
+      addons: [{ item: { name: "Mandate verification", amount: 100, currency: "INR" } }],
       notes: { userId: uid },
     });
     const subscriptionId = asString(sub.id);
     if (!subscriptionId) throw new HttpsError("internal", "Subscription creation failed");
+    
     await db.doc(`subscriptions/${uid}`).set(
       {
         userId: uid,
