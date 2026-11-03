@@ -55,6 +55,7 @@ import {
   createUserWithEmailAndPassword,
   signOut as fbSignOut,
   sendPasswordResetEmail,
+  sendEmailVerification,
   confirmPasswordReset,
   updatePassword,
   updateProfile,
@@ -318,6 +319,15 @@ const authAdapter = {
         await updateProfile(cred.user, { displayName: fullName }).catch(() => undefined);
       }
       void ensureProfile(cred.user, fullName);
+      // HARD email verification (2026-11-03): every password signup gets a
+      // verification email immediately. Sending is best-effort — a send
+      // failure must not fail the signup itself; the Verify screen's Resend
+      // covers it.
+      try {
+        await sendEmailVerification(cred.user);
+      } catch (e) {
+        console.warn("Verification email send failed", e);
+      }
       return {
         data: { user: mapUser(cred.user), session: await buildSession(cred.user) },
         error: null,
@@ -391,7 +401,24 @@ const authAdapter = {
 /** Complete a Firebase password reset from the emailed link's oobCode. */
 export async function confirmFirebasePasswordReset(code: string, newPassword: string) {
   await confirmPasswordReset(firebaseAuth, code, newPassword);
+
 }
+/**
+ * HARD email verification (2026-11-03): resend the verification email to
+  * the currently signed-in user, and reload the user to pick up a fresh
+   * emailVerified flag after they open the link.
+    */
+export async function sendVerificationEmailToCurrentUser() {
+  const u = firebaseAuth.currentUser;
+  if (!u) throw new BackendError("Not authenticated", "auth/no-current-user");
+  await sendEmailVerification(u);
+}
+
+export async function reloadCurrentUser() {
+  await firebaseAuth.currentUser?.reload();
+}
+
+
 
 /**
  * True when an auth error just means "the user backed out" (closed the
