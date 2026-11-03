@@ -41,6 +41,26 @@ export const deleteAccount = onCall({ region: REGION }, async (req) => {
   await auth.deleteUser(uid);
   return { success: true };
 });
+export const adminDeleteUser = onCall({ region: REGION }, async (req) => {
+    const adminUid = await requireAdmin(req);
+    const targetUid = req.data?.uid;
+    if (typeof targetUid !== "string" || !targetUid) throw new HttpsError("invalid-argument", "User id required");
+    if (targetUid === adminUid) throw new HttpsError("permission-denied", "Admins cannot delete their own account");
+    if (req.data?.confirm !== "DELETE") throw new HttpsError("invalid-argument", "Confirmation required");
+    const target = await auth.getUser(targetUid).catch(() => null);
+    if (!target) throw new HttpsError("not-found", "User not found");
+    // Never delete the owner's own accounts or another admin's account,
+    // even if the admin panel row was clicked by mistake.
+    const OWN_ACCOUNTS = ["altafraza7384@gmail.com", "razakhan.chino@gmail.com", "contentraza5@gmail.com"];
+    if (target.email && OWN_ACCOUNTS.includes(target.email.toLowerCase())) {
+          throw new HttpsError("permission-denied", "This account cannot be deleted");
+    }
+    const role = await db.doc(`roles/${targetUid}`).get();
+    if (role.get("roles")?.includes("admin"))  throw new HttpsError("permission-denied", "Admin accounts cannot be deleted");
+    await deleteUserData(targetUid);
+    await auth.deleteUser(targetUid);
+    return { success: true };
+});
 
 type Due = { uid: string; source: string; id: string; notifyAt: string; title: string; body: string; url: string; item: string; label: string; desc: string | null };
 const SOURCES: Array<[string, [string, unknown] | null, string, string, string]> = [
