@@ -48,18 +48,17 @@ export default function AuthPage() {
         return;
       }
 
-      await signUpWithPassword(email, password, fullName, handleRetry);
-      // Honest signup: no verification email is ever sent (the app
-      // never calls sendEmailVerification and Firebase does not enforce
-      // verification), so do NOT show the old "check your email" toast
-      // that stranded new users (audit 2026-10-24). Switch the form to
-      // Login so one tap signs them in with the same credentials.
+                  await signUpWithPassword(email, password, fullName, handleRetry);
+      // HARD email verification (2026-11-03): signup now sends a real
+            // verification email (adapter signUp), so the toast honestly says
+            // to check email. The form still switches to Login; on sign-in the
+            // Verify screen gates the app until the link is opened.
       setIsLogin(true);
       setJustSignedUp(true);
       toast({
-        title: t("auth.accountCreated"),
-        description: t("auth.loginNow"),
-      });
+        title: t("auth.checkEmail"),
+                description: t("auth.verifyEmail"),
+      })  ;
     } catch (error) {
       console.error("Auth submit failed", error);
       toast({
