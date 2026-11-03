@@ -400,8 +400,7 @@ const authAdapter = {
 
 /** Complete a Firebase password reset from the emailed link's oobCode. */
 export async function confirmFirebasePasswordReset(code: string, newPassword: string) {
-  await confirmPasswordReset(firebaseAuth, code, newPassword);
-
+  await confirmPasswordReset(firebaseAuth, code, Password);
 }
 /**
  * HARD email verification (2026-11-03): resend the verification email to
@@ -417,8 +416,6 @@ export async function sendVerificationEmailToCurrentUser() {
 export async function reloadCurrentUser() {
   await firebaseAuth.currentUser?.reload();
 }
-
-
 
 /**
  * True when an auth error just means "the user backed out" (closed the
