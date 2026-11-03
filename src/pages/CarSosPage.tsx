@@ -246,8 +246,6 @@ export default function CarSosPage() {
     ? t("carSos.statusArrived")
         : t("carSos.statusOnway");
 
-
-
   return (
     <div className="space-y-5 p-4 pt-6">
       <button
