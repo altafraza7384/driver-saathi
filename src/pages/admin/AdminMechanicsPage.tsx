@@ -251,7 +251,7 @@ export default function AdminMechanicsPage() {
                         </p>
                         {m.phone && (
                 <p className="text-xs text-muted-foreground">
-                  📞 {m.phone} • {m.phoneVerified ? "Verified" : "Pending verification"}
+                  <Phone className="inline h-3 w-3" /> {m.phone} • {m.phoneVerified ? "Verified" : "Pending"}
                 </p>
             )}
                       </div>
@@ -300,7 +300,7 @@ export default function AdminMechanicsPage() {
                   <p className="text-xs text-muted-foreground">{"Warnings"}: {selected.warnings ?? 0} (limit: {strikeLimit})</p>
                   {selected.phone && (
                 <p className="text-xs text-muted-foreground">
-                  <Phone className="mr-1 inline h-3 w-3" /> {selected.phone} • {selected.phoneVerified ? "Verified" : "Pending verification"}
+                  {"Phone"}: {selected.phone} • {selected.phoneVerified ? "Verified" : "Pending"}
                 </p>
             )}
                   <p className="text-[10px] text-muted-foreground break-all">ID: {selected.id}</p>
@@ -321,15 +321,17 @@ export default function AdminMechanicsPage() {
                 )}
 
                 <div className="grid grid-cols-2 gap-2">
-                  {selected.phone && !selected.phoneVerified && (
-                <Button onClick={() => verifyPhone(selected)}>{"Verify phone"}</Button>
-            )}
                   <Button variant="outline" onClick={() => warn(selected)}>{"Warn"}</Button>
                   {selected.status === "held" ? (
                     <Button onClick={() => unhold(selected)}>{"Unhold account"}</Button>
                   ) : (
                     <Button variant="destructive" onClick={() => hold(selected)}>{"Hold account"}</Button>
                   )}
+                  {selected.phone && !selected.phoneVerified && (
+                <Button variant="outline" className="col-span-2" onClick={() => verifyPhone(selected)}>
+                  {"Verify phone"}
+                </Button>
+                )}
                   <Button variant="outline" className="col-span-2" onClick={() => resetWarnings(selected)}>
                     {"Reset warnings"}
                   </Button>
