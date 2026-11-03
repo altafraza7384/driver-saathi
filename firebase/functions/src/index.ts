@@ -10,7 +10,7 @@ import { notifyQueryBounds, isDueNow } from "./notifyTime";
 
 export { chat, financeAi } from "./ai";
 export { createRazorpaySubscription, confirmRazorpaySubscription, cancelRazorpaySubscription } from "./razorpay";
-export { razorpayebhook } from "./webhook";
+export { razorpayWebhook } from "./webhook";
 export { dedupeInsuranceLead } from "./leads";
 
 const REGION = "asia-south1";
