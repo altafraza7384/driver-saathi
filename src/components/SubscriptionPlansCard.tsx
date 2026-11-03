@@ -99,6 +99,7 @@ export function SubscriptionPlansCard() {
       const data = res.data as { subscriptionId: string; keyId: string };
       if (!(await loadRazorpay())) throw new Error("checkout-load");
       const RazorpayCtor = (window as unknown as { Razorpay: new (o: Record<string, unknown>) => { open: () => void } }).Razorpay;
+      let checkoutResp : { razorpay_payment_id?: string; razorpay_subscription_id?: string; razorpay_signature?: string } | null = null;
       await new Promise<void>((resolve, reject) => {
         const rz = new RazorpayCtor({
           key: data.keyId,
@@ -109,14 +110,14 @@ export function SubscriptionPlansCard() {
             email: user.email ?? undefined,
             contact: user.phone ? user.phone : undefined,
           },
-          handler: () => resolve(),
+handler: (resp: { razorpay_payment_id?: string; razorpay_subscription_id?: string; razorpay_signature?: string }) => { checkoutResp = resp; resolve(); },
           modal: { ondismiss: () => reject(new Error("dismissed")) },
           theme: { color: "#142F57" },
         });
         rz.open();
       });
       const confirm = httpsCallable(firebaseFunctions, "confirmRazorpaySubscription");
-      const cres = await confirm({ subscriptionId: data.subscriptionId });
+const cres = await confirm({ subscriptionId: data.subscriptionId, paymentId: checkoutResp?.razorpay_payment_id, signature: checkoutResp?.razorpay_signature });
       const cdata = cres.data as { verified: boolean };
       if (!cdata.verified) throw new Error("not-verified");
       setPayMsg("success");
