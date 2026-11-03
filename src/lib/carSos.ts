@@ -5,6 +5,7 @@ export type CarSosStatus =
   | "pending"
   | "accepted"
   | "onway"
+    | "arrived"
   | "completed"
   | "cancelled";
 
@@ -19,6 +20,7 @@ export const ACTIVE_SOS_STATUSES: CarSosStatus[] = [
   "pending",
   "accepted",
   "onway",
+    "arrived",
 ];
 
 export interface CarSosRequest {
