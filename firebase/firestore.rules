@@ -244,10 +244,10 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-        // Server-only push log (sendSosRequestPush): mechanics' FCM tokens.
+    // Server-only push log (sendSosRequestPush): mechanics' FCM tokens.
     // No client may read or write it; the Admin SDK bypasses rules.
     match /sos_push_log/{requestId} { allow read, write: if false; }
-match /{document=**} { allow read, write: if false; }
+    match /{document=**} { allow read, write: if false; }
   }
 }
 
