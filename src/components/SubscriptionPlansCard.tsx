@@ -105,6 +105,10 @@ export function SubscriptionPlansCard() {
           subscription_id: data.subscriptionId,
           name: "Driver Saathi",
           description: plan.name,
+          prefill: {
+            email: user.email ?? undefined,
+            contact: user.phone ? user.phone : undefined,
+          },
           handler: () => resolve(),
           modal: { ondismiss: () => reject(new Error("dismissed")) },
           theme: { color: "#142F57" },
