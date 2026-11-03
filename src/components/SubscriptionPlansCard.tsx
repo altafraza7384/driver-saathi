@@ -1,6 +1,6 @@
 import { localToday } from "@/lib/budgets";
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { db } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
@@ -122,6 +122,7 @@ export function SubscriptionPlansCard() {
       const cdata = cres.data as { verified: boolean };
       if (!cdata.verified) throw new Error("not-verified");
       setPayMsg("success");
+      queryClient.invalidateQueries({ queryKey: ["plans_sub_status"] });
     } catch {
       setPayMsg("error");
     } finally {
@@ -129,6 +130,7 @@ export function SubscriptionPlansCard() {
     }
   }
 
+  const queryClient = useQueryClient();
   const { data: plans = [], isLoading, error: plansError } = useQuery({
     queryKey: ["subscription_plans"],
     queryFn: async () => {
