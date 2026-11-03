@@ -46,6 +46,8 @@ export default function AuthPage() {
         // Admin-only account lands on the admin panel, never driver Home.
         navigate(isAdminOnlyAccount(email) ? "/admin" : "/");
         return;
+      }
+
       await signUpWithPassword(email, password, fullName, handleRetry);
       // HARD email verification (2026-11-03): signup now sends a real
       // verification email (adapter signUp), so the toast honestly says
