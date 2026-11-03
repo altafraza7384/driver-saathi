@@ -105,6 +105,7 @@ export function SubscriptionPlansCard() {
           key: data.keyId,
           subscription_id: data.subscriptionId,
           name: "Driver Saathi",
+          image: "https://driver-saathi-app.web.app/icon-512.png",
           description: plan.name,
           prefill: {
             email: user.email ?? undefined,
