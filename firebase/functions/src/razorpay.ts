@@ -81,7 +81,7 @@ export const createRazorpaySubscription = onCall(
     const startAt = Math.floor(Date.now() / 1000) + TRIAL_DAYS * 24 * 60 * 60;
     const sub = await rzp("/subscriptions", "POST", {
       plan_id: planId,
-      total_count: PLANS[interval].totalCount,
+      total_count: PLANS[interval as PlanInterval].totalCount,
       start_at: startAt,
       customer_notify: 1,
     });
