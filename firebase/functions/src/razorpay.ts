@@ -154,6 +154,8 @@ export const confirmRazorpaySubscription = onCall(
   },
 );
 
+export const getSubscriptionStatus = onCall({ region: REGION }, async (req) => { const uid = requireUser(req); const snap = await db.doc(`subscriptions/${uid}`).get(); const d = snap.data(); if (!d) return { status: null, planInterval: null }; return { status: asString(d.status), planInterval: asString(d.planInterval) }; });
+
 // Clear cancel path (part of launch terms): cancels at the end of the
 // current billing cycle by default, so the user keeps paid access until
 // then and is never charged again after.
