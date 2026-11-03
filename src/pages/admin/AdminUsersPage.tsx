@@ -14,6 +14,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, Search, Users as UsersIcon, Mail, Phone, Car, Calendar, ShieldAlert } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { httpsCallable } from "firebase/functions";
+import { firebaseFunctions } from "@/integrations/firebase/client";
 
 type AdminUser = {
   id: string;
@@ -63,6 +65,8 @@ export default function AdminUsersPage() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<AdminUser | null>(null);
   const [planChoice, setPlanChoice] = useState<string>("none");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteWord, setDeleteWord] = useState("");
 
   const { data: users = [], isLoading, error } = useQuery({
     queryKey: ["admin_users"],
@@ -129,6 +133,21 @@ export default function AdminUsersPage() {
       refresh();
       setSelected((s) => (s ? { ...s, subscription_plan_id: v.planId } : s));
       toast.success("Plan assigned");
+    },
+    onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const callable = httpsCallable(firebaseFunctions, "adminDeleteUser");
+      await callable({ uid: id, confirm: "DELETE" });
+    },
+    onSuccess: () => {
+      refresh();
+      setConfirmDelete(false);
+      setDeleteWord("");
+      setSelected(null);
+      toast.success("User deleted");
     },
     onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
@@ -223,7 +242,7 @@ export default function AdminUsersPage() {
         ))}
       </div>
 
-      <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
+      <Dialog open={!!selected} onOpenChange={(o) => { if (!o) { setSelected(null); setConfirmDelete(false); } }}>
         <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{selected?.full_name || "User Details"}</DialogTitle>
@@ -310,8 +329,48 @@ export default function AdminUsersPage() {
               {isSelf && (
                 <p className="text-center text-xs text-muted-foreground">{"You cannot block your own account. Unblocking your own account requires a console edit."}</p>
               )}
+              <Button
+                variant="destructive"
+                className="w-full"
+                disabled={deleteMutation.isPending || isSelf}
+                onClick={() => { setDeleteWord(""); setConfirmDelete(true); }}
+              >
+                {"Delete user"}
+              </Button>
+              {isSelf && (
+                <p className="text-center text-xs text-muted-foreground">{"You cannot delete your own account."}</p>
+              )}
 
               <Button variant="outline" className="w-full" onClick={() => setSelected(null)}>{"Cancel"}</Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{"Delete user permanently?"}</DialogTitle>
+          </DialogHeader>
+          {selected && (
+            <div className="space-y-4 text-sm">
+              <p className="text-muted-foreground">
+                {"This removes the login, profile and all saved data for "}{selected.email || selected.full_name || selected.id}{". This cannot be undone."}
+              </p>
+              <p>{"Type DELETE to confirm."}</p>
+              <Input
+                value={deleteWord}
+                onChange={(e) => setDeleteWord(e.target.value)}
+                placeholder={"DELETE"}
+              />
+              <Button
+                variant="destructive"
+                className="w-full"
+                disabled={deleteMutation.isPending || deleteWord !== "DELETE"}
+                onClick={() => deleteMutation.mutate(selected.id)}
+              >
+                {"Delete permanently"}
+              </Button>
+              <Button variant="outline" className="w-full" onClick={() => setConfirmDelete(false)}>{"Cancel"}</Button>
             </div>
           )}
         </DialogContent>
