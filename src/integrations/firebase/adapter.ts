@@ -400,7 +400,7 @@ const authAdapter = {
 
 /** Complete a Firebase password reset from the emailed link's oobCode. */
 export async function confirmFirebasePasswordReset(code: string, newPassword: string) {
-  await confirmPasswordReset(firebaseAuth, code, Password);
+  await confirmPasswordReset(firebaseAuth, code, newPassword);
 }
 /**
  * HARD email verification (2026-11-03): resend the verification email to
