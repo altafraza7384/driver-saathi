@@ -2765,11 +2765,10 @@ const translations: Record<Language, Record<string, string>> = {
     "plans.testModeNote": "ಟೆಸ್ಟ್ ಮೋಡ್ — ನಿಜವಾದ ಹಣ ಕಡಿತಗೊಳ್ಳುವುದಿಲ್ಲ.",
     "plans.paySuccess": "ಟೆಸ್ಟ್ ಪಾವತಿ ಅಧಿಕೃತಗೊಂಡಿದೆ. ಯಾವುದೇ ಹಣ ಕಡಿತಗೊಂಡಿಲ್ಲ — ಮೊದಲ ಚಾರ್ಜ್ 7 ದಿನಗಳ ಉಚಿತ ಪ್ರಯೋಗದ ನಂತರ ಬರುತ್ತದೆ.",
     "plans.payFailed": "ಪಾವತಿ ಪೂರ್ಣಗೊಳ್ಳಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.",
-
     "plans.onSubTrial": "You are on the free trial of {plan}.",
     "plans.currentPlan": "You are on this plan.",
     "plans.upgradeToYearly": "Upgrade to Yearly",
-    "update.available": "ಅಪ್‌ಡೇಟ್ ಲಭ್ಯವಿದೆ",     
+    "update.available": "ಅಪ್‌ಡೇಟ್ ಲಭ್ಯವಿದೆ",
     "update.storeReady": "Play Store ನಲ್ಲಿ ಹೊಸ ಆವೃತ್ತಿ ಇದೆ.",
     "update.webReady": "ಆ್ಯಪ್‌ನ ಹೊಸ ಆವೃತ್ತಿ ಸಿದ್ಧವಾಗಿದೆ.",
     "update.update": "ಅಪ್‌ಡೇಟ್ ಮಾಡಿ",
