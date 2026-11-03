@@ -46,19 +46,17 @@ export default function AuthPage() {
         // Admin-only account lands on the admin panel, never driver Home.
         navigate(isAdminOnlyAccount(email) ? "/admin" : "/");
         return;
-      }
-
-                  await signUpWithPassword(email, password, fullName, handleRetry);
+      await signUpWithPassword(email, password, fullName, handleRetry);
       // HARD email verification (2026-11-03): signup now sends a real
-            // verification email (adapter signUp), so the toast honestly says
-            // to check email. The form still switches to Login; on sign-in the
-            // Verify screen gates the app until the link is opened.
+      // verification email (adapter signUp), so the toast honestly says
+      // to check email. The form still switches to Login; on sign-in the
+      // Verify screen gates the app until the link is opened.
       setIsLogin(true);
       setJustSignedUp(true);
       toast({
         title: t("auth.checkEmail"),
-                description: t("auth.verifyEmail"),
-      }) ;
+        description: t("auth.verifyEmail"),
+      });
     } catch (error) {
       console.error("Auth submit failed", error);
       toast({
