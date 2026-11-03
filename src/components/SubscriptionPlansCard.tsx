@@ -10,6 +10,8 @@ import { CreditCard, Check, Tag, Flame, Timer } from "lucide-react";
 import { formatINR } from "@/lib/currency";
 import { useI18n } from "@/lib/i18n";
 import { getTrialState } from "@/lib/trial";
+import { httpsCallable } from "firebase/functions";
+import { firebaseFunctions } from "@/integrations/firebase/client";
 
 type Offer = {
   id: string;
@@ -64,6 +66,62 @@ export function SubscriptionPlansCard() {
   const { user } = useAuth();
   const [selected, setSelected] = useState<Plan | null>(null);
   const countdown = useCountdownToMidnight();
+  const [paying, setPaying] = useState(false);
+  const [payMsg, setPayMsg] = useState<"success" | "error" | null>(null);
+
+  // Loads Razorpay Checkout.js on demand (no new dependency).
+  function loadRazorpay(): Promise<boolean> {
+    return new Promise((resolve) => {
+      if ((window as unknown as { Razorpay?: unknown }).Razorpay) {
+        resolve(true);
+        return;
+      }
+      const s = document.createElement("script");
+      s.src = "https://checkout.razorpay.com/v1/checkout.js";
+      s.onload = () => resolve(true);
+      s.onerror = () => resolve(false);
+      document.body.appendChild(s);
+    });
+  }
+
+  // Real Razorpay flow, test mode while the backend holds test keys:
+  // create subscription on the server, authorize the UPI mandate in
+  // Checkout, then confirm server-side. Success is shown ONLY after the
+  // server verifies the subscription — the Checkout callback alone is
+  // never trusted.
+  async function startTrial(plan: Plan) {
+    if (!user || paying) return;
+    setPaying(true);
+    setPayMsg(null);
+    try {
+      const create = httpsCallable(firebaseFunctions, "createRazorpaySubscription");
+      const res = await create({ planInterval: plan.billing_interval, adminPlanId: plan.id });
+      const data = res.data as { subscriptionId: string; keyId: string };
+      if (!(await loadRazorpay())) throw new Error("checkout-load");
+      const RazorpayCtor = (window as unknown as { Razorpay: new (o: Record<string, unknown>) => { open: () => void } }).Razorpay;
+      await new Promise<void>((resolve, reject) => {
+        const rz = new RazorpayCtor({
+          key: data.keyId,
+          subscription_id: data.subscriptionId,
+          name: "Driver Saathi",
+          description: plan.name,
+          handler: () => resolve(),
+          modal: { ondismiss: () => reject(new Error("dismissed")) },
+          theme: { color: "#142F57" },
+        });
+        rz.open();
+      });
+      const confirm = httpsCallable(firebaseFunctions, "confirmRazorpaySubscription");
+      const cres = await confirm({ subscriptionId: data.subscriptionId });
+      const cdata = cres.data as { verified: boolean };
+      if (!cdata.verified) throw new Error("not-verified");
+      setPayMsg("success");
+    } catch {
+      setPayMsg("error");
+    } finally {
+      setPaying(false);
+    }
+  }
   const { data: plans = [], isLoading, error: plansError } = useQuery({
     queryKey: ["subscription_plans"],
     queryFn: async () => {
@@ -160,7 +218,7 @@ export function SubscriptionPlansCard() {
           const mrp = mrpFor(p);
           const per = perFor(p);
           return (
-            <div key={p.id} onClick={() => setSelected(p)} className="cursor-pointer rounded-lg border border-border p-3 hover:border-primary/50">
+            <div key={p.id} onClick={() => { setSelected(p); setPayMsg(null); }} className="cursor-pointer rounded-lg border border-border p-3 hover:border-primary/50">
               <div className="flex items-baseline justify-between gap-2">
                 <p className="font-bold">{p.name}</p>
                 <div className="text-right whitespace-nowrap">
@@ -202,8 +260,7 @@ export function SubscriptionPlansCard() {
       {/* Offer poster popup: opens when a plan is tapped. Poster-style card
           with the struck MRP, the offer price, the free trial, and a live
           countdown to tonight's midnight ("valid only today"). The trial
-          button stays disabled until payments go live — tapping it must
-          never fake a purchase. */}
+          button runs the real Razorpay checkout (test mode while the backend holds test keys) — tapping it must never fake a purchase; success is shown only after the server confirms the subscription. */}
       <Dialog open={selected !== null} onOpenChange={(open) => { if (!open) setSelected(null); }}>
         <DialogContent className="max-w-sm overflow-hidden p-0">
           {selected && (() => {
@@ -242,10 +299,16 @@ export function SubscriptionPlansCard() {
                     <p className="mt-1 font-mono text-3xl font-bold tabular-nums text-red-600">{countdown}</p>
                     <p className="text-xs text-muted-foreground">{t("plans.endsTonight")}</p>
                   </div>
-                  <Button disabled className="w-full">
+                  <Button disabled={paying} onClick={() => selected && startTrial(selected)} className="w-full">
                     <Flame className="mr-2 h-4 w-4" /> {t("plans.startTrial", { days: TRIAL_DAYS })}
                   </Button>
-                  <p className="text-xs text-muted-foreground">{t("plans.comingSoon")}</p>
+                  <p className="text-xs font-semibold text-amber-700">{t("plans.testModeNote")}</p>
+                  {payMsg === "success" && (
+                    <p className="text-sm font-semibold text-green-700">{t("plans.paySuccess")}</p>
+                  )}
+                  {payMsg === "error" && (
+                    <p className="text-sm font-semibold text-red-600">{t("plans.payFailed")}</p>
+                  )}
                 </div>
               </div>
             );
