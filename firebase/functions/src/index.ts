@@ -9,7 +9,7 @@ import { db, auth, requireUser, requireAdmin, deleteUserData } from "./shared";
 import { notifyQueryBounds, isDueNow } from "./notifyTime";
 
 export { chat, financeAi } from "./ai";
-export { createRazorpaySubscription, confirmRazorpaySubscription, cancelRazorpaySubscription } from "./razorpay";
+export { createRazorpaySubscription, confirmRazorpaySubscription, cancelRazorpaySubscription, getSubscriptionStatus } from "./razorpay";
 export { razorpayWebhook } from "./webhook";
 export { dedupeInsuranceLead } from "./leads";
 
