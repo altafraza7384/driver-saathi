@@ -62,264 +62,229 @@ function useCountdownToMidnight() {
 }
 
 export function SubscriptionPlansCard() {
-  const { t } = useI18n();
   const { user } = useAuth();
-  const [selected, setSelected] = useState<Plan | null>(null);
+  const { t } = useI18n();
+  const today = localToday();
   const countdown = useCountdownToMidnight();
-  const [paying, setPaying] = useState(false);
-  const [payMsg, setPayMsg] = useState<"success" | "error" | null>(null);
-
-  // Loads Razorpay Checkout.js on demand (no new dependency).
-  function loadRazorpay(): Promise<boolean> {
-    return new Promise((resolve) => {
-      if ((window as unknown as { Razorpay?: unknown }).Razorpay) {
-        resolve(true);
-        return;
-      }
-      const s = document.createElement("script");
-      s.src = "https://checkout.razorpay.com/v1/checkout.js";
-      s.onload = () => resolve(true);
-      s.onerror = () => resolve(false);
-      document.body.appendChild(s);
-    });
-  }
-
-  // Real Razorpay flow, test mode while the backend holds test keys:
-  // create subscription on the server, authorize the UPI mandate in
-  // Checkout, then confirm server-side. Success is shown ONLY after the
-  // server verifies the subscription — the Checkout callback alone is
-  // never trusted.
-  async function startTrial(plan: Plan) {
-    if (!user || paying) return;
-    setPaying(true);
-    setPayMsg(null);
-    try {
-      const create = httpsCallable(firebaseFunctions, "createRazorpaySubscription");
-      const res = await create({ planInterval: plan.billing_interval, adminPlanId: plan.id });
-      const data = res.data as { subscriptionId: string; keyId: string };
-      if (!(await loadRazorpay())) throw new Error("checkout-load");
-      const RazorpayCtor = (window as unknown as { Razorpay: new (o: Record<string, unknown>) => { open: () => void } }).Razorpay;
-      let checkoutResp : { razorpay_payment_id?: string; razorpay_subscription_id?: string; razorpay_signature?: string } | null = null;
-      await new Promise<void>((resolve, reject) => {
-        const rz = new RazorpayCtor({
-          key: data.keyId,
-          subscription_id: data.subscriptionId,
-          name: "Driver Saathi",
-          description: plan.name,
-          prefill: {
-            email: user.email ?? undefined,
-            contact: user.phone ? user.phone : undefined,
-          },
-handler: (resp: { razorpay_payment_id?: string; razorpay_subscription_id?: string; razorpay_signature?: string }) => { checkoutResp = resp; resolve(); },
-          modal: { ondismiss: () => reject(new Error("dismissed")) },
-          theme: { color: "#142F57" },
-        });
-        rz.open();
-      });
-      const confirm = httpsCallable(firebaseFunctions, "confirmRazorpaySubscription");
-const cres = await confirm({ subscriptionId: data.subscriptionId, paymentId: checkoutResp?.razorpay_payment_id, signature: checkoutResp?.razorpay_signature });
-      const cdata = cres.data as { verified: boolean };
-      if (!cdata.verified) throw new Error("not-verified");
-      setPayMsg("success");
-    } catch {
-      setPayMsg("error");
-    } finally {
-      setPaying(false);
-    }
-  }
-  const { data: plans = [], isLoading, error: plansError } = useQuery({
+  const { data: offers } = useQuery({
+    queryKey: ["plans_offers"],
+    queryFn: async () => {
+      const snap = await db.collection("offers").get();
+      return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Offer, "id">) })) as Offer[];
+    },
+    enabled: !!user,
+  });
+  const { data: plansRaw } = useQuery({
     queryKey: ["subscription_plans"],
     queryFn: async () => {
-      const { data, error } = await db.from("subscription_plans").select("*").eq("is_active", true).order("sort_order");
-      if (error) throw error;
-      return data as Plan[];
+      const snap = await db.collection("subscription_plans").get();
+      return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Plan, "id">) })) as Plan[];
     },
+    enabled: !!user,
   });
-
-  // Fail-soft: if offers cannot load (old rules, no collection yet), the
-  // plans list still renders exactly as before.
-  const { data: offers = [] } = useQuery({
-    queryKey: ["offers"],
-    queryFn: async () => {
-      try {
-        const { data, error } = await db.from("offers").select("*").eq("is_active", true).order("sort_order");
-        if (error) return [];
-        return data as Offer[];
-      } catch {
-        return [];
-      }
-    },
-  });
-
-  // The current user's plan + trial dates: users/{uid}.subscription_plan_id
-  // is null when the user has no plan (see AdminUsersPage). Fail-open for
-  // marketing: if the profile cannot be read, the "Only for You" badge
-  // still shows — a subscriber seeing an offer badge is harmless, a
-  // non-subscriber missing one loses a sale.
   const { data: myProfile } = useQuery({
-    queryKey: ["plans_my_plan"],
+    queryKey: ["my_profile"],
+    queryFn: async () => {
+      if (!user) return null;
+      const snap = await db.collection("profiles").doc(user.uid).get();
+      return snap.exists ? (snap.data() as Record<string, unknown>) : null;
+    },
+    enabled: !!user,
+  });
+  const { data: subStatusData } = useQuery({
+    queryKey: ["plans_sub_status"],
     queryFn: async () => {
       try {
-        const { data } = await db.from("users").select("*").eq("id", user!.id);
-        const row = Array.isArray(data) ? data[0] : data;
-        return row as { subscription_plan_id?: string | null; trial_ends_at?: unknown } | null;
+        const fn = httpsCallable(firebaseFunctions, "getSubscriptionStatus");
+        const res = await fn({});
+        return res.data as { status: string | null; planInterval: string | null };
       } catch {
         return null;
       }
     },
     enabled: !!user,
   });
-  const myPlan = myProfile?.subscription_plan_id ?? null;
-  const isNonSubscriber = !myPlan;
+  const offersLive = (offers ?? []).filter((o) => isOfferLive(o, today));
+  const plans = (plansRaw ?? []).slice().sort((a, b) => a.price_inr - b.price_inr);
+  const myPlan = myProfile?.subscription_plan_id as string | undefined;
   const trialState = getTrialState(myProfile);
+  const subStatus = subStatusData?.status ?? null;
+  const subInterval = subStatusData?.planInterval ?? null;
+  const paidInterval = myPlan ? (plans.find((p) => p.id === myPlan)?.billing_interval ?? (subStatus === "active" ? subInterval : null)) : (subStatus === "active" ? subInterval : null);
+  const isSubTrial = subStatus === "authenticated";
+  const isTrial = trialState.kind === "trial" || isSubTrial;
+  const subPlanName = subInterval ? (plans.find((p) => p.billing_interval === subInterval)?.name ?? subInterval) : null;
+  const [selected, setSelected] = useState<Plan | null>(null);
+  const [paying, setPaying] = useState(false);
+  const [paySuccess, setPaySuccess] = useState(false);
+  const [payFailed, setPayFailed] = useState(false);
+  const [testModeNote, setTestModeNote] = useState(false);
 
-  const today = localToday(); // local date, not UTC (00:00–05:29 IST was yesterday)
-  const liveOffers = offers.filter((o) => isOfferLive(o, today));
-  const offersForPlan = (planId: string) => liveOffers.filter((o) => o.plan_id === planId);
-  const mrpFor = (p: Plan) => p.mrp_inr ?? DEFAULT_MRP[p.billing_interval] ?? null;
-  const perFor = (p: Plan) => (p.billing_interval === "yearly" ? "yr" : "mo");
-  // Per-day cost, so the amount feels small: monthly spread over 30 days,
-  // yearly over 365 days (Rs 99/mo = Rs 3.30/day, Rs 999/yr = Rs 2.74/day).
-  const perDayFor = (p: Plan) => {
-    const days = p.billing_interval === "yearly" ? 365 : 30;
-    return `₹${(Number(p.price_inr) / days).toFixed(2)}`;
-  };
+  async function startTrial(plan: Plan) {
+    if (!user) return;
+    setPaying(true);
+    try {
+      const fn = httpsCallable(firebaseFunctions, "startTrial");
+      await fn({ planId: plan.id });
+      setPaySuccess(true);
+    } catch (e) {
+      console.error("startTrial failed", e);
+      setPayFailed(true);
+    } finally {
+      setPaying(false);
+    }
+  }
+
+  async function startPayment(plan: Plan, offer?: Offer) {
+    if (!user) return;
+    setPaying(true);
+    try {
+      const fn = httpsCallable(firebaseFunctions, "createRazorpayOrder");
+      const res = await fn({ planId: plan.id, offerId: offer?.id });
+      const data = res.data as { orderId: string; keyId: string; amount: number; testMode?: boolean };
+      if (data.testMode) setTestModeNote(true);
+      const rzp = new (window as unknown as { Razorpay: new (opts: Record<string, unknown>) => { open: () => void } }).Razorpay({
+        key: data.keyId,
+        amount: data.amount,
+        currency: "INR",
+        name: "Driver Saathi",
+        order_id: data.orderId,
+        handler: async (resp: Record<string, string>) => {
+          try {
+            const verify = httpsCallable(firebaseFunctions, "verifyRazorpayPayment");
+            await verify({ ...resp, planId: plan.id });
+            setPaySuccess(true);
+          } catch {
+            setPayFailed(true);
+          }
+        },
+        modal: { ondismiss: () => setPaying(false) },
+      });
+      rzp.open();
+    } catch (e) {
+      console.error("startPayment failed", e);
+      setPayFailed(true);
+      setPaying(false);
+    }
+  }
+
+  async function payWithWallet(plan: Plan, offer?: Offer) {
+    if (!user) return;
+    setPaying(true);
+    try {
+      const fn = httpsCallable(firebaseFunctions, "payWithWallet");
+      await fn({ planId: plan.id, offerId: offer?.id });
+      setPaySuccess(true);
+    } catch (e) {
+      console.error("payWithWallet failed", e);
+      setPayFailed(true);
+    } finally {
+      setPaying(false);
+    }
+  }
 
   return (
-    <Card><CardContent className="p-4 space-y-3">
-      <div className="flex items-center gap-2"><CreditCard className="h-4 w-4 text-muted-foreground" /><span className="font-semibold">{t("plans.title")}</span></div>
-      {/* Trial status, visible from day 1 (never on Home — owner's rule). */}
-      {trialState.kind === "trial" && (
-        <p className="text-sm font-semibold text-primary">⏳ {t("trial.daysLeft", { days: trialState.daysLeft })}</p>
-      )}
-      {trialState.kind === "notStarted" && (
-        <p className="text-sm text-muted-foreground">{t("trial.notStarted")}</p>
-      )}
-      {trialState.kind === "expired" && (
-        <p className="text-sm font-semibold text-amber-700">⚠️ {t("trial.limitedMode")}</p>
-      )}
-      {liveOffers.length > 0 && (
-        <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-1">
-          <p className="flex items-center gap-1 text-sm font-bold"><Tag className="h-4 w-4" /> {t("plans.currentOffers")}</p>
-          {liveOffers.map((o) => (
-            <p key={o.id} className="text-sm text-muted-foreground">
-              {`${o.title} — ${o.discount_percent}% off`}
-            </p>
-          ))}
-        </div>
-      )}
-      {isLoading ? (
-        <div className="h-16 animate-pulse rounded-md bg-muted" />
-      ) : plansError ? (
-        <div className="space-y-1">
-          <p className="text-sm text-destructive">{t("home.loadError")}</p>
-          <p className="text-xs text-muted-foreground break-words">{plansError instanceof Error ? plansError.message : String(plansError)}</p>
-        </div>
-      ) : plans.length === 0 ? (
-        <p className="text-muted-foreground">{t("plans.noPlans")}</p>
-      ) : (
-        plans.map((p) => {
-          const price = Number(p.price_inr);
-          const mrp = mrpFor(p);
-          const per = perFor(p);
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        {trialState.kind === "trial" && (
+          <p className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+            {t("trial.daysLeft", { days: trialState.daysLeft })}
+          </p>
+        )}
+        {offersLive.map((o) => (
+          <p key={o.id} className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+            {o.title} · {o.discount_percent}% {t("plans.off")} · {o.valid_until ? `${t("plans.validUntil")} ${o.valid_until} (${countdown})` : t("plans.noExpiry")}
+          </p>
+        ))}
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {plans.map((plan) => {
+          const offer = offersLive.find((o) => o.plan_id === plan.id);
+          const mrp = plan.mrp_inr ?? DEFAULT_MRP[plan.billing_interval] ?? plan.price_inr;
           return (
-            <div key={p.id} onClick={() => { setSelected(p); setPayMsg(null); }} className="cursor-pointer rounded-lg border border-border p-3 hover:border-primary/50">
-              <div className="flex items-baseline justify-between gap-2">
-                <p className="font-bold">{p.name}</p>
-                <div className="text-right whitespace-nowrap">
-                  {mrp !== null && mrp > price && (
-                    <p className="text-xs text-muted-foreground line-through">MRP {formatINR(mrp)}</p>
-                  )}
-                  <p className="font-bold">
-                    {price === 0 ? "₹0" : `${formatINR(price)}/${per}`}
-                  </p>
+            <Card key={plan.id} className={myPlan === plan.id ? "border-primary" : ""}>
+              <CardContent className="space-y-2 p-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold">{plan.name}</h3>
+                  {myPlan === plan.id && <span className="text-xs font-semibold text-primary">{t("plans.currentPlan")}</span>}
                 </div>
-              </div>
-              <p className="text-sm text-muted-foreground">{p.description}</p>
-              <div className="mt-2 flex flex-wrap gap-1">
-                <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-bold text-green-800">✨ {t("plans.trialBadge", { days: TRIAL_DAYS })}</span>
-                {isNonSubscriber && (
-                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800">🔥 {t("plans.onlyForYou")}</span>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xl font-bold">{formatINR(plan.price_inr)}</span>
+                  {mrp > plan.price_inr && <span className="text-sm text-muted-foreground line-through">{formatINR(mrp)}</span>}
+                  <span className="text-xs text-muted-foreground">/ {plan.billing_interval === "yearly" ? t("plans.year") : t("plans.month")}</span>
+                </div>
+                {plan.description && <p className="text-sm text-muted-foreground">{plan.description}</p>}
+                {plan.features && (
+                  <ul className="space-y-1 text-sm">
+                    {plan.features.map((f, i) => (
+                      <li key={i} className="flex items-center gap-2">
+                        <Check className="h-4 w-4 text-primary" /> {f}
+                      </li>
+                    ))}
+                  </ul>
                 )}
+                {offer && (
+                  <p className="flex items-center gap-1 text-xs font-semibold text-primary">
+                    <Tag className="h-4 w-4" /> {offer.title} · {offer.discount_percent}% {t("plans.off")}
+                  </p>
+                )}
+                <Button className="w-full" onClick={() => setSelected(plan)}>
+                  {t("plans.viewPlan")}
+                </Button>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+      <Dialog open={!!selected} onOpenChange={(open) => { if (!open) { setSelected(null); setPaySuccess(false); setPayFailed(false); setTestModeNote(false); } }}>
+        <DialogContent>
+          <DialogTitle>{selected?.name}</DialogTitle>
+          {selected && (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">{selected.description}</p>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-bold">{formatINR(selected.price_inr)}</span>
+                <span className="text-xs text-muted-foreground">/ {selected.billing_interval === "yearly" ? t("plans.year") : t("plans.month")}</span>
               </div>
-              {price > 0 && (
-                <p className="mt-1 text-sm font-semibold text-primary">{t("plans.perDay", { price: perDayFor(p) })}</p>
-              )}
-              {offersForPlan(p.id).map((o) => (
-                <p key={o.id} className="flex items-center gap-1 text-sm font-semibold text-primary">
-                  <Tag className="h-3 w-3" />
-                  {`${o.title} — ${o.discount_percent}% off`}
-                </p>
-              ))}
-              {p.features?.length > 0 && (
-                <ul className="mt-2 space-y-1">
-                  {p.features.map((f, i) => <li key={i} className="flex items-start gap-2 text-sm"><Check className="h-4 w-4 mt-0.5 shrink-0" />{f}</li>)}
+              {selected.features && (
+                <ul className="space-y-1 text-sm">
+                  {selected.features.map((f, i) => (
+                    <li key={i} className="flex items-center gap-2">
+                      <Check className="h-4 w-4 text-primary" /> {f}
+                    </li>
+                  ))}
                 </ul>
               )}
-            </div>
-          );
-        })
-      )}
-      <p className="text-xs text-muted-foreground">{t("plans.comingSoon")}</p>
-
-      {/* Offer poster popup: opens when a plan is tapped. Poster-style card
-          with the struck MRP, the offer price, the free trial, and a live
-          countdown to tonight's midnight ("valid only today"). The trial
-          button runs the real Razorpay checkout (test mode while the backend holds test keys) — tapping it must never fake a purchase; success is shown only after the server confirms the subscription. */}
-      <Dialog open={selected !== null} onOpenChange={(open) => { if (!open) setSelected(null); }}>
-        <DialogContent className="max-w-sm overflow-hidden p-0">
-          {selected && (() => {
-            const price = Number(selected.price_inr);
-            const mrp = mrpFor(selected);
-            const per = perFor(selected);
-            return (
-              <div>
-                <DialogTitle className="sr-only">{selected.name}</DialogTitle>
-                <div className="bg-gradient-to-r from-amber-500 to-yellow-400 px-5 py-4 text-center">
-                  <p className="text-2xl">🎉</p>
-                  <p className="text-lg font-extrabold text-amber-950">{t("plans.currentOffers")}</p>
-                  {isNonSubscriber && (
-                    <p className="text-sm font-bold text-amber-950">🔥 {t("plans.onlyForYou")}</p>
-                  )}
-                </div>
-                <div className="space-y-3 p-5 text-center">
-                  <p className="text-lg font-bold">{selected.name}</p>
-                  <p>
-                    {mrp !== null && mrp > price && (
-                      <span className="mr-2 text-muted-foreground line-through">MRP {formatINR(mrp)}</span>
-                    )}
-                    <span className="text-3xl font-extrabold">{price === 0 ? "₹0" : `${formatINR(price)}/${per}`}</span>
-                  </p>
-                  {price > 0 && (
-                    <p className="text-base font-bold text-primary">{t("plans.perDay", { price: perDayFor(selected) })}</p>
-                  )}
-                  <p>
-                    <span className="rounded-full bg-green-100 px-3 py-1 text-sm font-bold text-green-800">✨ {t("plans.trialBadge", { days: TRIAL_DAYS })}</span>
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {t("plans.thenAfterTrial", { price: formatINR(price), per })}
-                  </p>
-                  <div className="rounded-lg border border-red-200 bg-red-50 p-3">
-                    <p className="flex items-center justify-center gap-1 font-bold text-red-600"><Timer className="h-4 w-4" /> {t("plans.validOnlyToday")}</p>
-                    <p className="mt-1 font-mono text-3xl font-bold tabular-nums text-red-600">{countdown}</p>
-                    <p className="text-xs text-muted-foreground">{t("plans.endsTonight")}</p>
-                  </div>
+              <Button disabled={paying} onClick={() => selected && startPayment(selected, offersLive.find((o) => o.plan_id === selected.id))} className="w-full">
+                <CreditCard className="mr-2 h-4 w-4" /> {t("plans.payNow")}
+              </Button>
+              <Button disabled={paying} variant="outline" onClick={() => selected && payWithWallet(selected, offersLive.find((o) => o.plan_id === selected.id))} className="w-full">
+                {t("plans.payWithWallet")}
+              </Button>
+              {isTrial ? (
+                <p className="text-sm font-semibold text-primary">
+                  {isSubTrial && subPlanName ? t("plans.onSubTrial", { plan: subPlanName }) : trialState.kind === "trial" ? t("trial.daysLeft", { days: trialState.daysLeft }) : null}
+                </p>
+              ) : paidInterval ? (
+                paidInterval === "monthly" && selected.billing_interval === "yearly" ? (
                   <Button disabled={paying} onClick={() => selected && startTrial(selected)} className="w-full">
-                    <Flame className="mr-2 h-4 w-4" /> {t("plans.startTrial", { days: TRIAL_DAYS })}
+                    <Flame className="mr-2 h-4 w-4" /> {t("plans.upgradeToYearly")}
                   </Button>
-                  <p className="text-xs font-semibold text-amber-700">{t("plans.testModeNote")}</p>
-                  {payMsg === "success" && (
-                    <p className="text-sm font-semibold text-green-700">{t("plans.paySuccess")}</p>
-                  )}
-                  {payMsg === "error" && (
-                    <p className="text-sm font-semibold text-red-600">{t("plans.payFailed")}</p>
-                  )}
-                </div>
-              </div>
-            );
-          })()}
+                ) : selected.billing_interval === paidInterval ? (
+                  <p className="text-sm font-semibold text-primary">{t("plans.currentPlan")}</p>
+                ) : null
+              ) : (
+                <Button disabled={paying} onClick={() => selected && startTrial(selected)} className="w-full">
+                  <Flame className="mr-2 h-4 w-4" /> {t("plans.startTrial", { days: TRIAL_DAYS })}
+                </Button>
+              )}
+              {testModeNote && <p className="text-xs text-muted-foreground">{t("plans.testModeNote")}</p>}
+              {paySuccess && <p className="text-sm font-semibold text-primary">{t("plans.paySuccess")}</p>}
+              {payFailed && <p className="text-sm font-semibold text-destructive">{t("plans.payFailed")}</p>}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
-    </CardContent></Card>
+    </div>
   );
 }
