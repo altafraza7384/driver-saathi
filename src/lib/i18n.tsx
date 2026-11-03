@@ -262,8 +262,7 @@ const translations: Record<Language, Record<string, string>> = {
     "common.or": "or",
     "common.accepted": "Accepted",
     "common.onTheWay": "On the way",
-    "common.arrived": "Arrived",
-    
+    "common.arrived": "Arrived",    
     "common.cancelled": "Cancelled",
     "form.selectCategory": "Select category",
     "form.selectPlatform": "Select platform (optional)",
