@@ -109,7 +109,7 @@ export function SubscriptionPlansCard() {
           description: plan.name,
           prefill: {
             email: user.email ?? undefined,
-            contact: user.phone ? user.phone : undefined,
+            contact: profile?.phone || user.phone || undefined,
           },
           handler: (resp: { razorpay_payment_id?: string; razorpay_subscription_id?: string; razorpay_signature?: string }) => { checkoutResp = resp; resolve(); },
           modal: { ondismiss: () => reject(new Error("dismissed")) },
@@ -130,7 +130,7 @@ export function SubscriptionPlansCard() {
     }
   }
 
-  const queryClient = useQueryClient();
+  const { data: profile } = useQuery({     queryKey: ["profile"],     queryFn: async () => {       const { data, error } = await db.from("profiles").select("*").eq("user_id", user!.id).single();       if (error) throw error;       return data;     },     enabled: !!user,   });   const queryClient = useQueryClient();
   const { data: plans = [], isLoading, error: plansError } = useQuery({
     queryKey: ["subscription_plans"],
     queryFn: async () => {
