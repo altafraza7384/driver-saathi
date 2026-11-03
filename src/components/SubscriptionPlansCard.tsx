@@ -334,7 +334,6 @@ export function SubscriptionPlansCard() {
                         <Flame className="mr-2 h-4 w-4" /> {t("plans.startTrial", { days: TRIAL_DAYS })}
                       </Button>
                     )}
-                    <p className="text-xs font-semibold text-amber-700">{t("plans.testModeNote")}</p>
                     {payMsg === "success" && (
                       <p className="text-sm font-semibold text-green-700">{t("plans.paySuccess")}</p>
                     )}
