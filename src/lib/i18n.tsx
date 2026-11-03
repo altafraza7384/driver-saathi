@@ -2769,8 +2769,8 @@ const translations: Record<Language, Record<string, string>> = {
     "plans.onSubTrial": "You are on the free trial of {plan}.",
     "plans.currentPlan": "You are on this plan.",
     "plans.upgradeToYearly": "Upgrade to Yearly",
-    "update.available": "ಅಪ್‌ಡೇಟ್ ಲಭ್ಯವಿದೆ",       "
-          "update.storeReady": "Play Store ನಲ್ಲಿ ಹೊಸ ಆವೃತ್ತಿ ಇದೆ.
+    "update.available": "ಅಪ್‌ಡೇಟ್ ಲಭ್ಯವಿದೆ",      
+          "update.storeReady": "Play Store ನಲ್ಲಿ ಹೊಸ ಆವೃತ್ತಿ ಇದೆ.",
     "update.webReady": "ಆ್ಯಪ್‌ನ ಹೊಸ ಆವೃತ್ತಿ ಸಿದ್ಧವಾಗಿದೆ.",
     "update.update": "ಅಪ್‌ಡೇಟ್ ಮಾಡಿ",
     "blocked.title": "ಖಾತೆಯನ್ನು ನಿರ್ಬಂಧಿಸಲಾಗಿದೆ",
