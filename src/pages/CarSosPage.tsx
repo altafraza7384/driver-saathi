@@ -81,6 +81,7 @@ export default function CarSosPage() {
     s === "pending" ? t("common.pending")
     : s === "accepted" ? t("common.accepted")
     : s === "onway" ? t("common.onTheWay")
+    : s === "arrived" ? t("common.arrived")
     : s === "completed" ? t("common.completed")
     : s === "cancelled" ? t("common.cancelled")
     : s;
@@ -241,7 +242,11 @@ export default function CarSosPage() {
       ? t("carSos.statusPending")
       : active?.status === "accepted"
         ? t("carSos.statusAccepted")
+    : active?.status === "arrived"
+    ? t("carSos.statusArrived")
         : t("carSos.statusOnway");
+
+
 
   return (
     <div className="space-y-5 p-4 pt-6">
@@ -303,7 +308,7 @@ export default function CarSosPage() {
               )}
 
               <div className="flex gap-2">
-                {(active.status === "pending" || active.status === "accepted" || active.status === "onway") && (
+                {(active.status === "pending" || active.status === "accepted" || active.status === "onway" || active.status === "arrived") && (
                   <Button
                     variant="destructive"
                     className="flex-1"
