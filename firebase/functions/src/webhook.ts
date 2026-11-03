@@ -33,7 +33,9 @@ export const razorpayWebhook = onRequest({ region: REGION, secrets: [RAZORPAY_WE
   const expected = await hmacHex(RAZORPAY_WEBHOOK_SECRET.value(), raw);
   if (!safeEqual(expected, signature)) { res.status(400).send("Invalid signature"); return; }
   const eventId = req.header("x-razorpay-event-id") ?? "";
-  const body = (req.body ?? {}) as { event?: unknown; payload?: { subscription?: { entity?: { id?: unknown } }; payment?: { entity?: { subscription_id?: unknown } } } };
+  const body = (req.body ?? {}) as { event?: unknown; payload?: { subscription?: { entity?: { id?: unknown; status?: unknown } }; payment?: { entity?: { subscription_id?: unknown } } } };
+
+  
   const eventName = typeof body.event === "string" ? body.event : "";
   if (eventId) {
     try { await db.doc(`webhook_events/${eventId}`).create({ event: eventName, receivedAt: FieldValue.serverTimestamp() }); }
@@ -49,9 +51,14 @@ export const razorpayWebhook = onRequest({ region: REGION, secrets: [RAZORPAY_WE
       const uid = doc.id;
       const adminPlanId = doc.get("adminPlanId");
       if (eventName === "subscription.activated" || eventName === "subscription.charged") {
-        await doc.ref.set({ status: "active", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+        const entityStatus = body.payload?.subscription?.entity?.status;
+        if (entityStatus === "active") {
+            await doc.ref.set({ status: "active", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
         if (typeof adminPlanId === "string" && adminPlanId) {
           await db.doc(`users/${uid}`).set({ subscription_plan_id: adminPlanId }, { merge: true });
+        }
+        } else if (typeof entityStatus === "string" && entityStatus) {
+          await doc.ref.set({ status: entityStatus, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
         }
       } else if (eventName === "subscription.cancelled" || eventName === "subscription.completed" || eventName === "subscription.halted") {
         const next = eventName === "subscription.completed" ? "completed" : eventName === "subscription.halted" ? "halted" : "cancelled";
