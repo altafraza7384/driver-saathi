@@ -9,6 +9,7 @@ import { db, auth, requireUser, requireAdmin, deleteUserData } from "./shared";
 import { notifyQueryBounds, isDueNow } from "./notifyTime";
 
 export { chat, financeAi } from "./ai";
+export { createRazorpaySubscription, confirmRazorpaySubscription, cancelRazorpaySubscription } from "./razorpay";
 export { dedupeInsuranceLead } from "./leads";
 
 const REGION = "asia-south1";
