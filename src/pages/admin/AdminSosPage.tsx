@@ -24,12 +24,13 @@ type SosRequest = {
   created_at?: string | null;
 };
 
-const FILTERS = ["all", "pending", "accepted", "onway", "completed", "cancelled"] as const;
+const FILTERS = ["all", "pending", "accepted", "onway", "arrived", "completed", "cancelled"] as const;
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "Pending",
   accepted: "Accepted",
   onway: "On the way",
+    arrived: "Arrived",
   completed: "Completed",
   cancelled: "Cancelled",
 };
