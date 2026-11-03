@@ -191,7 +191,6 @@ export default function AdminMechanicsPage() {
         },
       },
     );
-  };
 
   return (
     <div className="p-4 pt-6 space-y-5 max-w-2xl mx-auto">
