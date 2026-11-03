@@ -12,6 +12,7 @@ export { chat, financeAi } from "./ai";
 export { createRazorpaySubscription, confirmRazorpaySubscription, cancelRazorpaySubscription, getSubscriptionStatus } from "./razorpay";
 export { razorpayWebhook } from "./webhook";
 export { dedupeInsuranceLead } from "./leads";
+export { sendSosRequestPush, sendSosCancelPush } from "./sosPush";
 
 const REGION = "asia-south1";
 const VAPID_PUBLIC_KEY = defineSecret("VAPID_PUBLIC_KEY");
