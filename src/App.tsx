@@ -1,4 +1,4 @@
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -12,6 +12,8 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { lazyWithRetry } from "@/lib/lazyWithRetry";
 import { AndroidBackButton } from "@/components/AndroidBackButton";
+import { useToast } from "@/hooks/use-toast";
+import { sendVerificationEmailToCurrentUser, reloadCurrentUser } from "@/integrations/firebase/adapter";
 
 import { isAdminOnlyAccount } from "@/lib/admin-only";
 
@@ -96,6 +98,70 @@ function BlockedScreen() {
   );
 }
 
+function VerifyEmailScreen() {
+  const { user, signOut } = useAuth();
+  const { t } = useI18n();
+  const { toast } = useToast();
+  const navigate = useNavigate();
+  const [sending, setSending] = useState(false);
+  const [checking, setChecking] = useState(false);
+
+  const handleResend = async () => {
+    setSending(true);
+    try {
+      await sendVerificationEmailToCurrentUser();
+      toast({ title: t("verify.sent") });
+    } catch (error) {
+      console.error("Resend verification failed", error);
+      toast({ title: t("verify.failed"), variant: "destructive" });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleCheckAgain = async () => {
+    setChecking(true);
+    try {
+      await reloadCurrentUser();
+    } catch {
+      // Reload failure just means the check below re-reads the old flag;
+      // the page reload re-bootstraps the session either way.
+    }
+    window.location.reload();
+  };
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+        <div className="max-w-sm text-center space-y-4">
+    <h1 className="text-2xl font-bold">{t("verify.title")}</h1>
+          <p className="text-sm text-muted-foreground">{t("verify.message", { email: user?.email ?? "" })}</p>
+          <div className="space-y-2">
+          <button
+            className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+            onClick={handleResend}
+            disabled={sending}
+          >
+            {t("verify.resend")}
+          </button>
+            <button
+              className="w-full rounded-md border border-input bg-background px-4 py-2 text-sm font-medium disabled:opacity-50"
+              onClick={handleCheckAgain}
+              disabled={checking}
+            >
+              {t("verify.checkAgain")}
+            </button>
+            <button
+              className="w-full rounded-md px-4 py-2 text-sm font-medium text-primary hover:underline"
+              onClick={() => { signOut(); navigate("/auth"); }}
+            >
+              {t("auth.logout")}
+            </button>
+          </div>
+    </div>
+    </div>
+  );
+}
+
 function ProtectedRoutes() {
   const { user, loading } = useAuth();
   const location = useLocation();
@@ -132,6 +198,15 @@ function ProtectedRoutes() {
 
   if (!user) {
     return <Navigate to="/auth" replace />;
+      }
+  // HARD email verification (2026-11-03): a password (email) account whose
+  // email is not verified sees ONLY the Verify screen — no app, no admin
+  // panel — until the link is opened. Google sign-in users are exempt
+  // (Google already verifies the email), as is the admin-only account.
+  const providers = (user.app_metadata?.providers as string[] | undefined) ?? [];
+  const isVerified = user.user_metadata?.email_verified === true;
+  if (providers.includes("password") && !isVerified && !isAdminOnlyAccount(user.email)) {
+    return <VerifyEmailScreen />;
   }
 
   if (blockedProfile?.is_blocked === true) {
