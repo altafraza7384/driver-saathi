@@ -326,11 +326,7 @@ export function SubscriptionPlansCard() {
                         {isSubTrial && subPlanName ? t("plans.onSubTrial", { plan: subPlanName }) : trialState.kind === "trial" ? t("trial.daysLeft", { days: trialState.daysLeft }) : null}
                       </p>
                     ) : paidInterval ? (
-                      paidInterval === "monthly" && selected.billing_interval === "yearly" ? (
-                        <Button disabled={paying} onClick={() => selected && startTrial(selected)} className="w-full">
-                          <Flame className="mr-2 h-4 w-4" /> {t("plans.upgradeToYearly")}
-                        </Button>
-                      ) : selected.billing_interval === paidInterval ? (
+                      selected.billing_interval === paidInterval ? (
                         <p className="text-sm font-semibold text-primary">{t("plans.currentPlan")}</p>
                       ) : null
                     ) : (
