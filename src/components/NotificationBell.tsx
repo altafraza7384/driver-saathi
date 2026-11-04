@@ -8,7 +8,8 @@ import { formatINR, toAmount } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format, isToday, isTomorrow, parseISO, isBefore, addDays } from "date-fns";
-import { X, CheckCheck } from "lucide-react";
+import { X, CheckCheck } from "lucide-react"; 
+import { useNavigate } from "react-router-dom";
 
 interface Notification {
   id: string;
@@ -18,7 +19,8 @@ interface Notification {
   date: string;
 }
 
-export function NotificationBell() {
+export function NotificationBell() { 
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -380,7 +382,8 @@ export function NotificationBell() {
             ))
           )}
         </div>
-      </PopoverContent>
+      
+        <div className="border-t p-2"><Button variant="ghost" size="sm" className="w-full" onClick={() => { setOpen(false); navigate("/notifications"); }}>{t("home.viewAll")}</Button></div> </PopoverContent>
     </Popover>
   );
 }
