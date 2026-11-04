@@ -80,7 +80,7 @@ export function TrialPopup() {
             className="flex-1"
             onClick={() => {
               setOpen(false);
-              navigate("/more");
+              navigate("/plans");
             }}
           >
             {t("trial.viewPlans")}
