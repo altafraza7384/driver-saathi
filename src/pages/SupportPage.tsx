@@ -1,4 +1,4 @@
-import { appVersionLabel } from "@/lib/appVersion";
+import { APP_BUILD_ID, APP_VERSION } from "@/lib/appVersion";
 import { useI18n } from "@/lib/i18n";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Info, Mail, MessageCircle, Phone } from "lucide-react";
@@ -14,7 +14,7 @@ export default function SupportPage() {
         <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <h1 className="text-xl font-bold flex items-center gap-2">
+        <h1 className="text-xl font-bold flex items-center gap-2 min-w-0 flex-1">
           <Info className="h-5 w-5" /> {t("more.supportAbout")}
         </h1>
       </div>
@@ -57,9 +57,9 @@ export default function SupportPage() {
       <div className="space-y-4 text-sm border-t pt-4">
         <h2 className="text-lg font-bold">{t("more.about")}</h2>
         <p className="text-muted-foreground">{t("more.aboutDesc")}</p>
-        <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">{t("more.appVersion")}</span>
-          <span className="font-bold">{appVersionLabel()}</span>
+        <div className="space-y-1">
+          <p className="font-bold">{t("more.appVersion")} {APP_VERSION}</p>
+          {APP_BUILD_ID ? (<p className="text-xs text-muted-foreground">Build {APP_BUILD_ID}</p>) : null}
         </div>
         <div className="border-t pt-3 space-y-2">
           <h4 className="font-bold">{t("more.privacyPolicy")}</h4>
