@@ -3,6 +3,7 @@ import { Outlet } from "react-router-dom";
 import { BottomNav } from "./BottomNav";
 import { UpdatePrompt } from "@/components/UpdatePrompt";
 import { TrialPopup } from "@/components/TrialPopup";
+import AnnouncementPopup from "@/components/AnnouncementPopup";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { showBannerAd } from "@/lib/admob";
 import { requestAllPermissions } from "@/lib/native-permissions";
@@ -60,6 +61,7 @@ export function AppLayout() {
       <BottomNav />
       <UpdatePrompt />
       <TrialPopup />
+      <AnnouncementPopup />
     </div>
   );
 }
