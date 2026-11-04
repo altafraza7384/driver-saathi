@@ -8,10 +8,8 @@ export interface NativeAdsPlugin {
 
 const NativeAds = registerPlugin<NativeAdsPlugin>("NativeAds");
 
-// Google test native ad unit. Replace with the real AdMob native unit id
-// (created in the AdMob console) before the Play release build; until then
-// the slot shows test ads, which is the safe state for development.
-export const NATIVE_AD_UNIT_ID = "ca-app-pub-3940256099942544/2247696110";
+// Real 'Driver Saathi Native Video' AdMob native unit.
+export const NATIVE_AD_UNIT_ID = "ca-app-pub-1994214977986364/8263891910";
 
 export function isNativeAdsAvailable(): boolean {
   return Capacitor.getPlatform() === "android" && Capacitor.isPluginAvailable("NativeAds");
