@@ -167,7 +167,7 @@ export default function SettingsPage() {
 <CardContent className="p-4 space-y-3">
   <div className="text-sm font-medium">{t("settings.appearance")}</div>
   <div className="flex items-center justify-between"><div className="flex items-center gap-3">{isDark ? <Moon className="h-5 w-5 text-muted-foreground" /> : <Sun className="h-5 w-5 text-muted-foreground" />}<span className="text-sm font-medium">{t("more.darkMode")}</span></div>
-  </div><Switch checked={isDark} onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")} /></div></CardContent></Card>
+  <Switch checked={isDark} onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")} /></div></CardContent></Card>
       <Button variant="destructive" className="w-full gap-2" onClick={handleLogout}><LogOut className="h-4 w-4" /> {t("auth.logout")}</Button>
 
       {/* Delete Account Section */}
