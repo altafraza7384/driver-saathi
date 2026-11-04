@@ -1,11 +1,12 @@
 import { localToday } from "@/lib/budgets";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { db } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Megaphone, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -55,7 +56,10 @@ export function AnnouncementBanner() {
   const { user } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
+  const [popupSeen, setPopupSeen] = useState<Set<string>>(() => readSeen("announcement_popup_seen"));
   const [bannerDismissed, setBannerDismissed] = useState<Set<string>>(() => readSeen("announcement_banner_dismissed"));
+  const [popupOpen, setPopupOpen] = useState(false);
+  const [popupId, setPopupId] = useState<string | null>(null);
 
   const { data: announcements = [] } = useQuery({
     queryKey: ["announcements"],
@@ -67,19 +71,18 @@ export function AnnouncementBanner() {
     enabled: !!user,
   });
 
-  // The current user's plan: users/{uid}.subscription_plan_id is null when
-  // the user has no plan (see AdminUsersPage). Fail-open for marketing:
-  // if the profile cannot be read, offer announcements still show — a
-  // subscriber seeing an offer is harmless, a non-subscriber missing one
-  // loses a sale. This read never gates anything security-sensitive:
-  // announcements themselves are public to signed-in users by rules.
+  // The current user's plan: announcements marked 'non_subscribers' are
+  // hidden once the user has a subscription plan, so paying users stop
+  // seeing upgrade offers. The query only runs once a user is present;
+  // a null plan (no subscription record) means 'non_subscribers' still
+  // shows, which is the safe default for free users.
   const { data: myPlan } = useQuery({
     queryKey: ["announcements_my_plan"],
     queryFn: async () => {
       try {
         const { data } = await db.from("users").select("*").eq("id", user!.id);
         const row = Array.isArray(data) ? data[0] : data;
-        return (row as { subscription_plan_id?: string | null } | null)?.subscription_plan_id ?? null;
+        return (row as { subscription_plan_id?: string | null })?.subscription_plan_id ?? null;
       } catch {
         return null;
       }
@@ -87,7 +90,7 @@ export function AnnouncementBanner() {
     enabled: !!user,
   });
 
-  const today = localToday(); // local date, not UTC (00:00–05:29 IST was yesterday)
+  const today = localToday();
   const visible = useMemo(
     () =>
       announcements.filter((a) => {
@@ -102,7 +105,23 @@ export function AnnouncementBanner() {
   const bannerItems = visible.filter((a) => !bannerDismissed.has(a.id));
   const popupCandidate = visible.find((a) => !popupSeen.has(a.id));
 
+  useEffect(() => {
+    if (popupCandidate && !popupOpen) {
+      setPopupId(popupCandidate.id);
+      setPopupOpen(true);
+    }
+  }, [popupCandidate, popupOpen]);
 
+  const closePopup = () => {
+    setPopupOpen(false);
+    if (popupId) {
+      const next = new Set(popupSeen);
+      next.add(popupId);
+      setPopupSeen(next);
+      writeSeen("announcement_popup_seen", next);
+    }
+    setPopupId(null);
+  };
 
   const dismissBanner = (id: string) => {
     const next = new Set(bannerDismissed);
@@ -111,6 +130,7 @@ export function AnnouncementBanner() {
     writeSeen("announcement_banner_dismissed", next);
   };
 
+  const popupAnnouncement = popupId ? visible.find((a) => a.id === popupId) ?? null : null;
 
   return (
     <>
@@ -138,6 +158,34 @@ export function AnnouncementBanner() {
         </div>
       )}
 
+      <Dialog open={popupOpen && !!popupAnnouncement} onOpenChange={(o) => !o && closePopup()}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{popupAnnouncement?.title ?? "Driver Saathi"}</DialogTitle>
+          </DialogHeader>
+          {popupAnnouncement && (
+            <div className="space-y-4">
+              <p className="text-sm whitespace-pre-wrap">{popupAnnouncement.message ?? ""}</p>
+              <div className="flex gap-2">
+                {popupAnnouncement.type === "offer" && (
+                  <Button
+                    className="flex-1"
+                    onClick={() => {
+                      closePopup();
+                      navigate("/more");
+                    }}
+                  >
+                    {t("announcement.viewPlans")}
+                  </Button>
+                )}
+                <Button variant="outline" className="flex-1" onClick={closePopup}>
+                  {t("announcement.close")}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
