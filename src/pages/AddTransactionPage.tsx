@@ -35,16 +35,27 @@ export default function AddTransactionPage() {
   const [description, setDescription] = useState("");
   const [date, setDate] = useState(localToday());
   const [loading, setLoading] = useState(false);
+  // Form-sheet pattern (Phase 6, presentation only): validation messages
+  // are shown directly beneath their field, in addition to the existing
+  // toast. The error slot is always rendered with a reserved height so
+  // the footer below it does not move when an error appears. Field
+  // values are never cleared on a failed validation.
+  const [fieldErrors, setFieldErrors] = useState<{ amount?: string; category?: string; date?: string }>({});
 
   const categories = type === "income" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFieldErrors({});
     // Never silently do nothing: if the Select's required validation
     // doesn't fire in the WebView, the user got zero feedback (audit
     // 2026-10-24). Tell them what is missing.
     if (!user || !amount || !category) {
       toast({ title: t("tx.missingFields"), variant: "destructive" });
+      setFieldErrors({
+        amount: !amount ? t("tx.missingFields") : undefined,
+        category: !category ? t("tx.missingFields") : undefined,
+      });
       return;
     }
     // Forms use noValidate (Android WebView shows no native validation
@@ -53,10 +64,12 @@ export default function AddTransactionPage() {
     const parsedAmount = parseFloat(amount);
     if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
       toast({ title: t("form.checkInput"), description: t("form.amountPositive"), variant: "destructive" });
+      setFieldErrors({ amount: t("form.amountPositive") });
       return;
     }
     if (!date) {
       toast({ title: t("tx.missingFields"), variant: "destructive" });
+      setFieldErrors({ date: t("tx.missingFields") });
       return;
     }
     setLoading(true);
@@ -100,7 +113,7 @@ export default function AddTransactionPage() {
               type="button"
               variant={type === "income" ? "default" : "outline"}
               className={`flex-1 ${type === "income" ? "bg-success hover:bg-success/90 text-success-foreground" : ""}`}
-              onClick={() => { setType("income"); setCategory(""); }}
+              onClick={() => { setType("income"); setCategory(""); setFieldErrors((prev) => ({ ...prev, category: undefined })); }}
             >
               {t("home.addIncome")}
             </Button>
@@ -108,7 +121,7 @@ export default function AddTransactionPage() {
               type="button"
               variant={type === "expense" ? "default" : "outline"}
               className={`flex-1 ${type === "expense" ? "bg-destructive hover:bg-destructive/90 text-destructive-foreground" : ""}`}
-              onClick={() => { setType("expense"); setCategory(""); }}
+              onClick={() => { setType("expense"); setCategory(""); setFieldErrors((prev) => ({ ...prev, category: undefined })); }}
             >
               {t("home.addExpense")}
             </Button>
@@ -116,37 +129,41 @@ export default function AddTransactionPage() {
         </CardHeader>
         <CardContent>
           <form noValidate onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label>{t("common.amount")} (₹)</Label>
+            <div className="space-y-1">
+              <Label htmlFor="tx-amount">{t("common.amount")} (₹)</Label>
               <Input
+                id="tx-amount"
                 type="number"
                 placeholder="0"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(e) => { setAmount(e.target.value); setFieldErrors((prev) => ({ ...prev, amount: undefined })); }}
                 className="text-2xl font-bold"
                 min="1"
                 step="0.01"
                 required
+                aria-describedby="tx-amount-error"
               />
+              <p id="tx-amount-error" className="min-h-5 text-sm text-destructive">{fieldErrors.amount ?? ""}</p>
             </div>
 
-            <div className="space-y-2">
-              <Label>{t("common.category")}</Label>
-              <Select value={category} onValueChange={setCategory} required>
-                <SelectTrigger><SelectValue placeholder={t("form.selectCategory")} /></SelectTrigger>
+            <div className="space-y-1">
+              <Label htmlFor="tx-category">{t("common.category")}</Label>
+              <Select value={category} onValueChange={(v) => { setCategory(v); setFieldErrors((prev) => ({ ...prev, category: undefined })); }} required>
+                <SelectTrigger id="tx-category" aria-describedby="tx-category-error"><SelectValue placeholder={t("form.selectCategory")} /></SelectTrigger>
                 <SelectContent>
                   {categories.map((c) => (
                     <SelectItem key={c} value={c}>{categoryLabel(t, c)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              <p id="tx-category-error" className="min-h-5 text-sm text-destructive">{fieldErrors.category ?? ""}</p>
             </div>
 
             {type === "income" && (
               <div className="space-y-2">
-                <Label>{t("tx.platform")}</Label>
+                <Label htmlFor="tx-platform">{t("tx.platform")}</Label>
                 <Select value={platform} onValueChange={setPlatform}>
-                  <SelectTrigger><SelectValue placeholder={t("form.selectPlatform")} /></SelectTrigger>
+                  <SelectTrigger id="tx-platform"><SelectValue placeholder={t("form.selectPlatform")} /></SelectTrigger>
                   <SelectContent>
                     {PLATFORMS.map((p) => (
                       <SelectItem key={p} value={p}>{p}</SelectItem>
@@ -156,27 +173,34 @@ export default function AddTransactionPage() {
               </div>
             )}
 
-            <div className="space-y-2">
+            <div className="space-y-1">
               <Label htmlFor="tx-date">{t("common.date")}</Label>
-              <DatePicker id="tx-date" label={t("common.date")} value={date} onChange={setDate} required />
+              <DatePicker id="tx-date" label={t("common.date")} value={date} onChange={(v) => { setDate(v); setFieldErrors((prev) => ({ ...prev, date: undefined })); }} required />
+              <p id="tx-date-error" className="min-h-5 text-sm text-destructive">{fieldErrors.date ?? ""}</p>
             </div>
 
             <div className="space-y-2">
-              <Label>{t("common.description")} ({t("common.optional")})</Label>
+              <Label htmlFor="tx-description">{t("common.description")} ({t("common.optional")})</Label>
               <Input
+                id="tx-description"
                 placeholder={t("tx.addNote")}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />
             </div>
 
-            <Button
-              type="submit"
-              className={`w-full ${type === "income" ? "bg-success hover:bg-success/90" : ""}`}
-              disabled={loading}
-            >
-              {loading ? t("common.saving") : type === "income" ? t("home.addIncome") : t("home.addExpense")}
-            </Button>
+            <div className="flex gap-2 pt-1">
+              <Button
+                type="submit"
+                className={`flex-1 ${type === "income" ? "bg-success hover:bg-success/90" : ""}`}
+                disabled={loading}
+              >
+                {loading ? t("common.saving") : type === "income" ? t("home.addIncome") : t("home.addExpense")}
+              </Button>
+              <Button type="button" variant="outline" className="flex-1" onClick={() => navigate(-1)}>
+                {t("common.cancel")}
+              </Button>
+            </div>
           </form>
         </CardContent>
       </Card>
