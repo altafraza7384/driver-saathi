@@ -758,7 +758,7 @@ export type Database = {
           id: string
           license_number: string | null
           phone: string | null
-          preferred_language: string | null
+          preferred_language: string | null; earnings_nudge_enabled: boolean | null;
           updated_at: string
           user_id: string
           vehicle_number: string | null
@@ -771,7 +771,7 @@ export type Database = {
           id?: string
           license_number?: string | null
           phone?: string | null
-          preferred_language?: string | null
+          preferred_language?: string | null; earnings_nudge_enabled?: boolean | null
           updated_at?: string
           user_id: string
           vehicle_number?: string | null
@@ -784,7 +784,7 @@ export type Database = {
           id?: string
           license_number?: string | null
           phone?: string | null
-          preferred_language?: string | null
+          preferred_language?: string | null; earnings_nudge_enabled?: boolean | null
           updated_at?: string
           user_id?: string
           vehicle_number?: string | null
@@ -1033,7 +1033,7 @@ export type Database = {
           is_blocked?: boolean
           license_number?: string | null
           phone?: string | null
-          preferred_language?: string | null
+          preferred_language?: string | null; earnings_nudge_enabled?: boolean | null
           subscription_plan_id?: string | null
           updated_at?: string
           user_id?: string
@@ -1049,7 +1049,7 @@ export type Database = {
           is_blocked?: boolean
           license_number?: string | null
           phone?: string | null
-          preferred_language?: string | null
+          preferred_language?: string | null; earnings_nudge_enabled?: boolean | null
           subscription_plan_id?: string | null
           updated_at?: string
           user_id?: string
