@@ -108,6 +108,12 @@ export default function RecurringExpenses() {
   const [amount, setAmount] = useState("");
   const [dueDay, setDueDay] = useState("1");
   const [note, setNote] = useState("");
+  // Form-sheet pattern (Phase 6, presentation only): validation messages
+  // are shown directly beneath their field, in addition to the existing
+  // toast. Each error slot is always rendered with a reserved height so
+  // the footer below it does not move when an error appears. Field
+  // values are never cleared on a failed validation.
+  const [fieldErrors, setFieldErrors] = useState<{ name?: string; amount?: string }>({});
 
   useEffect(() => {
     if (user) fetchItems();
@@ -125,6 +131,7 @@ export default function RecurringExpenses() {
   const resetForm = () => {
     setEditing(null);
     setName(""); setCategory("rent"); setAmount(""); setDueDay("1"); setNote("");
+    setFieldErrors({});
   };
 
   const openEdit = (it: RecurringExpense) => {
@@ -134,14 +141,17 @@ export default function RecurringExpenses() {
     setAmount(String(toAmount(it.amount)));
     setDueDay(String(it.due_day));
     setNote(it.note || "");
+    setFieldErrors({});
     setShowAdd(true);
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFieldErrors({});
     if (!user) return;
     if (!name.trim()) {
       toast({ title: t("form.checkInput"), description: t("form.nameRequired"), variant: "destructive" });
+      setFieldErrors({ name: t("form.nameRequired") });
       return;
     }
     setSaving(true);
@@ -150,6 +160,7 @@ export default function RecurringExpenses() {
     if (!Number.isFinite(amt) || amt <= 0) {
       toast({ title: t("form.checkInput"), description: t("form.amountPositive"), variant: "destructive" });
       setSaving(false);
+      setFieldErrors({ amount: t("form.amountPositive") });
       return;
     }
 
@@ -278,20 +289,23 @@ export default function RecurringExpenses() {
               <DialogTitle>{editing ? t("recurring.editBill") : t("recurring.addRecurringBill")}</DialogTitle>
             </DialogHeader>
             <form noValidate onSubmit={handleSave} className="space-y-4">
-              <div className="space-y-2">
-                <Label>{t("recurring.name")}</Label>
+              <div className="space-y-1">
+                <Label htmlFor="recurring-name">{t("recurring.name")}</Label>
                 <Input
+                  id="recurring-name"
                   placeholder="e.g. Room Rent"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => { setName(e.target.value); setFieldErrors((prev) => ({ ...prev, name: undefined })); }}
                   required
+                  aria-describedby="recurring-name-error"
                 />
+                <p id="recurring-name-error" className="min-h-5 text-sm text-destructive">{fieldErrors.name ?? ""}</p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label>{t("recurring.category")}</Label>
+                  <Label htmlFor="recurring-category">{t("recurring.category")}</Label>
                   <Select value={category} onValueChange={setCategory}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger id="recurring-category"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {CATEGORIES.map((c) => (
                         <SelectItem key={c.value} value={c.value}>{t(c.key)}</SelectItem>
@@ -299,21 +313,25 @@ export default function RecurringExpenses() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label>{t("recurring.amount")}</Label>
+                <div className="space-y-1">
+                  <Label htmlFor="recurring-amount">{t("recurring.amount")}</Label>
                   <Input
+                    id="recurring-amount"
                     type="number"
                     placeholder="8000"
                     value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
+                    onChange={(e) => { setAmount(e.target.value); setFieldErrors((prev) => ({ ...prev, amount: undefined })); }}
                     min="1"
                     required
+                    aria-describedby="recurring-amount-error"
                   />
+                  <p id="recurring-amount-error" className="min-h-5 text-sm text-destructive">{fieldErrors.amount ?? ""}</p>
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>{t("recurring.dueDay")}</Label>
+                <Label htmlFor="recurring-due-day">{t("recurring.dueDay")}</Label>
                 <Input
+                  id="recurring-due-day"
                   type="number"
                   placeholder="5"
                   value={dueDay}
@@ -327,16 +345,22 @@ export default function RecurringExpenses() {
                 </p>
               </div>
               <div className="space-y-2">
-                <Label>{t("recurring.note")}</Label>
+                <Label htmlFor="recurring-note">{t("recurring.note")}</Label>
                 <Input
+                  id="recurring-note"
                   placeholder="Landlord name, account no, etc."
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                 />
               </div>
-              <Button type="submit" className="w-full" disabled={saving}>
-                {saving ? t("common.saving") : editing ? t("recurring.updateBill") : t("recurring.addBill")}
-              </Button>
+              <div className="flex gap-2 pt-1">
+                <Button type="submit" className="flex-1" disabled={saving}>
+                  {saving ? t("common.saving") : editing ? t("recurring.updateBill") : t("recurring.addBill")}
+                </Button>
+                <Button type="button" variant="outline" className="flex-1" onClick={() => { setShowAdd(false); resetForm(); }}>
+                  {t("common.cancel")}
+                </Button>
+              </div>
             </form>
           </DialogContent>
         </Dialog>
