@@ -52,6 +52,7 @@ export default function AdminInsuranceLeadsPage() {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<(typeof STATUSES)[number]>("all");
   const [selected, setSelected] = useState<InsuranceLead | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [status, setStatus] = useState("new");
   const [commission, setCommission] = useState("");
   const [note, setNote] = useState("");
@@ -99,6 +100,20 @@ export default function AdminInsuranceLeadsPage() {
       queryClient.invalidateQueries({ queryKey: ["admin_insurance_leads"] });
       setSelected(null);
       toast.success("Lead updated!");
+    },
+    onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await db.from("insurance_leads").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin_insurance_leads"] });
+      setSelected(null);
+      setConfirmDelete(false);
+      toast.success("Lead deleted");
     },
     onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
@@ -197,7 +212,30 @@ export default function AdminInsuranceLeadsPage() {
               <Button className="w-full" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
                 {saveMutation.isPending ? "Saving..." : "Save"}
               </Button>
+              <Button variant="destructive" className="w-full" onClick={() => setConfirmDelete(true)}>
+                {"Delete"}
+              </Button>
               <Button variant="outline" className="w-full" onClick={() => setSelected(null)}>{"Cancel"}</Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{"Delete lead"}</DialogTitle>
+          </DialogHeader>
+          {selected && (
+            <div className="space-y-3 text-sm">
+              <p>{selected.name ?? "—"}</p>
+              <p className="text-muted-foreground">{"Delete this lead? This cannot be undone."}</p>
+              <div className="flex gap-2">
+                <Button variant="destructive" className="flex-1" onClick={() => deleteMutation.mutate(selected.id)} disabled={deleteMutation.isPending}>
+                  {deleteMutation.isPending ? "Deleting..." : "Delete"}
+                </Button>
+                <Button variant="outline" className="flex-1" onClick={() => setConfirmDelete(false)}>{"Cancel"}</Button>
+              </div>
             </div>
           )}
         </DialogContent>
