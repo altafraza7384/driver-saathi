@@ -40,6 +40,12 @@ export default function CarChecksPage() {
   const [showCustomType, setShowCustomType] = useState(false);
   const [docForm, setDocForm] = useState({ document_name: "", expiry_date: "", notify_date: "", notify_time: "" });
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  // Form-sheet pattern (Phase 6, presentation only): the existing check
+  // validation messages are shown beneath their field in addition to the
+  // toast, and form values are retained on failure. The document dialogs
+  // have no validation message of their own (Save is disabled until name
+  // and expiry are present), so their behaviour is left as-is.
+  const [checkErrors, setCheckErrors] = useState<{ type?: string; date?: string; odometer?: string; cost?: string }>({});
 
   // Car checks query
   const { data: checks = [], isLoading } = useQuery({
@@ -115,10 +121,10 @@ export default function CarChecksPage() {
       queryClient.invalidateQueries({ queryKey: ["notifications_car_checks"] });
       setOpen(false);
       setForm({ check_type: "", description: "", odometer_reading: "", cost: "", check_date: format(new Date(), "yyyy-MM-dd"), next_due_date: "", notify_date: "", notify_time: "" });
-      setCustomType(""); setShowCustomType(false);
+      setCustomType(""); setShowCustomType(false); setCheckErrors({});
       toast.success(t("car.checkAdded"));
     },
-    onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
+    onError: (e: Error) => { if (e.message === "Select a type and valid date.") setCheckErrors({ type: e.message, date: e.message }); else if (e.message === "Odometer reading cannot be negative.") setCheckErrors({ odometer: e.message }); else if (e.message === "Cost cannot be negative.") setCheckErrors({ cost: e.message }); toast.error(friendlyErrorMessage(e)); },
   });
 
   const deleteMutation = useMutation({
@@ -230,24 +236,9 @@ export default function CarChecksPage() {
       {/* Toggle Switch - 3 tabs */}
       <div className="flex items-center justify-center">
         <div className="relative flex w-full max-w-md rounded-lg bg-muted p-1">
-          <button
-            className={`flex-1 rounded-md py-2 text-xs font-medium transition-all ${activeTab === "checks" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}
-            onClick={() => setActiveTab("checks")}
-          >
-            <Wrench className="h-3.5 w-3.5 inline mr-1" /> {t("more.carChecks")}
-          </button>
-          <button
-            className={`flex-1 rounded-md py-2 text-xs font-medium transition-all ${activeTab === "documents" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}
-            onClick={() => setActiveTab("documents")}
-          >
-            <FileText className="h-3.5 w-3.5 inline mr-1" /> {t("car.documents")}
-          </button>
-          <button
-            className={`flex-1 rounded-md py-2 text-xs font-medium transition-all ${activeTab === "marketplace" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}
-            onClick={() => setActiveTab("marketplace")}
-          >
-            <Store className="h-3.5 w-3.5 inline mr-1" /> {t("market.title")}
-          </button>
+          <button className={`flex-1 rounded-md py-2 text-xs font-medium transition-all ${activeTab === "checks" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`} onClick={() => setActiveTab("checks")}><Wrench className="h-3.5 w-3.5 inline mr-1" /> {t("more.carChecks")}</button>
+          <button className={`flex-1 rounded-md py-2 text-xs font-medium transition-all ${activeTab === "documents" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`} onClick={() => setActiveTab("documents")}><FileText className="h-3.5 w-3.5 inline mr-1" /> {t("car.documents")}</button>
+          <button className={`flex-1 rounded-md py-2 text-xs font-medium transition-all ${activeTab === "marketplace" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`} onClick={() => setActiveTab("marketplace")}><Store className="h-3.5 w-3.5 inline mr-1" /> {t("market.title")}</button>
         </div>
       </div>
 
@@ -257,42 +248,43 @@ export default function CarChecksPage() {
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-bold">{t("car.title")}</h1>
             <Dialog open={open} onOpenChange={setOpen}>
-              <DialogTrigger asChild>
-                <Button size="sm" className="gap-1"><Plus className="h-4 w-4" /> {t("common.add")}</Button>
-              </DialogTrigger>
+              <DialogTrigger asChild><Button size="sm" className="gap-1"><Plus className="h-4 w-4" /> {t("common.add")}</Button></DialogTrigger>
               <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-1rem)] overflow-y-auto overscroll-contain">
                 <DialogHeader><DialogTitle>{t("car.addCheck")}</DialogTitle></DialogHeader>
                 <div className="space-y-3">
                   <div>
-                    <Label>{t("car.type")}</Label>
+                    <Label htmlFor="car-check-type">{t("car.type")}</Label>
                     <Select value={showCustomType ? "__custom__" : form.check_type} onValueChange={(v) => {
                       if (v === "__custom__") { setShowCustomType(true); setForm({ ...form, check_type: "" }); }
                       else { setShowCustomType(false); setCustomType(""); setForm({ ...form, check_type: v }); }
+                      setCheckErrors((prev) => ({ ...prev, type: undefined, date: undefined }));
                     }}>
-                      <SelectTrigger><SelectValue placeholder={t("form.selectType")} /></SelectTrigger>
+                      <SelectTrigger id="car-check-type"><SelectValue placeholder={t("form.selectType")} /></SelectTrigger>
                       <SelectContent>
                         {DEFAULT_CHECK_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                         <SelectItem value="__custom__">{t("car.customType")}</SelectItem>
                       </SelectContent>
                     </Select>
-                    {showCustomType && <Input className="mt-1" placeholder={t("car.enterCustomType")} value={customType} onChange={(e) => { setCustomType(e.target.value); setForm({ ...form, check_type: e.target.value }); }} />}
+                    {showCustomType && <div className="mt-1"><Label htmlFor="car-custom-type">{t("car.enterCustomType")}</Label><Input id="car-custom-type" className="mt-1" placeholder={t("car.enterCustomType")} value={customType} onChange={(e) => { setCustomType(e.target.value); setForm({ ...form, check_type: e.target.value }); setCheckErrors((prev) => ({ ...prev, type: undefined, date: undefined })); }} /></div>}
+                    <p className="min-h-5 text-sm text-destructive">{checkErrors.type ?? ""}</p>
                   </div>
-                  <div><Label>{t("common.description")}</Label><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
+                  <div><Label htmlFor="car-check-description">{t("common.description")}</Label><Input id="car-check-description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
                   <div className="grid grid-cols-2 gap-3">
-                    <div><Label>{t("car.odometer")}</Label><Input type="number" value={form.odometer_reading} onChange={(e) => setForm({ ...form, odometer_reading: e.target.value })} /></div>
-                    <div><Label>{t("car.cost")}</Label><Input type="number" value={form.cost} onChange={(e) => setForm({ ...form, cost: e.target.value })} /></div>
+                    <div><Label htmlFor="car-check-odometer">{t("car.odometer")}</Label><Input id="car-check-odometer" type="number" value={form.odometer_reading} onChange={(e) => { setForm({ ...form, odometer_reading: e.target.value }); setCheckErrors((prev) => ({ ...prev, odometer: undefined })); }} /><p className="min-h-5 text-sm text-destructive">{checkErrors.odometer ?? ""}</p></div>
+                    <div><Label htmlFor="car-check-cost">{t("car.cost")}</Label><Input id="car-check-cost" type="number" value={form.cost} onChange={(e) => { setForm({ ...form, cost: e.target.value }); setCheckErrors((prev) => ({ ...prev, cost: undefined })); }} /><p className="min-h-5 text-sm text-destructive">{checkErrors.cost ?? ""}</p></div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    <div><Label htmlFor="car-form-check_date-1">{t("common.date")}</Label><DatePicker id="car-form-check_date-1" label={t("common.date")} value={form.check_date} onChange={(value) => setForm((prev) => ({ ...prev, check_date: value }))} required /></div>
+                    <div><Label htmlFor="car-form-check_date-1">{t("common.date")}</Label><DatePicker id="car-form-check_date-1" label={t("common.date")} value={form.check_date} onChange={(value) => { setForm((prev) => ({ ...prev, check_date: value })); setCheckErrors((prev) => ({ ...prev, type: undefined, date: undefined })); }} required /><p className="min-h-5 text-sm text-destructive">{checkErrors.date ?? ""}</p></div>
                     <div><Label htmlFor="car-form-next_due_date-1">{t("car.nextDue")}</Label><DatePicker id="car-form-next_due_date-1" label={t("car.nextDue")} value={form.next_due_date} onChange={(value) => setForm((prev) => ({ ...prev, next_due_date: value }))} /></div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div><Label htmlFor="car-form-notify_date-1">{t("reminder.notifyDate")}</Label><DatePicker id="car-form-notify_date-1" label={t("reminder.notifyDate")} value={form.notify_date} onChange={(value) => setForm((prev) => ({ ...prev, notify_date: value }))} /></div>
                     <div><Label htmlFor="car-form-notify_time-1">{t("reminder.notifyTime")}</Label><TimePicker id="car-form-notify_time-1" label={t("reminder.notifyTime")} value={form.notify_time} onChange={(value) => setForm((prev) => ({ ...prev, notify_time: value }))} /></div>
                   </div>
-                  <Button className="w-full" onClick={() => addMutation.mutate()} disabled={!form.check_type.trim() || !parseDateValue(form.check_date) || addMutation.isPending}>
-                    {addMutation.isPending ? t("common.saving") : t("common.save")}
-                  </Button>
+                  <div className="flex gap-2 pt-1">
+                    <Button className="flex-1" onClick={() => addMutation.mutate()} disabled={!form.check_type.trim() || !parseDateValue(form.check_date) || addMutation.isPending}>{addMutation.isPending ? t("common.saving") : t("common.save")}</Button>
+                    <Button variant="outline" className="flex-1" onClick={() => setOpen(false)}>{t("common.cancel")}</Button>
+                  </div>
                 </div>
               </DialogContent>
             </Dialog>
@@ -308,13 +300,8 @@ export default function CarChecksPage() {
                 <Card key={c.id}>
                   <CardContent className="flex items-center justify-between p-3">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-warning/10 text-warning">
-                        <Wrench className="h-4 w-4" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">{c.check_type}</p>
-                        <p className="text-xs text-muted-foreground">{c.check_date ? format(parseISO(c.check_date), "dd MMM yyyy") : "—"}{toAmount(c.cost) ? ` • ${formatINR(toAmount(c.cost))}` : ""}</p>
-                      </div>
+                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-warning/10 text-warning"><Wrench className="h-4 w-4" /></div>
+                      <div><p className="text-sm font-medium">{c.check_type}</p><p className="text-xs text-muted-foreground">{c.check_date ? format(parseISO(c.check_date), "dd MMM yyyy") : "—"}{toAmount(c.cost) ? ` • ${formatINR(toAmount(c.cost))}` : ""}</p></div>
                     </div>
                     <ConfirmDelete onConfirm={() => deleteMutation.mutate(c.id)} itemName={c.check_type}><Button variant="ghost" size="icon" aria-label={t("common.delete")}><Trash2 className="h-4 w-4 text-muted-foreground" /></Button></ConfirmDelete>
                   </CardContent>
@@ -331,21 +318,20 @@ export default function CarChecksPage() {
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-bold">{t("car.documents")}</h1>
             <Dialog open={docOpen} onOpenChange={setDocOpen}>
-              <DialogTrigger asChild>
-                <Button size="sm" className="gap-1"><Plus className="h-4 w-4" /> {t("common.add")}</Button>
-              </DialogTrigger>
+              <DialogTrigger asChild><Button size="sm" className="gap-1"><Plus className="h-4 w-4" /> {t("common.add")}</Button></DialogTrigger>
               <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-1rem)] overflow-y-auto overscroll-contain">
                 <DialogHeader><DialogTitle>{t("car.addDocument")}</DialogTitle></DialogHeader>
                 <div className="space-y-3">
-                  <div><Label>{t("car.documentName")}</Label><Input placeholder="e.g. PUC Certificate, Insurance" value={docForm.document_name} onChange={(e) => setDocForm({ ...docForm, document_name: e.target.value })} /></div>
+                  <div><Label htmlFor="car-doc-name">{t("car.documentName")}</Label><Input id="car-doc-name" placeholder="e.g. PUC Certificate, Insurance" value={docForm.document_name} onChange={(e) => setDocForm({ ...docForm, document_name: e.target.value })} /></div>
                   <div><Label htmlFor="car-docForm-expiry_date-1">{t("car.expiryDate")}</Label><DatePicker id="car-docForm-expiry_date-1" label={t("car.expiryDate")} value={docForm.expiry_date} onChange={(value) => setDocForm((prev) => ({ ...prev, expiry_date: value }))} required /></div>
                   <div className="grid grid-cols-2 gap-3">
                     <div><Label htmlFor="car-docForm-notify_date-1">{t("reminder.notifyDate")}</Label><DatePicker id="car-docForm-notify_date-1" label={t("reminder.notifyDate")} value={docForm.notify_date} onChange={(value) => setDocForm((prev) => ({ ...prev, notify_date: value }))} /></div>
                     <div><Label htmlFor="car-docForm-notify_time-1">{t("reminder.notifyTime")}</Label><TimePicker id="car-docForm-notify_time-1" label={t("reminder.notifyTime")} value={docForm.notify_time} onChange={(value) => setDocForm((prev) => ({ ...prev, notify_time: value }))} /></div>
                   </div>
-                  <Button className="w-full" onClick={() => addDocMutation.mutate()} disabled={!docForm.document_name || !docForm.expiry_date || addDocMutation.isPending}>
-                    {addDocMutation.isPending ? t("common.saving") : t("car.saveDocument")}
-                  </Button>
+                  <div className="flex gap-2 pt-1">
+                    <Button className="flex-1" onClick={() => addDocMutation.mutate()} disabled={!docForm.document_name || !docForm.expiry_date || addDocMutation.isPending}>{addDocMutation.isPending ? t("common.saving") : t("car.saveDocument")}</Button>
+                    <Button variant="outline" className="flex-1" onClick={() => setDocOpen(false)}>{t("common.cancel")}</Button>
+                  </div>
                 </div>
               </DialogContent>
             </Dialog>
@@ -366,19 +352,9 @@ export default function CarChecksPage() {
                     <CardContent className="flex items-center justify-between p-3">
                       <div className="flex items-center gap-3">
                         <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${status.bg}`}>
-                          {expiryValid && differenceInDays(expiry!, new Date()) < 0 ? (
-                            <AlertTriangle className="h-4 w-4 text-destructive" />
-                          ) : (
-                            <FileText className={`h-4 w-4 ${status.color}`} />
-                          )}
+                          {expiryValid && differenceInDays(expiry!, new Date()) < 0 ? (<AlertTriangle className="h-4 w-4 text-destructive" />) : (<FileText className={`h-4 w-4 ${status.color}`} />)}
                         </div>
-                        <div>
-                          <p className="text-sm font-medium">{doc.document_name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Expires: {expiryValid ? format(expiry!, "dd MMM yyyy") : "—"}
-                            <span className={`ml-2 font-semibold ${status.color}`}>• {status.label}</span>
-                          </p>
-                        </div>
+                        <div><p className="text-sm font-medium">{doc.document_name}</p><p className="text-xs text-muted-foreground">Expires: {expiryValid ? format(expiry!, "dd MMM yyyy") : "—"}<span className={`ml-2 font-semibold ${status.color}`}>• {status.label}</span></p></div>
                       </div>
                       <div className="flex gap-0.5">
                         <Button variant="ghost" size="icon" className="mr-1 h-9 w-9" aria-label={t("common.edit")} onClick={() => openEditDoc(doc)}><Pencil className="h-4 w-4 text-muted-foreground" /></Button>
@@ -396,15 +372,16 @@ export default function CarChecksPage() {
             <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-1rem)] overflow-y-auto overscroll-contain">
               <DialogHeader><DialogTitle>{t("car.editDocument")}</DialogTitle></DialogHeader>
               <div className="space-y-3">
-                <div><Label>{t("car.documentName")}</Label><Input value={docForm.document_name} onChange={(e) => setDocForm({ ...docForm, document_name: e.target.value })} /></div>
+                <div><Label htmlFor="car-edit-doc-name">{t("car.documentName")}</Label><Input id="car-edit-doc-name" value={docForm.document_name} onChange={(e) => setDocForm({ ...docForm, document_name: e.target.value })} /></div>
                 <div><Label htmlFor="car-docForm-expiry_date-2">{t("car.expiryDate")}</Label><DatePicker id="car-docForm-expiry_date-2" label={t("car.expiryDate")} value={docForm.expiry_date} onChange={(value) => setDocForm((prev) => ({ ...prev, expiry_date: value }))} required /></div>
                 <div className="grid grid-cols-2 gap-3">
                   <div><Label htmlFor="car-docForm-notify_date-2">{t("reminder.notifyDate")}</Label><DatePicker id="car-docForm-notify_date-2" label={t("reminder.notifyDate")} value={docForm.notify_date} onChange={(value) => setDocForm((prev) => ({ ...prev, notify_date: value }))} /></div>
                   <div><Label htmlFor="car-docForm-notify_time-2">{t("reminder.notifyTime")}</Label><TimePicker id="car-docForm-notify_time-2" label={t("reminder.notifyTime")} value={docForm.notify_time} onChange={(value) => setDocForm((prev) => ({ ...prev, notify_time: value }))} /></div>
                 </div>
-                <Button className="w-full" onClick={() => updateDocMutation.mutate()} disabled={!docForm.document_name || !docForm.expiry_date || updateDocMutation.isPending}>
-                  {updateDocMutation.isPending ? t("common.saving") : t("car.updateDocument")}
-                </Button>
+                <div className="flex gap-2 pt-1">
+                  <Button className="flex-1" onClick={() => updateDocMutation.mutate()} disabled={!docForm.document_name || !docForm.expiry_date || updateDocMutation.isPending}>{updateDocMutation.isPending ? t("common.saving") : t("car.updateDocument")}</Button>
+                  <Button variant="outline" className="flex-1" onClick={() => setEditDoc(null)}>{t("common.cancel")}</Button>
+                </div>
               </div>
             </DialogContent>
           </Dialog>
@@ -423,31 +400,16 @@ export default function CarChecksPage() {
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Shield className="h-5 w-5" /></div>
-                <div className="min-w-0">
-                  <p className="font-bold text-sm">{t("insurance.cardTitle")}</p>
-                  <p className="text-xs text-muted-foreground">{t("insurance.cardDesc")}</p>
-                </div>
+                <div className="min-w-0"><p className="font-bold text-sm">{t("insurance.cardTitle")}</p><p className="text-xs text-muted-foreground">{t("insurance.cardDesc")}</p></div>
               </div>
             </CardContent>
           </Card>
 
           {/* Category pills */}
           <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-            <button
-              onClick={() => setSelectedCategory(null)}
-              className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-medium transition-all ${!selectedCategory ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
-            >
-              {t("common.all")}
-            </button>
+            <button onClick={() => setSelectedCategory(null)} className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-medium transition-all ${!selectedCategory ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>{t("common.all")}</button>
             {(categories as any[]).map((cat) => (
-              <button
-                key={cat.id}
-                onClick={() => setSelectedCategory(cat.id)}
-                className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-medium transition-all flex items-center gap-1.5 ${selectedCategory === cat.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
-              >
-                {getCategoryIcon(cat.icon)}
-                {cat.name}
-              </button>
+              <button key={cat.id} onClick={() => setSelectedCategory(cat.id)} className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-medium transition-all flex items-center gap-1.5 ${selectedCategory === cat.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>{getCategoryIcon(cat.icon)}{cat.name}</button>
             ))}
           </div>
 
@@ -459,38 +421,18 @@ export default function CarChecksPage() {
               {(posts as any[]).map((post) => (
                 <Card key={post.id} className="overflow-hidden">
                   <CardContent className="p-0">
-                    {/* Media */}
-                    {post.post_type === "image" && post.media_url && (
-                      <img src={post.media_url} alt={post.title} className="w-full h-48 object-cover" />
-                    )}
-                    {post.post_type === "video" && post.media_url && (
-                      <video src={post.media_url} controls className="w-full h-48 object-cover" />
-                    )}
-
+                    {post.post_type === "image" && post.media_url && (<img src={post.media_url} alt={post.title} className="w-full h-48 object-cover" />)}
+                    {post.post_type === "video" && post.media_url && (<video src={post.media_url} controls className="w-full h-48 object-cover" />)}
                     <div className="p-4 space-y-2">
-                      {/* Category badge */}
                       <div className="flex items-center gap-2">
-                        <span className="rounded-full bg-primary/10 text-primary px-2.5 py-0.5 text-xs font-medium">
-                          {post.marketplace_categories?.name || "General"}
-                        </span>
+                        <span className="rounded-full bg-primary/10 text-primary px-2.5 py-0.5 text-xs font-medium">{post.marketplace_categories?.name || "General"}</span>
                         <span className="text-xs text-muted-foreground">{format(parseISO(post.created_at), "dd MMM yyyy")}</span>
                       </div>
-
                       <h3 className="font-bold text-sm">{post.title}</h3>
                       {post.description && <p className="text-xs text-muted-foreground leading-relaxed">{post.description}</p>}
-
-                      {/* Contact */}
                       <div className="flex gap-2 pt-1">
-                        {post.contact_phone && (
-                          <a href={`tel:${post.contact_phone}`} className="flex items-center gap-1 text-xs bg-primary/10 text-primary rounded-full px-3 py-1 font-medium">
-                            <Phone className="h-3 w-3" /> {t("carSos.call")}
-                          </a>
-                        )}
-                        {safeExternalUrl(post.contact_link) && (
-                          <a href={safeExternalUrl(post.contact_link)!} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs bg-muted text-foreground rounded-full px-3 py-1 font-medium">
-                            <ExternalLink className="h-3 w-3" /> {t("market.visit")}
-                          </a>
-                        )}
+                        {post.contact_phone && (<a href={`tel:${post.contact_phone}`} className="flex items-center gap-1 text-xs bg-primary/10 text-primary rounded-full px-3 py-1 font-medium"><Phone className="h-3 w-3" /> {t("carSos.call")}</a>)}
+                        {safeExternalUrl(post.contact_link) && (<a href={safeExternalUrl(post.contact_link)!} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs bg-muted text-foreground rounded-full px-3 py-1 font-medium"><ExternalLink className="h-3 w-3" /> {t("market.visit")}</a>)}
                       </div>
                     </div>
                   </CardContent>
