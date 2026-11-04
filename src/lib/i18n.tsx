@@ -163,7 +163,7 @@ const translations: Record<Language, Record<string, string>> = {
     "settings.number": "Number",
     "settings.license": "License",
     "settings.language": "Language",
-    "settings.appearance": "Appearance",
+    "settings.appearance": "Appearance",     "settings.earningsNudge": "Earnings reminders",     "settings.earningsNudgeDesc": "Get a gentle reminder to record your income if a day is missing. If you took the day off, just ignore it.",
     "settings.setName": "Set your name",
     "settings.saveChanges": "Save Changes",
     // Debts
@@ -1884,7 +1884,7 @@ const translations: Record<Language, Record<string, string>> = {
     "settings.number": "নম্বর",
     "settings.license": "লাইসেন্স",
     "settings.language": "ভাষা",
-    "settings.appearance": "চেহারা",
+    "settings.appearance": "চেহারা", "settings.earningsNudge": "আয়ের অনুস্মারক", "settings.earningsNudgeDesc": "কোনো দিনের আয় লেখা না হলে একটি মৃদু অনুস্মারক পান। ছুটি নিলে এটি উপেক্ষা করুন।",
     "settings.setName": "আপনার নাম সেট করুন",
     "settings.saveChanges": "পরিবর্তন সংরক্ষণ করুন",
     // Debts
