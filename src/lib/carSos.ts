@@ -1,26 +1,30 @@
 import { encodeGeohash, approxCoord } from "./geohash";
 
-export type CarSosCategory = "tyre" | "mechanic" | "battery" | "other";
+export type CarSosCategory = "car" | "battery" | "towing" | "other" | "custom";
+
 export type CarSosStatus =
   | "pending"
   | "accepted"
   | "onway"
-    | "arrived"
+  | "arrived"
   | "completed"
   | "cancelled";
 
 export const CAR_SOS_CATEGORIES: CarSosCategory[] = [
-  "tyre",
-  "mechanic",
+  "car",
   "battery",
+  "towing",
   "other",
+  "custom",
 ];
+
+export const CAR_SOS_DEFAULT_DESC_KEY: Partial<Record<CarSosCategory, string>> = { car: "carSos.descCar", battery: "carSos.descBattery", towing: "carSos.descTowing" };
 
 export const ACTIVE_SOS_STATUSES: CarSosStatus[] = [
   "pending",
   "accepted",
   "onway",
-    "arrived",
+  "arrived",
 ];
 
 export interface CarSosRequest {
@@ -66,9 +70,9 @@ export function splitLocation(lat: number, lng: number) {
 }
 
 export function isValidPhone(phone: string): boolean {
-  // Same strict rule as insurance leads: 10 digits starting 6–9 after
+  // Same strict rule as insurance leads: 10 digits starting 6-9 after
   // stripping a +91/91 prefix. The old ">= 10 digits" check accepted
-  // 12–15 digit strings and stored country codes (audit 2026-10-24).
+  // 12-15 digit strings and stored country codes (audit 2026-10-24).
   let digits = phone.replace(/\D/g, "");
   if (digits.length === 12 && digits.startsWith("91")) digits = digits.slice(2);
   if (digits.length === 11 && digits.startsWith("0")) digits = digits.slice(1);
