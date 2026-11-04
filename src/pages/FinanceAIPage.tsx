@@ -14,6 +14,7 @@ import { stripMarkdown } from "@/lib/plainText";
 import { loadChatHistory, saveChatHistory, toApiMessages, type ChatMsg } from "@/lib/chatHistory";
 import { CHAT_SCREEN_CLASS, CHAT_SCREEN_STYLE } from "@/lib/chatScreen";
 import { startNativeListening, speechLangFor, type NativeListenSession } from "@/lib/nativeSpeech";
+import NativeAdSlot from "@/components/NativeAdSlot";
 
 type Msg = ChatMsg;
 
@@ -253,13 +254,17 @@ export default function FinanceAIPage({ embedded = false }: { embedded?: boolean
       {/* Messages */}
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-3 pb-4">
         {messages.length === 0 && (
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 mb-3">
-                <TrendingUp className="h-8 w-8 text-primary" />
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-col items-center justify-center py-3 text-center text-muted-foreground">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 mb-3">
+                <TrendingUp className="h-6 w-6 text-primary" />
               </div>
-              <p className="font-extrabold text-foreground text-base">{t("financeAi.intro")}</p>
-              <p className="text-sm mt-1 max-w-xs">{t("financeAi.askHint")}</p>
+              <p className="font-extrabold text-foreground text-sm">{t("financeAi.intro")}</p>
+              <p className="text-xs mt-1 max-w-xs">{t("financeAi.askHint")}</p>
+            </div>
+            <div className="w-full max-w-sm mx-auto">
+            
+            <NativeAdSlot />
             </div>
           </div>
         )}
