@@ -164,7 +164,7 @@ service cloud.firestore {
         // The public doc must never carry phone/exact coords (audit
         // 2026-10-24 hardening; the app never writes them here).
         && !request.resource.data.keys().hasAny(['driverPhone', 'phone', 'exactLat', 'exactLng'])
-        && request.resource.data.category in ['tyre', 'mechanic', 'battery', 'other'];
+        && request.resource.data.category in ['car', 'battery', 'towing', 'other', 'custom'];
       allow read: if signedIn()
         && ((notBlocked()
           && (resource.data.driverId == request.auth.uid
