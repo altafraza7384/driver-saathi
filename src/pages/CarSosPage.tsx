@@ -350,9 +350,17 @@ export default function CarSosPage() {
       ) : (
         <Card>
           <CardContent className="space-y-4 p-4">
+            {/* Form-sheet pattern (Phase 6, presentation only): every
+                input is now linked to its visible label, and the submit
+                sits in a stable footer area. The send validation uses
+                internal codes ("category"/"phone"/"location") with no
+                user-facing message key, and the button is disabled until
+                those conditions are met, so that error behaviour is
+                left as-is rather than inventing a key. Values are
+                retained on failure; only success clears the form. */}
             <div>
-              <Label>{t("carSos.category")}</Label>
-              <div className="mt-2 grid grid-cols-2 gap-2">
+              <Label id="car-sos-category-label">{t("carSos.category")}</Label>
+              <div className="mt-2 grid grid-cols-2 gap-2" role="group" aria-labelledby="car-sos-category-label">
                 {CAR_SOS_CATEGORIES.map((c) => {
                   const Icon = CATEGORY_ICONS[c];
                   return (
@@ -374,16 +382,18 @@ export default function CarSosPage() {
             </div>
 
             <div>
-              <Label>{t("carSos.description")}</Label>
+              <Label htmlFor="car-sos-description">{t("carSos.description")}</Label>
               <Textarea
+                id="car-sos-description"
                 value={description}
                 onChange={(e) => { setDescTouched(true); setDescription(e.target.value); }}
                 rows={3}
               />
             </div>
 
-            <div><Label>{t("carSos.name")}</Label><Input type="text" value={name} onChange={(e) => { nameTypedRef.current = true; setName(e.target.value); }} /></div><div><Label>{t("carSos.phone")}</Label>
+            <div><Label htmlFor="car-sos-name">{t("carSos.name")}</Label><Input id="car-sos-name" type="text" value={name} onChange={(e) => { nameTypedRef.current = true; setName(e.target.value); }} /></div><div><Label htmlFor="car-sos-phone">{t("carSos.phone")}</Label>
               <Input
+                id="car-sos-phone"
                 type="tel"
                 value={phone}
                 onChange={(e) => { phoneTypedRef.current = true; setPhone(e.target.value); }}
@@ -392,7 +402,7 @@ export default function CarSosPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>{t("carSos.location")}</Label>
+              <Label htmlFor="car-sos-area">{t("carSos.location")}</Label>
               <Button
                 variant="outline"
                 className="w-full gap-2"
@@ -409,21 +419,24 @@ export default function CarSosPage() {
                 </p>
               )}
               <Input
+                id="car-sos-area"
                 value={areaText}
                 onChange={(e) => setAreaText(e.target.value)}
                 placeholder={t("carSos.area")}
               />
             </div>
 
-            <Button
-              className="w-full"
-              onClick={() => sendMutation.mutate()}
-              disabled={
-                !category || !isValidPhone(phone) || (!gps && !areaText.trim()) || sendMutation.isPending
-              }
-            >
-              {sendMutation.isPending ? t("common.saving") : t("carSos.sendRequest")}
-            </Button>
+            <div className="pt-1">
+              <Button
+                className="w-full"
+                onClick={() => sendMutation.mutate()}
+                disabled={
+                  !category || !isValidPhone(phone) || (!gps && !areaText.trim()) || sendMutation.isPending
+                }
+              >
+                {sendMutation.isPending ? t("common.saving") : t("carSos.sendRequest")}
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}
