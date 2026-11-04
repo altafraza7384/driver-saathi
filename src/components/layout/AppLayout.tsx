@@ -43,11 +43,11 @@ export function AppLayout() {
     // Add native-app class to body for native-specific CSS
     if (isNativeContext()) {
       document.body.classList.add("native-app");
-
-      return () => {
-        document.body.classList.remove("native-app");
-      };
     }
+
+    return () => {
+      document.body.classList.remove("native-app");
+    };
   }, []);
 
   return (
