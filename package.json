@@ -25,6 +25,7 @@
     "@capacitor/local-notifications": "^8.0.1",
     "@capacitor/push-notifications": "^8.0.1",
     "@capacitor/splash-screen": "^8.0.2",
+        "native-ads": "file:plugins/native-ads",
     "@capacitor/status-bar": "8.0.4",
     "@capawesome/capacitor-app-update": "^8.1.0",
     "@fontsource/montserrat": "^5.2.8",
