@@ -9,10 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Globe, User, Car, LogOut, Save, ArrowLeft, Pencil, Trash2 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Globe, User, Car, LogOut, Save, ArrowLeft, Pencil, Trash2, Sun, Moon } from "lucide-react";
 import { toast } from "sonner";
 import { isValidPhone } from "@/lib/carSos";
 import { useNavigate } from "react-router-dom";
+import { useTheme } from "next-themes";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -21,6 +23,8 @@ import {
 export default function SettingsPage() {
   const { user, signOut } = useAuth();
   const { t, language, setLanguage } = useI18n();
+  const { theme, setTheme } = useTheme();
+  const isDark = theme === "dark";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
@@ -159,7 +163,11 @@ export default function SettingsPage() {
           ))}
         </div>
       </CardContent></Card>
-
+<Card>
+<CardContent className="p-4 space-y-3">
+  <div className="text-sm font-medium">{t("settings.appearance")}</div>
+  <div className="flex items-center justify-between"><div className="flex items-center gap-3">{isDark ? <Moon className="h-5 w-5 text-muted-foreground" /> : <Sun className="h-5 w-5 text-muted-foreground" />}<span className="text-sm font-medium">{t("more.darkMode")}</span></div>
+  </div><Switch checked={isDark} onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")} /></div></CardContent></Card>
       <Button variant="destructive" className="w-full gap-2" onClick={handleLogout}><LogOut className="h-4 w-4" /> {t("auth.logout")}</Button>
 
       {/* Delete Account Section */}
