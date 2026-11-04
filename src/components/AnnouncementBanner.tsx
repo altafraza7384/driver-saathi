@@ -1,12 +1,11 @@
 import { localToday } from "@/lib/budgets";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { db } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Megaphone, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -56,10 +55,7 @@ export function AnnouncementBanner() {
   const { user } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
-  const [popupSeen, setPopupSeen] = useState<Set<string>>(() => readSeen("announcement_popup_seen"));
   const [bannerDismissed, setBannerDismissed] = useState<Set<string>>(() => readSeen("announcement_banner_dismissed"));
-  const [popupOpen, setPopupOpen] = useState(false);
-  const [popupId, setPopupId] = useState<string | null>(null);
 
   const { data: announcements = [] } = useQuery({
     queryKey: ["announcements"],
@@ -106,23 +102,7 @@ export function AnnouncementBanner() {
   const bannerItems = visible.filter((a) => !bannerDismissed.has(a.id));
   const popupCandidate = visible.find((a) => !popupSeen.has(a.id));
 
-  useEffect(() => {
-    if (popupCandidate && !popupOpen) {
-      setPopupId(popupCandidate.id);
-      setPopupOpen(true);
-    }
-  }, [popupCandidate, popupOpen]);
 
-  const closePopup = () => {
-    setPopupOpen(false);
-    if (popupId) {
-      const next = new Set(popupSeen);
-      next.add(popupId);
-      setPopupSeen(next);
-      writeSeen("announcement_popup_seen", next);
-    }
-    setPopupId(null);
-  };
 
   const dismissBanner = (id: string) => {
     const next = new Set(bannerDismissed);
@@ -131,7 +111,6 @@ export function AnnouncementBanner() {
     writeSeen("announcement_banner_dismissed", next);
   };
 
-  const popupAnnouncement = popupId ? visible.find((a) => a.id === popupId) ?? null : null;
 
   return (
     <>
@@ -159,34 +138,6 @@ export function AnnouncementBanner() {
         </div>
       )}
 
-      <Dialog open={popupOpen && !!popupAnnouncement} onOpenChange={(o) => !o && closePopup()}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{popupAnnouncement?.title ?? "Driver Saathi"}</DialogTitle>
-          </DialogHeader>
-          {popupAnnouncement && (
-            <div className="space-y-4">
-              <p className="text-sm whitespace-pre-wrap">{popupAnnouncement.message ?? ""}</p>
-              <div className="flex gap-2">
-                {popupAnnouncement.type === "offer" && (
-                  <Button
-                    className="flex-1"
-                    onClick={() => {
-                      closePopup();
-                      navigate("/more");
-                    }}
-                  >
-                    {t("announcement.viewPlans")}
-                  </Button>
-                )}
-                <Button variant="outline" className="flex-1" onClick={closePopup}>
-                  {t("announcement.close")}
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </>
   );
 }
