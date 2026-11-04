@@ -38,17 +38,32 @@ export default function MorePage() {
   const [contactOpen, setContactOpen] = useState(false);
   const isDark = theme === "dark";
 
-  const menuItems = [
-    { labelKey: "more.debtEmi", icon: CreditCard, path: "/debts" },
-    { labelKey: "more.budgets", icon: Wallet, path: "/budgets" },
-    { labelKey: "more.goalsSavings", icon: Target, path: "/goals" },
-    { labelKey: "more.carChecks", icon: Car, path: "/car-checks" },
-    { labelKey: "more.reminders", icon: Bell, path: "/reminders" },
-    { labelKey: "more.notes", icon: StickyNote, path: "/notes" },
-    { labelKey: "more.emergencySos", icon: Shield, path: "/sos" },
-    { labelKey: "more.dataBackup", icon: HardDrive, path: "/data-backup" },
-    { labelKey: "more.settings", icon: Settings, path: "/settings" },
-    { labelKey: "plans.title", icon: CreditCard, path: "/plans" },
+  const menuGroups = [
+    {
+      headingKey: "more.groupMoney",
+      items: [
+        { labelKey: "more.debtEmi", icon: CreditCard, path: "/debts" },
+        { labelKey: "more.budgets", icon: Wallet, path: "/budgets" },
+        { labelKey: "more.goalsSavings", icon: Target, path: "/goals" },
+        { labelKey: "plans.title", icon: CreditCard, path: "/plans" },
+      ],
+    },
+    {
+      headingKey: "more.groupVehicleDaily",
+      items: [
+        { labelKey: "more.carChecks", icon: Car, path: "/car-checks" },
+        { labelKey: "more.reminders", icon: Bell, path: "/reminders" },
+        { labelKey: "more.notes", icon: StickyNote, path: "/notes" },
+        { labelKey: "more.emergencySos", icon: Shield, path: "/sos" },
+      ],
+    },
+    {
+      headingKey: "more.groupHelpAccount",
+      items: [
+        { labelKey: "more.dataBackup", icon: HardDrive, path: "/data-backup" },
+        { labelKey: "more.settings", icon: Settings, path: "/settings" },
+      ],
+    },
   ];
 
   return (
@@ -58,17 +73,22 @@ export default function MorePage() {
       </div>
       <div className="px-4 space-y-5">
       <div className="space-y-1">
-        {menuItems.map((item) => (
-          <button key={item.path} onClick={() => navigate(item.path)}
-            className="flex w-full items-center justify-between rounded-xl p-4 text-left transition-colors hover:bg-muted active:bg-muted/80">
-            <div className="flex items-center gap-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-                <item.icon className="h-5 w-5 text-foreground" />
-              </div>
-              <span className="text-base font-bold">{t(item.labelKey)}</span>
-            </div>
-            <ChevronRight className="h-5 w-5 text-muted-foreground" />
-          </button>
+        {menuGroups.map((group) => (
+          <div key={group.headingKey} className="space-y-1">
+            <p className="px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t(group.headingKey)}</p>
+            {group.items.map((item) => (
+              <button key={item.path} onClick={() => navigate(item.path)}
+                className="flex w-full items-center justify-between rounded-xl p-4 text-left transition-colors hover:bg-muted active:bg-muted/80">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+                    <item.icon className="h-5 w-5 text-foreground" />
+                  </div>
+                  <span className="text-base font-bold">{t(item.labelKey)}</span>
+                </div>
+                <ChevronRight className="h-5 w-5 text-muted-foreground" />
+              </button>
+            ))}
+          </div>
         ))}
 
         {isAdmin && (
