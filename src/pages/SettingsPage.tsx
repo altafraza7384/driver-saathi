@@ -173,7 +173,7 @@ export default function SettingsPage() {
   <div className="text-sm font-medium">{t("settings.appearance")}</div>
   <div className="flex items-center justify-between"><div className="flex items-center gap-3">{isDark ? <Moon className="h-5 w-5 text-muted-foreground" /> : <Sun className="h-5 w-5 text-muted-foreground" />}<span className="text-sm font-medium">{t("more.darkMode")}</span></div>
   <Switch checked={isDark} onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")} /></div></CardContent></Card>
-      <Button variant="destructive" className="w-full gap-2" onClick={handleLogout}><LogOut className="h-4 w-4" /> {t("auth.logout")}</Button>
+      <Card><CardContent className="p-4"><div className="flex items-center justify-between gap-3"><div><p className="font-medium">{t("settings.earningsNudge")}</p><p className="text-sm text-muted-foreground">{t("settings.earningsNudgeDesc")}</p></div><Switch checked={profile?.earnings_nudge_enabled ?? false} disabled={!user} onCheckedChange={(checked) => { if (!user) return; void db.from("profiles").update({ earnings_nudge_enabled: checked }).eq("user_id", user.id).then(({ error }) => { if (!error) queryClient.invalidateQueries({ queryKey: ["profile"] }); }); }} /></div></CardContent></Card><Button variant="destructive" className="w-full gap-2" onClick={handleLogout}><LogOut className="h-4 w-4" /> {t("auth.logout")}</Button>
 
       {/* Delete Account Section */}
       <Card className="border-destructive/30">
