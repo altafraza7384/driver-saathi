@@ -4,36 +4,45 @@ import { useNavigate } from "react-router-dom";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
-import { useTranslation } from "@/hooks/useTranslation";
+import { useI18n } from "@/lib/i18n";
+import { localToday } from "@/lib/budgets";
 import { db } from "@/lib/backend";
 
 interface Announcement {
   id: string;
-  title: string;
-  message: string;
-  type: string;
-  audience: string;
-  is_active: boolean;
-  expires_at: string | null;
+  title?: string | null;
+  message?: string | null;
+  type?: string | null;
+  audience?: string | null;
+  is_active?: boolean | null;
+  expires_at?: string | null;
   image_url?: string | null;
-  created_at: string;
+  created_at?: string | null;
+}
+
+function readSeen(key: string): Set<string> {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function writeSeen(key: string, ids: Set<string>) {
+  try {
+    localStorage.setItem(key, JSON.stringify([...ids]));
+  } catch {}
 }
 
 export default function AnnouncementPopup() {
   const { user } = useAuth();
-  const { t } = useTranslation();
+  const { t } = useI18n();
   const navigate = useNavigate();
-  const [seenIds, setSeenIds] = useState<string[]>(() => {
-    try {
-      const stored = localStorage.getItem("announcement_popup_seen");
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [popupSeen, setPopupSeen] = useState<Set<string>>(() => readSeen("announcement_popup_seen"));
   const [showImage, setShowImage] = useState(true);
 
-  const { data: announcements } = useQuery({
+  const { data: announcements = [] } = useQuery({
     queryKey: ["announcements"],
     queryFn: async () => {
       const { data, error } = await db
@@ -49,44 +58,35 @@ export default function AnnouncementPopup() {
   const { data: myPlan } = useQuery({
     queryKey: ["announcements_my_plan"],
     queryFn: async () => {
-      if (!user) return null;
-      const { data, error } = await db
-        .from("user_subscriptions")
-        .select("status, current_period_end")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
+      try {
+        const { data } = await db.from("users").select("*").eq("id", user!.id);
+        const row = Array.isArray(data) ? data[0] : data;
+        return (row as { subscription_plan_id: string | null } | null)?.subscription_plan_id ?? null;
+      } catch {
+        return null;
+      }
     },
     enabled: !!user,
   });
 
-  const isSubscriber =
-    myPlan?.status === "active" &&
-    (!myPlan.current_period_end || new Date(myPlan.current_period_end) > new Date());
-
-  const popupAnnouncement = announcements?.find((a) => {
+  const today = localToday();
+  const visible = announcements.filter((a) => {
     if (!a.is_active) return false;
-    if (a.expires_at && new Date(a.expires_at) < new Date()) return false;
-    if (a.audience === "non_subscribers" && isSubscriber) return false;
-    if (seenIds.includes(a.id)) return false;
+    if (a.expires_at && a.expires_at < today) return false;
+    if (a.audience === "non_subscribers" && myPlan) return false;
     return true;
   });
+  const popupAnnouncement = visible.find((a) => !popupSeen.has(a.id));
 
   useEffect(() => {
     setShowImage(true);
   }, [popupAnnouncement?.id]);
 
   const markSeen = (id: string) => {
-    const next = [...seenIds, id];
-    setSeenIds(next);
-    try {
-      localStorage.setItem("announcement_popup_seen", JSON.stringify(next));
-    } catch {
-      // Ignore storage failures; the popup simply may show again.
-    }
+    const next = new Set(popupSeen);
+    next.add(id);
+    setPopupSeen(next);
+    writeSeen("announcement_popup_seen", next);
   };
 
   const handleClose = () => {
@@ -117,8 +117,8 @@ export default function AnnouncementPopup() {
         </div>
       )}
       <div className="flex flex-1 flex-col justify-center gap-4 p-6">
-        <h2 className="text-2xl font-bold">{popupAnnouncement.title}</h2>
-        <p className="whitespace-pre-wrap text-muted-foreground">{popupAnnouncement.message}</p>
+        <h2 className="text-2xl font-bold">{popupAnnouncement.title ?? "Driver Saathi"}</h2>
+        <p className="whitespace-pre-wrap text-muted-foreground">{popupAnnouncement.message ?? ""}</p>
         {popupAnnouncement.type === "offer" && (
           <Button className="w-full" onClick={handleOfferClick}>
             {t("announcement.viewPlans")}
