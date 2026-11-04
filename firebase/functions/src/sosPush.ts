@@ -34,6 +34,8 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
   return 2 * r * Math.asin(Math.sqrt(a));
 }
 
+function normalizeCategory(c: unknown): string | null { if (c === "mechanic") return "car"; if (c === "tyre") return null; return typeof c === "string" ? c : null; }
+
 // Mirror the Mechanic app's visible-request filter exactly: online,
 // not held, category served, within service radius (radius skipped when
 // either side has no coordinates, same as the app). isVerified is NOT a
@@ -41,8 +43,10 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
 function mechanicMatches(m: MechanicData, r: SosRequestData): boolean {
   if (m.isOnline !== true) return false;
   if (m.status === "held") return false;
+  const normalizedCategory = normalizeCategory(r.category);
+    if (normalizedCategory === null) return false;
   const cats = Array.isArray(m.categories) ? (m.categories as unknown[]) : [];
-  if (!cats.includes(r.category)) return false;
+  if (!cats.map(normalizeCategory).includes(normalizedCategory)) return false;
   if (
     typeof m.lat === "number" &&
     typeof m.lng === "number" &&
