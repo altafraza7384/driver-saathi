@@ -157,13 +157,25 @@ export const sendNotifications = onSchedule(
           if (e?.statusCode === 404 || e?.statusCode === 410) await s.ref.delete();
         }
       }
-      result.fcmTokens = fcm.length;
+      // Dedupe tokens: a user can hold several push_subscriptions docs
+      // with the SAME token (reinstall/re-registration), and sending to
+      // each doc delivered the same notification twice to one phone
+      // (seen 2026-11-02, again 2026-11-04). Keep the first doc per token
+      // so invalid-token cleanup still deletes the right doc.
+      const uniqueFcm: Array<{ token: string; ref: any }> = [];
+      const seenTokens = new Set<string>();
+      for (const b of fcm) {
+        if (seenTokens.has(b.token)) continue;
+        seenTokens.add(b.token);
+        uniqueFcm.push(b);
+      }
+      result.fcmTokens = uniqueFcm.length;
       // Native installed app (FCM tokens): the scheduler used to skip
       // these entirely, so installed-app users never got due notifications.
       // Send them via the Admin SDK, same as announcement push.
-      if (fcm.length) {
+      if (uniqueFcm.length) {
         const messaging = getMessaging();
-        for (const batch of chunkTokens(fcm)) {
+        for (const batch of chunkTokens(uniqueFcm)) {
           const res = await messaging.sendEach(batch.map((b) => ({
             token: b.token,
             notification: { title: n.title, body: n.body },
