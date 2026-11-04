@@ -21,5 +21,6 @@ repositories {
 dependencies {
     implementation project(':capacitor-android')
     implementation "androidx.core:core:${project.hasProperty('androidxCoreVersion') ? rootProject.ext.androidxCoreVersion : '1.13.1'}"
+        implementation "androidx.appcompat:appcompat:${project.hasProperty('androidxAppCompatVersion') ? rootProject.ext.androidxAppCompatVersion : '1.7.0'}"
     implementation 'com.google.android.gms:play-services-ads:23.0.0'
 }
