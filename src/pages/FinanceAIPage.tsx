@@ -263,7 +263,6 @@ export default function FinanceAIPage({ embedded = false }: { embedded?: boolean
               <p className="text-xs mt-1 max-w-xs">{t("financeAi.askHint")}</p>
             </div>
             <div className="w-full max-w-sm mx-auto">
-            
             <NativeAdSlot />
             </div>
           </div>
