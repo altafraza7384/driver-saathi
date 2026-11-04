@@ -52,6 +52,7 @@ const InsuranceLeadPage = lazyWithRetry(() => import("./pages/InsuranceLeadPage"
 const BudgetsPage = lazyWithRetry(() => import("./pages/BudgetsPage"));
 const PlansPage = lazyWithRetry(() => import("./pages/PlansPage")); 
 const NotificationsPage = lazyWithRetry(() => import("./pages/NotificationsPage"));
+const SupportPage = lazyWithRetry(() => import("./pages/SupportPage"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -262,6 +263,7 @@ const App = () => (
                     <Route path="/sos" element={<SOSPage />} />
                     <Route path="/car-sos" element={<CarSosPage />} />
                     <Route path="/insurance" element={<InsuranceLeadPage />} />
+                    <Route path="/support" element={<SupportPage />} />
                     <Route path="/budgets" element={<BudgetsPage />} /> 
                     <Route path="/notifications" element={<NotificationsPage />} />
 <Route path="/plans" element={<PlansPage />} />
