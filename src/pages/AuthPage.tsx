@@ -25,6 +25,12 @@ export default function AuthPage() {
   const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(false);
   const [retryInfo, setRetryInfo] = useState<string | null>(null);
+  // Form-sheet pattern (Phase 6, presentation only): an auth error is
+  // shown directly beneath the password field, in addition to the
+  // existing toast. The error slot is always rendered with a reserved
+  // height so the submit footer below it does not move when an error
+  // appears. Field values are never cleared on a failed sign-in.
+  const [formError, setFormError] = useState<string | null>(null);
 
   const { t } = useI18n();
   const { toast } = useToast();
@@ -39,6 +45,7 @@ export default function AuthPage() {
     e.preventDefault();
     setLoading(true);
     setRetryInfo(null);
+    setFormError(null);
 
     try {
       if (isLogin) {
@@ -61,6 +68,7 @@ export default function AuthPage() {
       });
     } catch (error) {
       console.error("Auth submit failed", error);
+      setFormError(formatAuthError(error));
       toast({
         title: t("auth.error"),
         description: formatAuthError(error),
@@ -75,6 +83,7 @@ export default function AuthPage() {
   const handleGoogleSignIn = async () => {
     setLoading(true);
     setRetryInfo(null);
+    setFormError(null);
     try {
       const result = await signInWithGoogle();
       // The Firebase popup/native flow resolves in-page instead of
@@ -87,6 +96,7 @@ export default function AuthPage() {
       }
     } catch (error) {
       console.error("Google sign-in failed", error);
+      setFormError(formatAuthError(error));
       toast({
         title: t("auth.error"),
         description: formatAuthError(error),
@@ -131,7 +141,7 @@ export default function AuthPage() {
                     <Input
                       id="name"
                       value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
+                      onChange={(e) => { setFullName(e.target.value); setFormError(null); }}
                       placeholder={t("auth.fullNamePlaceholder")}
                       className="pl-9"
                       autoComplete="name"
@@ -149,7 +159,7 @@ export default function AuthPage() {
                     id="email"
                     type="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => { setEmail(e.target.value); setFormError(null); }}
                     placeholder={t("auth.emailPlaceholder")}
                     className="pl-9"
                     autoComplete="email"
@@ -159,7 +169,7 @@ export default function AuthPage() {
                 </div>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-1">
                 <Label htmlFor="password">{t("auth.password")}</Label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
@@ -167,14 +177,16 @@ export default function AuthPage() {
                     id="password"
                     type="password"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => { setPassword(e.target.value); setFormError(null); }}
                     placeholder="••••••••"
                     className="pl-9"
                     autoComplete={isLogin ? "current-password" : "new-password"}
                     minLength={6}
                     required
+                    aria-describedby="auth-form-error"
                   />
                 </div>
+                <p id="auth-form-error" className="min-h-5 text-sm text-destructive">{formError ?? ""}</p>
                 {isLogin && (
                   <div className="text-right">
                     <button type="button" onClick={() => navigate("/reset-password")}
@@ -193,16 +205,18 @@ export default function AuthPage() {
                 </div>
               )}
 
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? (
-                  <span className="flex items-center gap-2">
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
-                    {retryInfo ? t("auth.retrying") : t("auth.connecting")}
-                  </span>
-                ) : (
-                  isLogin ? t("auth.loginButton") : t("auth.signupButton")
-                )}
-              </Button>
+              <div className="pt-1">
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? (
+                    <span className="flex items-center gap-2">
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                      {retryInfo ? t("auth.retrying") : t("auth.connecting")}
+                    </span>
+                  ) : (
+                    isLogin ? t("auth.loginButton") : t("auth.signupButton")
+                  )}
+                </Button>
+              </div>
             </form>
 
             <div className="relative my-4">
@@ -248,7 +262,7 @@ export default function AuthPage() {
               </span>
               <button
                 type="button"
-                onClick={() => { setIsLogin(!isLogin); setJustSignedUp(false); }}
+                onClick={() => { setIsLogin(!isLogin); setJustSignedUp(false); setFormError(null); }}
                 className="font-medium text-primary hover:underline"
               >
                 {isLogin ? t("auth.signup") : t("auth.login")}
