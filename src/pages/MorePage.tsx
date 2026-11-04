@@ -15,7 +15,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { SubscriptionPlansCard } from "@/components/SubscriptionPlansCard";
+ 
 
 export default function MorePage() {
   const { t } = useI18n();
@@ -48,6 +48,7 @@ export default function MorePage() {
     { labelKey: "more.emergencySos", icon: Shield, path: "/sos" },
     { labelKey: "more.dataBackup", icon: HardDrive, path: "/data-backup" },
     { labelKey: "more.settings", icon: Settings, path: "/settings" },
+    { labelKey: "plans.title", icon: CreditCard, path: "/plans" },
   ];
 
   return (
@@ -119,8 +120,7 @@ export default function MorePage() {
         </button>
       </div>
 
-      {/* Subscription Plans */}
-      <SubscriptionPlansCard />
+       
 
 
       {/* About Dialog */}
