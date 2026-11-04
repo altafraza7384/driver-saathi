@@ -84,7 +84,7 @@ export function SubscriptionPlansCard() {
     });
   }
 
-  // Real Razorpay flow, test mode while the backend holds test keys:
+  // Real Razorpay flow, with the backend holding live keys:
   // create subscription on the server, authorize the UPI mandate in
   // Checkout, then confirm server-side. Success is shown ONLY after the
   // server verifies the subscription — the Checkout callback alone is
