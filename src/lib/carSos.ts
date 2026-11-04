@@ -70,9 +70,9 @@ export function splitLocation(lat: number, lng: number) {
 }
 
 export function isValidPhone(phone: string): boolean {
-  // Same strict rule as insurance leads: 10 digits starting 6-9 after
+  // Same strict rule as insurance leads: 10 digits starting 6–9 after
   // stripping a +91/91 prefix. The old ">= 10 digits" check accepted
-  // 12-15 digit strings and stored country codes (audit 2026-10-24).
+  // 12–15 digit strings and stored country codes (audit 2026-10-24).
   let digits = phone.replace(/\D/g, "");
   if (digits.length === 12 && digits.startsWith("91")) digits = digits.slice(2);
   if (digits.length === 11 && digits.startsWith("0")) digits = digits.slice(1);
