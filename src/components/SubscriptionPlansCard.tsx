@@ -278,11 +278,11 @@ export function SubscriptionPlansCard() {
             );
           })
         )}
-        <p className="text-xs text-muted-foreground">{t("plans.comingSoon")}</p>
+        
         {/* Offer poster popup: opens when a plan is tapped. Poster-style card
         with the struck MRP, the offer price, the free trial, and a live
         countdown to tonight's midnight ("valid only today"). The trial
-        button runs the real Razorpay checkout (test mode while the backend holds test keys). */}
+        button runs the real Razorpay checkout with the backend holding live keys. */}
         <Dialog open={selected !== null} onOpenChange={(open) => { if (!open) setSelected(null); }}>
           <DialogContent className="max-w-sm overflow-hidden p-0">
             {selected && (() => {
