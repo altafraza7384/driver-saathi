@@ -70,6 +70,15 @@ export default function GoalsPage() {
   const [editTarget, setEditTarget] = useState("");
   const [editDeadline, setEditDeadline] = useState("");
 
+  // Form-sheet pattern (Phase 6, presentation only): validation messages
+  // are shown directly beneath their field, in addition to the existing
+  // toast. Each error slot is always rendered with a reserved height so
+  // the footer below it does not move when an error appears. Field
+  // values are never cleared on a failed validation.
+  const [addErrors, setAddErrors] = useState<{ title?: string; target?: string }>({});
+  const [editErrors, setEditErrors] = useState<{ target?: string }>({});
+  const [savingsError, setSavingsError] = useState("");
+
   useEffect(() => {
     if (user) fetchGoals();
   }, [user]);
@@ -82,10 +91,12 @@ export default function GoalsPage() {
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAddErrors({});
     if (!user) return;
     // noValidate form: say what is missing instead of doing nothing.
     if (!title.trim()) {
       toast({ title: t("form.checkInput"), description: t("form.nameRequired"), variant: "destructive" });
+      setAddErrors({ title: t("form.nameRequired") });
       return;
     }
     setSaving(true);
@@ -94,6 +105,7 @@ export default function GoalsPage() {
     if (!Number.isFinite(targetAmt) || targetAmt <= 0) {
       toast({ title: t("form.checkInput"), description: t("form.amountPositive"), variant: "destructive" });
       setSaving(false);
+      setAddErrors({ target: t("form.amountPositive") });
       return;
     }
 
@@ -114,6 +126,7 @@ export default function GoalsPage() {
       toast({ title: t("goal.created") });
       setShowAdd(false);
       setTitle(""); setTarget(""); setDeadline(""); setNotifyDate(""); setNotifyTime("");
+      setAddErrors({});
       invalidateGoalReaders();
       fetchGoals();
     }
@@ -125,15 +138,18 @@ export default function GoalsPage() {
     setEditTitle(goal.title);
     setEditTarget(String(toAmount(goal.target_amount)));
     setEditDeadline(goal.deadline || "");
+    setEditErrors({});
   };
 
   const handleUpdate = async () => {
     if (!editGoal) return;
+    setEditErrors({});
     setSaving(true);
     const newTarget = parseFloat(editTarget);
     if (!Number.isFinite(newTarget) || newTarget <= 0) {
       toast({ title: t("form.checkInput"), description: t("form.amountPositive"), variant: "destructive" });
       setSaving(false);
+      setEditErrors({ target: t("form.amountPositive") });
       return;
     }
     const isCompleted = toAmount(editGoal.saved_amount) >= newTarget;
@@ -150,6 +166,7 @@ export default function GoalsPage() {
     } else {
       toast({ title: t("goal.updated") });
       setEditGoal(null);
+      setEditErrors({});
       invalidateGoalReaders();
       fetchGoals();
     }
@@ -159,10 +176,11 @@ export default function GoalsPage() {
   const handleAddSavings = async (goalId: string) => {
     const goal = goals.find(g => g.id === goalId);
     if (!goal || !addAmount || savingGoalId) return;
-
+    setSavingsError("");
     const amount = parseFloat(addAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
       toast({ title: t("form.checkInput"), description: t("form.amountPositive"), variant: "destructive" });
+      setSavingsError(t("form.amountPositive"));
       return;
     }
     // Disable while saving: a double-tap used to compute both writes
@@ -193,6 +211,7 @@ export default function GoalsPage() {
 
     setShowAddSavings(null);
     setAddAmount("");
+    setSavingsError("");
     invalidateGoalReaders();
     fetchGoals();
   };
@@ -223,13 +242,15 @@ export default function GoalsPage() {
           <DialogContent>
             <DialogHeader><DialogTitle>{t("goal.createGoal")}</DialogTitle></DialogHeader>
             <form noValidate onSubmit={handleAdd} className="space-y-4">
-              <div className="space-y-2">
-                <Label>{t("goal.goalTitle")}</Label>
-                <Input placeholder="e.g. New Tires" value={title} onChange={(e) => setTitle(e.target.value)} required />
+              <div className="space-y-1">
+                <Label htmlFor="goal-title">{t("goal.goalTitle")}</Label>
+                <Input id="goal-title" placeholder="e.g. New Tires" value={title} onChange={(e) => { setTitle(e.target.value); setAddErrors((prev) => ({ ...prev, title: undefined })); }} required aria-describedby="goal-title-error" />
+                <p id="goal-title-error" className="min-h-5 text-sm text-destructive">{addErrors.title ?? ""}</p>
               </div>
-              <div className="space-y-2">
-                <Label>{t("goal.targetAmount")}</Label>
-                <Input type="number" placeholder="50000" value={target} onChange={(e) => setTarget(e.target.value)} min="1" required />
+              <div className="space-y-1">
+                <Label htmlFor="goal-target">{t("goal.targetAmount")}</Label>
+                <Input id="goal-target" type="number" placeholder="50000" value={target} onChange={(e) => { setTarget(e.target.value); setAddErrors((prev) => ({ ...prev, target: undefined })); }} min="1" required aria-describedby="goal-target-error" />
+                <p id="goal-target-error" className="min-h-5 text-sm text-destructive">{addErrors.target ?? ""}</p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="goal-deadline">{t("goal.deadline")} ({t("common.optional")})</Label>
@@ -245,9 +266,14 @@ export default function GoalsPage() {
                   <TimePicker id="goal-notify-time" label={t("reminder.notifyTime")} value={notifyTime} onChange={setNotifyTime} />
                 </div>
               </div>
-              <Button type="submit" className="w-full" disabled={saving}>
-                {saving ? t("goal.creating") : t("goal.createGoalBtn")}
-              </Button>
+              <div className="flex gap-2 pt-1">
+                <Button type="submit" className="flex-1" disabled={saving}>
+                  {saving ? t("goal.creating") : t("goal.createGoalBtn")}
+                </Button>
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setShowAdd(false)}>
+                  {t("common.cancel")}
+                </Button>
+              </div>
             </form>
           </DialogContent>
         </Dialog>
@@ -311,20 +337,26 @@ export default function GoalsPage() {
                     {!goal.is_completed && (
                       <>
                         {showAddSavings === goal.id ? (
-                          <div className="flex gap-2">
-                            <Input
-                              type="number"
-                              placeholder={t("common.amount")}
-                              value={addAmount}
-                              onChange={(e) => setAddAmount(e.target.value)}
-                              min="1"
-                              className="flex-1"
-                            />
-                            <Button size="sm" onClick={() => handleAddSavings(goal.id)} disabled={savingGoalId === goal.id}>{savingGoalId === goal.id ? t("common.saving") : t("common.save")}</Button>
-                            <Button size="sm" variant="ghost" onClick={() => { setShowAddSavings(null); setAddAmount(""); }}>✕</Button>
+                          <div className="space-y-1">
+                            <Label htmlFor="goal-add-amount">{t("common.amount")}</Label>
+                            <div className="flex gap-2">
+                              <Input
+                                id="goal-add-amount"
+                                type="number"
+                                placeholder={t("common.amount")}
+                                value={addAmount}
+                                onChange={(e) => { setAddAmount(e.target.value); setSavingsError(""); }}
+                                min="1"
+                                className="flex-1"
+                                aria-describedby="goal-add-amount-error"
+                              />
+                              <Button size="sm" onClick={() => handleAddSavings(goal.id)} disabled={savingGoalId === goal.id}>{savingGoalId === goal.id ? t("common.saving") : t("common.save")}</Button>
+                              <Button size="sm" variant="ghost" onClick={() => { setShowAddSavings(null); setAddAmount(""); setSavingsError(""); }}>✕</Button>
+                            </div>
+                            <p id="goal-add-amount-error" className="min-h-5 text-sm text-destructive">{savingsError}</p>
                           </div>
                         ) : (
-                          <Button size="sm" variant="outline" className="w-full" onClick={() => setShowAddSavings(goal.id)}>
+                          <Button size="sm" variant="outline" className="w-full" onClick={() => { setShowAddSavings(goal.id); setSavingsError(""); }}>
                             <Plus className="h-4 w-4 mr-1" /> {t("goal.addSavings")}
                           </Button>
                         )}
@@ -343,21 +375,27 @@ export default function GoalsPage() {
         <DialogContent>
           <DialogHeader><DialogTitle>{t("goal.editGoal")}</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>{t("goal.goalTitle")}</Label>
-              <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
+            <div className="space-y-1">
+              <Label htmlFor="edit-goal-title">{t("goal.goalTitle")}</Label>
+              <Input id="edit-goal-title" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
             </div>
-            <div className="space-y-2">
-              <Label>{t("goal.targetAmount")}</Label>
-              <Input type="number" value={editTarget} onChange={(e) => setEditTarget(e.target.value)} min="1" />
+            <div className="space-y-1">
+              <Label htmlFor="edit-goal-target">{t("goal.targetAmount")}</Label>
+              <Input id="edit-goal-target" type="number" value={editTarget} onChange={(e) => { setEditTarget(e.target.value); setEditErrors((prev) => ({ ...prev, target: undefined })); }} min="1" aria-describedby="edit-goal-target-error" />
+              <p id="edit-goal-target-error" className="min-h-5 text-sm text-destructive">{editErrors.target ?? ""}</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="goal-edit-deadline">{t("goal.deadline")} ({t("common.optional")})</Label>
               <DatePicker id="goal-edit-deadline" label={t("goal.deadline")} value={editDeadline} onChange={setEditDeadline} />
             </div>
-            <Button className="w-full" onClick={handleUpdate} disabled={saving}>
-              {saving ? t("common.saving") : t("goal.updateGoal")}
-            </Button>
+            <div className="flex gap-2 pt-1">
+              <Button className="flex-1" onClick={handleUpdate} disabled={saving}>
+                {saving ? t("common.saving") : t("goal.updateGoal")}
+              </Button>
+              <Button variant="outline" className="flex-1" onClick={() => setEditGoal(null)}>
+                {t("common.cancel")}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
