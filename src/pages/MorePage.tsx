@@ -94,5 +94,6 @@ export default function MorePage() {
 
       </div>
     </div>
+    </div>
   );
 }
