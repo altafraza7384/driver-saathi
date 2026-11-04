@@ -59,6 +59,12 @@ export default function InsuranceLeadPage() {
   });
   const [consent, setConsent] = useState(false);
   const [error, setError] = useState("");
+  // Form-sheet pattern (Phase 6, presentation only): the existing
+  // validation messages are mapped to their field and shown beneath it
+  // in a reserved slot, in addition to the toast. Labels were already
+  // linked, and form values are retained on failure (only success clears).
+  const [fieldErrors, setFieldErrors] = useState<{ name?: string; phone?: string; vehicle_number?: string; vehicle_year?: string; vehicle_model?: string; city?: string; policy_expiry?: string; consent?: string }>({});
+  const clearFieldError = (key: keyof typeof fieldErrors) => setFieldErrors((prev) => ({ ...prev, [key]: undefined }));
 
   const { data: myLeads = [], isLoading: leadsLoading } = useQuery({
     queryKey: ["insurance_leads_mine"],
@@ -148,11 +154,19 @@ export default function InsuranceLeadPage() {
       });
       setConsent(false);
       setError("");
+      setFieldErrors({});
       toast.success(t("insurance.success"));
     },
     onError: (e: Error) => {
       const msg = friendlyErrorMessage(e);
-      setError(msg);
+      setError("");
+      if (msg === t("insurance.required")) setFieldErrors({ name: msg, vehicle_model: msg, city: msg });
+      else if (msg === t("insurance.invalidPhone")) setFieldErrors({ phone: msg });
+      else if (msg === t("insurance.consentRequired")) setFieldErrors({ consent: msg });
+      else if (msg === t("insurance.invalidYear")) setFieldErrors({ vehicle_year: msg });
+      else if (msg === t("insurance.pastExpiry")) setFieldErrors({ policy_expiry: msg });
+      else if (msg === t("insurance.duplicate")) setFieldErrors({ phone: msg, vehicle_number: msg });
+      else setError(msg);
       toast.error(msg);
     },
   });
@@ -176,42 +190,54 @@ export default function InsuranceLeadPage() {
         <CardContent className="p-4 space-y-4">
           <div>
             <Label htmlFor="ins-name">{t("insurance.name")}</Label>
-            <Input id="ins-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <Input id="ins-name" value={form.name} onChange={(e) => { setForm({ ...form, name: e.target.value }); clearFieldError("name"); }} />
+            <p className="min-h-5 text-sm text-destructive">{fieldErrors.name ?? ""}</p>
           </div>
           <div>
             <Label htmlFor="ins-phone">{t("insurance.phone")}</Label>
-            <Input id="ins-phone" type="tel" inputMode="numeric" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="9876543210" />
+            <Input id="ins-phone" type="tel" inputMode="numeric" value={form.phone} onChange={(e) => { setForm({ ...form, phone: e.target.value }); clearFieldError("phone"); }} placeholder="9876543210" />
+            <p className="min-h-5 text-sm text-destructive">{fieldErrors.phone ?? ""}</p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label htmlFor="ins-vehicle-number">{t("insurance.vehicleNumber")}</Label>
-              <Input id="ins-vehicle-number" value={form.vehicle_number} onChange={(e) => setForm({ ...form, vehicle_number: e.target.value })} placeholder="MH02AB1234" />
+              <Input id="ins-vehicle-number" value={form.vehicle_number} onChange={(e) => { setForm({ ...form, vehicle_number: e.target.value }); clearFieldError("vehicle_number"); }} placeholder="MH02AB1234" />
+              <p className="min-h-5 text-sm text-destructive">{fieldErrors.vehicle_number ?? ""}</p>
             </div>
             <div>
               <Label htmlFor="ins-vehicle-year">{t("insurance.vehicleYear")}</Label>
-              <Input id="ins-vehicle-year" inputMode="numeric" value={form.vehicle_year} onChange={(e) => setForm({ ...form, vehicle_year: e.target.value })} placeholder="2021" />
+              <Input id="ins-vehicle-year" inputMode="numeric" value={form.vehicle_year} onChange={(e) => { setForm({ ...form, vehicle_year: e.target.value }); clearFieldError("vehicle_year"); }} placeholder="2021" />
+              <p className="min-h-5 text-sm text-destructive">{fieldErrors.vehicle_year ?? ""}</p>
             </div>
           </div>
           <div>
             <Label htmlFor="ins-vehicle-model">{t("insurance.vehicleModel")}</Label>
-            <Input id="ins-vehicle-model" value={form.vehicle_model} onChange={(e) => setForm({ ...form, vehicle_model: e.target.value })} placeholder="Swift VXi" />
+            <Input id="ins-vehicle-model" value={form.vehicle_model} onChange={(e) => { setForm({ ...form, vehicle_model: e.target.value }); clearFieldError("vehicle_model"); }} placeholder="Swift VXi" />
+            <p className="min-h-5 text-sm text-destructive">{fieldErrors.vehicle_model ?? ""}</p>
           </div>
           <div>
             <Label htmlFor="ins-city">{t("insurance.city")}</Label>
-            <Input id="ins-city" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} placeholder="Mumbai" />
+            <Input id="ins-city" value={form.city} onChange={(e) => { setForm({ ...form, city: e.target.value }); clearFieldError("city"); }} placeholder="Mumbai" />
+            <p className="min-h-5 text-sm text-destructive">{fieldErrors.city ?? ""}</p>
           </div>
           <div>
             <Label htmlFor="ins-expiry">{t("insurance.policyExpiry")}</Label>
-            <DatePicker id="ins-expiry" label={t("insurance.policyExpiry")} value={form.policy_expiry} onChange={(value) => setForm({ ...form, policy_expiry: value })} placeholder={t("insurance.policyExpiry")} />
+            <DatePicker id="ins-expiry" label={t("insurance.policyExpiry")} value={form.policy_expiry} onChange={(value) => { setForm({ ...form, policy_expiry: value }); clearFieldError("policy_expiry"); }} placeholder={t("insurance.policyExpiry")} />
+            <p className="min-h-5 text-sm text-destructive">{fieldErrors.policy_expiry ?? ""}</p>
           </div>
-          <label className="flex items-start gap-2 text-sm">
-            <Checkbox checked={consent} onCheckedChange={(v) => setConsent(v === true)} />
-            <span>{t("insurance.consent")}</span>
-          </label>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button className="w-full" onClick={() => submitMutation.mutate()} disabled={submitMutation.isPending || leadsLoading}>
-            {submitMutation.isPending ? t("insurance.submitting") : t("insurance.submit")}
-          </Button>
+          <div>
+            <label className="flex items-start gap-2 text-sm">
+              <Checkbox checked={consent} onCheckedChange={(v) => { setConsent(v === true); clearFieldError("consent"); }} />
+              <span>{t("insurance.consent")}</span>
+            </label>
+            <p className="min-h-5 text-sm text-destructive">{fieldErrors.consent ?? ""}</p>
+          </div>
+          <div className="pt-1">
+            <p className="min-h-5 text-sm text-destructive">{error}</p>
+            <Button className="w-full" onClick={() => submitMutation.mutate()} disabled={submitMutation.isPending || leadsLoading}>
+              {submitMutation.isPending ? t("insurance.submitting") : t("insurance.submit")}
+            </Button>
+          </div>
           <p className="text-xs text-muted-foreground">
             {t("insurance.disclaimer")}
           </p>
