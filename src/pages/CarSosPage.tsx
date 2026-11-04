@@ -161,7 +161,7 @@ export default function CarSosPage() {
           id,
           requestId: id,
           driverId: user!.id,
-          driverPhone: phone.replace(/\D/g, ""),
+          driverPhone: phone.replace(/\D/g, ""), driverName: name.trim() || null,
           exactLat: gps ? gps.lat : null,
           exactLng: gps ? gps.lng : null,
           mechanicId: null,
