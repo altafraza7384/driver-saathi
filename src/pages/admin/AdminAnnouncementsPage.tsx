@@ -17,17 +17,17 @@ import { toast } from "sonner";
 
 // Admin-only announcements (English only, like all admin pages).
 // An announcement created here does TWO things:
-// 1. In-app, immediately on the next Home load (Firestore-driven, no
-// deploy or publish needed): Home banner +
-// once-per-announcement popup (see AnnouncementBanner). This works
-// WITHOUT Blaze and WITHOUT a new APK.
-// 2. Closed-app native push (FCM): the staged function
-// `sendAnnouncementPush` in firebase/functions/src/index.ts fires on
-// announcement creation and sends to stored FCM tokens, filtered by
-// audience. That function is NOT deployed yet — Cloud Functions cannot
-// deploy on Spark, so it deploys only after Blaze. Until then, step 1
-// is the live path and step 2 is code-ready only. Never put an FCM
-// server key in this page or any client code to work around that.
+//  1. In-app, immediately on the next Home load (Firestore-driven, no
+//     deploy or publish needed): Home banner +
+//     once-per-announcement popup (see AnnouncementBanner). This works
+//     WITHOUT Blaze and WITHOUT a new APK.
+//  2. Closed-app native push (FCM): the staged function
+//     `sendAnnouncementPush` in firebase/functions/src/index.ts fires on
+//     announcement creation and sends to stored FCM tokens, filtered by
+//     audience. That function is NOT deployed yet — Cloud Functions cannot
+//     deploy on Spark, so it deploys only after Blaze. Until then, step 1
+//     is the live path and step 2 is code-ready only. Never put an FCM
+//     server key in this page or any client code to work around that.
 type Announcement = {
   id: string;
   title?: string | null;
@@ -47,6 +47,7 @@ export default function AdminAnnouncementsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Announcement | null>(null);
   const [form, setForm] = useState(EMPTY);
+
   const { data: announcements = [], isLoading } = useQuery({
     queryKey: ["admin_announcements"],
     queryFn: async () => {
@@ -104,7 +105,10 @@ export default function AdminAnnouncementsPage() {
       const { error } = await db.from("announcements").delete().eq("id", id);
       if (error) throw error;
     },
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      toast.success("Announcement deleted.");
+    },
     onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
 
@@ -129,7 +133,7 @@ export default function AdminAnnouncementsPage() {
 
   return (
     <div className="p-4 pt-6 space-y-4 max-w-2xl mx-auto">
-      <button onClick={() => navigate("/admin")} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+      <button onClick={() => navigate("/admin")} className="flex items-center gap-1 text-sm text-muted-foreground">
         <ArrowLeft className="h-4 w-4" /> {"Back"}
       </button>
 
@@ -154,9 +158,7 @@ export default function AdminAnnouncementsPage() {
               <CardContent className="p-3 space-y-2">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                      <Megaphone className="h-4 w-4" />
-                    </div>
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Megaphone className="h-4 w-4" /></div>
                     <div className="min-w-0">
                       <p className="text-sm font-bold truncate">{a.title ?? "—"}</p>
                       <p className="text-xs text-muted-foreground truncate">
