@@ -7,8 +7,8 @@
 // it on main also builds and uploads a new Play AAB.
 export const APP_VERSION = "1.0.0";
 
-/** "1.0.0 (build mvwo2mna)" — the build id still helps match a deploy. */
-export function appVersionLabel(): string {
-  const build = typeof __APP_BUILD_ID__ !== "undefined" ? __APP_BUILD_ID__ : "";
-  return build ? `${APP_VERSION} (build ${build})` : APP_VERSION;
-}
+export const APP_BUILD_ID: string =
+
+  typeof __APP_BUILD_ID__ !== "undefined" ? __APP_BUILD_ID__ : "";
+  
+
