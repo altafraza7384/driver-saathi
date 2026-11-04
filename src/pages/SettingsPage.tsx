@@ -32,6 +32,11 @@ export default function SettingsPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [deleting, setDeleting] = useState(false);
+  // Form-sheet pattern (Phase 6, presentation only, PROFILE form only):
+  // the existing invalid-phone message is shown beneath the phone field
+  // in a reserved slot in addition to the toast, and form values are
+  // retained on a failed save (only success closes the form).
+  const [phoneSubmitError, setPhoneSubmitError] = useState("");
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ["profile"],
@@ -51,8 +56,8 @@ export default function SettingsPage() {
       const { error } = await db.from("profiles").update({ full_name: form.full_name, phone: form.phone.trim(), vehicle_type: form.vehicle_type, vehicle_number: form.vehicle_number, license_number: form.license_number, preferred_language: language }).eq("user_id", user!.id);
       if (error) throw error;
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["profile"] }); setEditing(false); toast.success(t("settings.profileSaved")); },
-    onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["profile"] }); setEditing(false); setPhoneSubmitError(""); toast.success(t("settings.profileSaved")); },
+    onError: (e: Error) => { setPhoneSubmitError(friendlyErrorMessage(e)); toast.error(friendlyErrorMessage(e)); },
   });
 
   // Profile photo upload REMOVED 2026-10-22 (user decision): nobody uploads
@@ -133,19 +138,19 @@ export default function SettingsPage() {
         <>
           <Card><CardContent className="space-y-3 p-4">
             <div className="flex items-center gap-2 mb-1"><User className="h-4 w-4 text-muted-foreground" /><span className="font-semibold">{t("settings.profile")}</span></div>
-            <div><Label>{t("settings.fullName")}</Label><Input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} /></div>
-            <div><Label>{t("settings.phone")}</Label><Input type="tel" inputMode="tel" maxLength={16} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+91 9876543210" aria-invalid={!!form.phone.trim() && !isValidPhone(form.phone)} />{form.phone.trim() && !isValidPhone(form.phone) && <p className="mt-1 text-xs text-destructive">{t("settings.invalidPhone")}</p>}</div>
+            <div><Label htmlFor="profile-full-name">{t("settings.fullName")}</Label><Input id="profile-full-name" value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} /></div>
+            <div><Label htmlFor="profile-phone">{t("settings.phone")}</Label><Input id="profile-phone" type="tel" inputMode="tel" maxLength={16} value={form.phone} onChange={(e) => { setForm({ ...form, phone: e.target.value }); setPhoneSubmitError(""); }} placeholder="+91 9876543210" aria-invalid={!!form.phone.trim() && !isValidPhone(form.phone)} /><p className="min-h-5 text-sm text-destructive">{form.phone.trim() && !isValidPhone(form.phone) ? t("settings.invalidPhone") : phoneSubmitError}</p></div>
             <p className="text-muted-foreground">{t("settings.email")}: {user?.email}</p>
           </CardContent></Card>
           <Card><CardContent className="space-y-3 p-4">
             <div className="flex items-center gap-2 mb-1"><Car className="h-4 w-4 text-muted-foreground" /><span className="font-semibold">{t("settings.vehicleDetails")}</span></div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div><Label>{t("settings.type")}</Label><Input value={form.vehicle_type} onChange={(e) => setForm({ ...form, vehicle_type: e.target.value })} placeholder="Sedan, SUV..." /></div>
-              <div><Label>{t("settings.number")}</Label><Input value={form.vehicle_number} onChange={(e) => setForm({ ...form, vehicle_number: e.target.value })} placeholder="MH 12 AB 1234" /></div>
+              <div><Label htmlFor="profile-vehicle-type">{t("settings.type")}</Label><Input id="profile-vehicle-type" value={form.vehicle_type} onChange={(e) => setForm({ ...form, vehicle_type: e.target.value })} placeholder="Sedan, SUV..." /></div>
+              <div><Label htmlFor="profile-vehicle-number">{t("settings.number")}</Label><Input id="profile-vehicle-number" value={form.vehicle_number} onChange={(e) => setForm({ ...form, vehicle_number: e.target.value })} placeholder="MH 12 AB 1234" /></div>
             </div>
-            <div><Label>{t("settings.license")}</Label><Input value={form.license_number} onChange={(e) => setForm({ ...form, license_number: e.target.value })} /></div>
+            <div><Label htmlFor="profile-license">{t("settings.license")}</Label><Input id="profile-license" value={form.license_number} onChange={(e) => setForm({ ...form, license_number: e.target.value })} /></div>
           </CardContent></Card>
-          <div className="flex gap-2">
+          <div className="flex gap-2 pt-1">
             {hasProfile && <Button variant="outline" className="flex-1" onClick={() => setEditing(false)}>{t("common.cancel")}</Button>}
             <Button className="flex-1 gap-2" onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending}><Save className="h-4 w-4" /> {updateMutation.isPending ? t("common.saving") : t("settings.saveChanges")}</Button>
           </div>
