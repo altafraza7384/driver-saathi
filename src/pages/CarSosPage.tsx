@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { db } from "@/lib/backend";
 import { friendlyErrorMessage } from "@/lib/errors";
@@ -12,19 +12,19 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   ArrowLeft,
   BatteryCharging,
-  CircleDot,
+  PenLine,
   HelpCircle,
   MapPin,
   Navigation,
   Phone,
   Star,
-  Wrench,
+  Wrench, Truck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import {
   ACTIVE_SOS_STATUSES,
-  CAR_SOS_CATEGORIES,
+  CAR_SOS_CATEGORIES, CAR_SOS_DEFAULT_DESC_KEY,
   isValidPhone,
   newRequestId,
   splitLocation,
@@ -33,10 +33,10 @@ import {
 } from "@/lib/carSos";
 
 const CATEGORY_ICONS: Record<CarSosCategory, typeof Wrench> = {
-  tyre: CircleDot,
-  mechanic: Wrench,
+  car: Wrench,
   battery: BatteryCharging,
-  other: HelpCircle,
+  towing: Truck,
+  other: HelpCircle, custom: PenLine,
 };
 
 interface GpsFix {
@@ -89,11 +89,11 @@ export default function CarSosPage() {
 
   const [category, setCategory] = useState<CarSosCategory | null>(null);
   const [description, setDescription] = useState("");
-  const [phone, setPhone] = useState("");
+  const [phone, setPhone] = useState(""); const [name, setName] = useState(""); const [descTouched, setDescTouched] = useState(false); const profilePrefilledRef = useRef(false); const nameTypedRef = useRef(false); const phoneTypedRef = useRef(false);
   const [areaText, setAreaText] = useState("");
   const [gps, setGps] = useState<GpsFix | null>(null);
   const [locating, setLocating] = useState(false);
-  const [rating, setRating] = useState(0);
+  const [rating, setRating] = useState(0); const { data: profile } = useQuery({ queryKey: ["profile"], queryFn: async () => { const { data, error } = await db.from("profiles").select("*").eq("user_id", user!.id).single(); if (error) throw error; return data; }, enabled: !!user, }); useEffect(() => { if (profile && !profilePrefilledRef.current) { profilePrefilledRef.current = true; if (!nameTypedRef.current) setName(profile.full_name ?? ""); if (!phoneTypedRef.current) setPhone(profile.phone ?? ""); } }, [profile]); const handleCategorySelect = (c: CarSosCategory) => { setCategory(c); if (!descTouched) { const descKey = CAR_SOS_DEFAULT_DESC_KEY[c]; setDescription(descKey ? t(descKey) : ""); } };
 
   const { data: requests = [] } = useQuery({
     queryKey: ["sos_requests", user?.id],
@@ -185,9 +185,9 @@ export default function CarSosPage() {
       invalidate();
       setCategory(null);
       setDescription("");
-      setPhone("");
+      setPhone(profile?.phone ?? "");
       setAreaText("");
-      setGps(null);
+      setGps(null); setDescTouched(false); setName(profile?.full_name ?? "");
       toast.success(t("carSos.requestSent"));
     },
     onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
@@ -358,7 +358,7 @@ export default function CarSosPage() {
                   return (
                     <button
                       key={c}
-                      onClick={() => setCategory(c)}
+                      onClick={() => handleCategorySelect(c)}
                       className={`flex items-center gap-2 rounded-xl border p-3 text-sm font-medium ${
                         category === c
                           ? "border-primary bg-primary/10 text-primary"
@@ -377,17 +377,16 @@ export default function CarSosPage() {
               <Label>{t("carSos.description")}</Label>
               <Textarea
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={(e) => { setDescTouched(true); setDescription(e.target.value); }}
                 rows={3}
               />
             </div>
 
-            <div>
-              <Label>{t("carSos.phone")}</Label>
+            <div><Label>{t("carSos.name")}</Label><Input type="text" value={name} onChange={(e) => { nameTypedRef.current = true; setName(e.target.value); }} /></div><div><Label>{t("carSos.phone")}</Label>
               <Input
                 type="tel"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => { phoneTypedRef.current = true; setPhone(e.target.value); }}
                 placeholder="+91 9876543210"
               />
             </div>
