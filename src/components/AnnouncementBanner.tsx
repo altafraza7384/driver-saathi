@@ -71,18 +71,19 @@ export function AnnouncementBanner() {
     enabled: !!user,
   });
 
-  // The current user's plan: announcements marked 'non_subscribers' are
-  // hidden once the user has a subscription plan, so paying users stop
-  // seeing upgrade offers. The query only runs once a user is present;
-  // a null plan (no subscription record) means 'non_subscribers' still
-  // shows, which is the safe default for free users.
+  // The current user's plan: users/{uid}.subscription_plan_id is null when
+  // the user has no plan (see AdminUsersPage). Fail-open for marketing:
+  // if the profile cannot be read, offer announcements still show — a
+  // subscriber seeing an offer is harmless, a non-subscriber missing one
+  // loses a sale. This read never gates anything security-sensitive:
+  // announcements themselves are public to signed-in users by rules.
   const { data: myPlan } = useQuery({
     queryKey: ["announcements_my_plan"],
     queryFn: async () => {
       try {
         const { data } = await db.from("users").select("*").eq("id", user!.id);
         const row = Array.isArray(data) ? data[0] : data;
-        return (row as { subscription_plan_id?: string | null })?.subscription_plan_id ?? null;
+        return (row as { subscription_plan_id?: string | null } | null)?.subscription_plan_id ?? null;
       } catch {
         return null;
       }
@@ -90,7 +91,7 @@ export function AnnouncementBanner() {
     enabled: !!user,
   });
 
-  const today = localToday();
+  const today = localToday(); // local date, not UTC (00:00–05:29 IST was yesterday)
   const visible = useMemo(
     () =>
       announcements.filter((a) => {
