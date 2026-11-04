@@ -284,3 +284,4 @@ export const cleanupTransactions = onSchedule({ schedule: "0 3 * * *", timeZone:
   (await db.collectionGroup("chat_messages").where("created_at", "<", dayAgo).get()).docs.forEach((d) => writer.delete(d.ref));
   await writer.close();
 });
+export { earningsNudgeAfternoon, earningsNudgeNight } from "./earningsNudge";
