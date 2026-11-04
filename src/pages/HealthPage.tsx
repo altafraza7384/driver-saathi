@@ -7,6 +7,7 @@ import { useI18n } from "@/lib/i18n";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Moon, Droplets, Coffee, Footprints, Save, CheckCircle2 } from "lucide-react";
@@ -48,6 +49,11 @@ export default function HealthPage() {
   });
 
   const [form, setForm] = useState({ sleep_hours: "0", water_glasses: "0", breaks_taken: "0", steps: "0" });
+  // Form-sheet pattern (Phase 6, presentation only): this page has no
+  // per-field validation rules, so a save failure is shown beneath the
+  // fields in addition to the toast, in a reserved slot so the footer
+  // does not move. Form values are retained on failure.
+  const [saveError, setSaveError] = useState("");
   // Latest form values for async handlers (rapid taps must build on each
   // other, not on a stale render's state).
   const formRef = useRef(form);
@@ -94,8 +100,8 @@ export default function HealthPage() {
 
   const saveMutation = useMutation({
     mutationFn: async () => { await upsertLog(formRef.current); },
-    onSuccess: () => toast.success(t("health.logSaved")),
-    onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
+    onSuccess: () => { setSaveError(""); toast.success(t("health.logSaved")); },
+    onError: (e: Error) => { setSaveError(friendlyErrorMessage(e)); toast.error(friendlyErrorMessage(e)); },
   });
 
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
@@ -162,9 +168,9 @@ export default function HealthPage() {
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       {isDone ? <CheckCircle2 className="h-5 w-5 text-success" /> : <m.icon className={`h-5 w-5 ${m.color}`} />}
-                      <span className="text-sm font-medium">{m.label}</span>
+                      <Label htmlFor={`health-${m.key}`} className="text-sm font-medium">{m.label}</Label>
                     </div>
-                    <Input type="number" className="w-20 text-right" value={m.value} onChange={(e) => setForm({ ...form, [m.key]: e.target.value })} />
+                    <Input id={`health-${m.key}`} type="number" className="w-20 text-right" value={m.value} onChange={(e) => { setForm({ ...form, [m.key]: e.target.value }); setSaveError(""); }} />
                   </div>
                   <Progress value={Math.min((Number(m.value) / m.max) * 100, 100)} className="h-2" />
                 </CardContent>
@@ -176,9 +182,12 @@ export default function HealthPage() {
 
       </>)}
 
-      <Button className="w-full gap-2" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || isLoading}>
-        <Save className="h-4 w-4" /> {saveMutation.isPending ? t("common.saving") : t("health.saveTodayLog")}
-      </Button>
+      <div className="pt-1">
+        <p className="min-h-5 text-sm text-destructive">{saveError}</p>
+        <Button className="w-full gap-2" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || isLoading}>
+          <Save className="h-4 w-4" /> {saveMutation.isPending ? t("common.saving") : t("health.saveTodayLog")}
+        </Button>
+      </div>
 
       <Card>
         <CardContent className="p-4 space-y-3">
