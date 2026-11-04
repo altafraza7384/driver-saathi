@@ -141,7 +141,7 @@ service cloud.firestore {
       // commission could never be saved).
       allow update: if isAdmin()
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['user_id', 'phone', 'consent']);
-      allow delete: if false;
+      allow delete: if isAdmin();
     }
 
     match /marketplace_categories/{id} { allow read: if signedIn() && notBlocked(); allow write: if isAdmin(); }
