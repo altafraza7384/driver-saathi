@@ -39,6 +39,10 @@ export default function RemindersPage() {
   const [form, setForm] = useState({ title: "", description: "", reminder_date: "", category: "general", notify_date: "", notify_time: "" });
   const [customCategory, setCustomCategory] = useState("");
   const [showCustomCategory, setShowCustomCategory] = useState(false);
+  // Form-sheet pattern (Phase 6, presentation only): the existing
+  // validation messages are shown beneath their field in addition to
+  // the toast, and form values are retained on failure.
+  const [formErrors, setFormErrors] = useState<{ title?: string; date?: string; category?: string }>({});
 
   const { data: reminders = [], isLoading } = useQuery({
     queryKey: ["reminders"],
@@ -60,8 +64,8 @@ export default function RemindersPage() {
       const { error } = await db.from("reminders").insert({ user_id: user.id, title: form.title, description: form.description || null, reminder_date: form.reminder_date, category: form.category, is_completed: false, notify_at: notifyAt } as any);
       if (error) throw error;
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["reminders"] }); queryClient.invalidateQueries({ queryKey: ["notifications_reminders"] }); setOpen(false); setForm({ title: "", description: "", reminder_date: "", category: "general", notify_date: "", notify_time: "" }); setCustomCategory(""); setShowCustomCategory(false); toast.success(t("reminder.saved")); },
-    onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["reminders"] }); queryClient.invalidateQueries({ queryKey: ["notifications_reminders"] }); setOpen(false); setForm({ title: "", description: "", reminder_date: "", category: "general", notify_date: "", notify_time: "" }); setCustomCategory(""); setShowCustomCategory(false); setFormErrors({}); toast.success(t("reminder.saved")); },
+    onError: (e: Error) => { if (e.message === "Enter a title and select a valid date.") setFormErrors({ title: e.message, date: e.message }); else if (e.message === "Please enter a category.") setFormErrors({ category: e.message }); toast.error(friendlyErrorMessage(e)); },
   });
 
   const toggleMutation = useMutation({
@@ -87,29 +91,34 @@ export default function RemindersPage() {
           <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-1rem)] overflow-y-auto overscroll-contain">
             <DialogHeader><DialogTitle>{t("reminder.addReminder")}</DialogTitle></DialogHeader>
             <div className="space-y-3">
-              <div><Label>{t("common.title")}</Label><Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></div>
-              <div><Label>{t("common.description")}</Label><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
+              <div><Label htmlFor="reminder-title">{t("common.title")}</Label><Input id="reminder-title" value={form.title} onChange={(e) => { setForm({ ...form, title: e.target.value }); setFormErrors((prev) => ({ ...prev, title: undefined, date: undefined })); }} /><p className="min-h-5 text-sm text-destructive">{formErrors.title ?? ""}</p></div>
+              <div><Label htmlFor="reminder-description">{t("common.description")}</Label><Input id="reminder-description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
               <div className="grid grid-cols-2 gap-3">
-                <div><Label htmlFor="reminder-form-reminder_date-1">{t("common.date")}</Label><DatePicker id="reminder-form-reminder_date-1" label={t("common.date")} value={form.reminder_date} onChange={(value) => setForm((prev) => ({ ...prev, reminder_date: value }))} required /></div>
-                <div><Label>{t("common.category")}</Label>
+                <div><Label htmlFor="reminder-form-reminder_date-1">{t("common.date")}</Label><DatePicker id="reminder-form-reminder_date-1" label={t("common.date")} value={form.reminder_date} onChange={(value) => { setForm((prev) => ({ ...prev, reminder_date: value })); setFormErrors((prev) => ({ ...prev, title: undefined, date: undefined })); }} required /><p className="min-h-5 text-sm text-destructive">{formErrors.date ?? ""}</p></div>
+                <div><Label htmlFor="reminder-category">{t("common.category")}</Label>
                   <Select value={showCustomCategory ? "__custom__" : form.category} onValueChange={(v) => {
                     if (v === "__custom__") { setShowCustomCategory(true); setForm({ ...form, category: "" }); }
                     else { setShowCustomCategory(false); setCustomCategory(""); setForm({ ...form, category: v }); }
+                    setFormErrors((prev) => ({ ...prev, category: undefined }));
                   }}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger id="reminder-category"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {DEFAULT_CATEGORIES.map((c) => <SelectItem key={c} value={c} className="capitalize">{categoryLabel(c)}</SelectItem>)}
                       <SelectItem value="__custom__">+ Custom</SelectItem>
                     </SelectContent>
                   </Select>
-                  {showCustomCategory && <Input className="mt-1" placeholder={t("reminder.enterCustomCategory")} value={customCategory} onChange={(e) => { setCustomCategory(e.target.value); setForm({ ...form, category: e.target.value }); }} />}
+                  {showCustomCategory && <div className="mt-1"><Label htmlFor="reminder-custom-category">{t("reminder.enterCustomCategory")}</Label><Input id="reminder-custom-category" placeholder={t("reminder.enterCustomCategory")} value={customCategory} onChange={(e) => { setCustomCategory(e.target.value); setForm({ ...form, category: e.target.value }); setFormErrors((prev) => ({ ...prev, category: undefined })); }} /></div>}
+                  <p className="min-h-5 text-sm text-destructive">{formErrors.category ?? ""}</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div><Label htmlFor="reminder-form-notify_date-1">{t("reminder.notifyDate")}</Label><DatePicker id="reminder-form-notify_date-1" label={t("reminder.notifyDate")} value={form.notify_date} onChange={(value) => setForm((prev) => ({ ...prev, notify_date: value }))} /></div>
                 <div><Label htmlFor="reminder-form-notify_time-1">{t("reminder.notifyTime")}</Label><TimePicker id="reminder-form-notify_time-1" label={t("reminder.notifyTime")} value={form.notify_time} onChange={(value) => setForm((prev) => ({ ...prev, notify_time: value }))} /></div>
               </div>
-              <Button className="w-full" onClick={() => addMutation.mutate()} disabled={!form.title.trim() || !parseDateValue(form.reminder_date) || addMutation.isPending}>{addMutation.isPending ? t("common.saving") : t("common.save")}</Button>
+              <div className="flex gap-2 pt-1">
+                <Button className="flex-1" onClick={() => addMutation.mutate()} disabled={!form.title.trim() || !parseDateValue(form.reminder_date) || addMutation.isPending}>{addMutation.isPending ? t("common.saving") : t("common.save")}</Button>
+                <Button variant="outline" className="flex-1" onClick={() => setOpen(false)}>{t("common.cancel")}</Button>
+              </div>
             </div>
           </DialogContent>
         </Dialog>
