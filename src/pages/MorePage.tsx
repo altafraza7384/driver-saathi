@@ -4,11 +4,9 @@ import { useQuery } from "@tanstack/react-query";
 import { db } from "@/lib/backend";
 import {
   CreditCard, Target, Car, Bell, StickyNote, Shield,
-  Settings, ChevronRight, Sun, Moon, Info, HardDrive, Wallet
+  Settings, ChevronRight, Info, HardDrive, Wallet
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useTheme } from "next-themes";
-import { Switch } from "@/components/ui/switch";
 
 export default function MorePage() {
   const { t } = useI18n();
@@ -26,9 +24,7 @@ export default function MorePage() {
     },
     enabled: !!user,
   });
-  const { theme, setTheme } = useTheme();
-  const isDark = theme === "dark";
-
+  
   const menuGroups = [
     {
       headingKey: "more.groupMoney",
@@ -96,17 +92,6 @@ export default function MorePage() {
           </button>
         )}
 
-        {/* Dark Mode Toggle */}
-        <div className="flex w-full items-center justify-between rounded-xl p-4">
-          <div className="flex items-center gap-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-              {isDark ? <Moon className="h-5 w-5 text-foreground" /> : <Sun className="h-5 w-5 text-foreground" />}
-            </div>
-            <span className="text-base font-bold">{t("more.darkMode")}</span>
-          </div>
-          <Switch checked={isDark} onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")} />
-        </div>
-      </div>
       </div>
     </div>
   );
