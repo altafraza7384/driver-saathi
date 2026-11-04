@@ -57,10 +57,14 @@ export default function NotesPage() {
           <DialogContent>
             <DialogHeader><DialogTitle>{t("note.newNote")}</DialogTitle></DialogHeader>
             <div className="space-y-3">
-              <div><Label>{t("common.title")}</Label><Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder={t("note.noteTitle")} /></div>
-              <div><Label>{t("common.description")}</Label><Textarea value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} rows={4} placeholder={t("note.writeNote")} /></div>
-              <div><Label>{t("note.tags")}</Label><Input value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="fuel, personal" /></div>
-              <Button className="w-full" onClick={() => addMutation.mutate()} disabled={!form.title || addMutation.isPending}>{addMutation.isPending ? t("common.saving") : t("note.saveNote")}</Button>
+              {/* Form-sheet pattern (Phase 6, presentation only): every input has a visible linked label, and Save/Cancel sit in a stable footer. This dialog has no field validation message key, so its save behaviour is left as-is (Save stays disabled until a title is entered) rather than inventing a key. Form values are retained if saving fails. */}
+              <div><Label htmlFor="note-title">{t("common.title")}</Label><Input id="note-title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder={t("note.noteTitle")} /></div>
+              <div><Label htmlFor="note-content">{t("common.description")}</Label><Textarea id="note-content" value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} rows={4} placeholder={t("note.writeNote")} /></div>
+              <div><Label htmlFor="note-tags">{t("note.tags")}</Label><Input id="note-tags" value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="fuel, personal" /></div>
+              <div className="flex gap-2 pt-1">
+                <Button className="flex-1" onClick={() => addMutation.mutate()} disabled={!form.title || addMutation.isPending}>{addMutation.isPending ? t("common.saving") : t("note.saveNote")}</Button>
+                <Button variant="outline" className="flex-1" onClick={() => setOpen(false)}>{t("common.cancel")}</Button>
+              </div>
             </div>
           </DialogContent>
         </Dialog>
