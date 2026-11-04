@@ -18,6 +18,7 @@ import { stripMarkdown } from "@/lib/plainText";
 import { loadChatHistory, saveChatHistory, toApiMessages, type ChatMsg } from "@/lib/chatHistory";
 import { detectBargeIn, isStopCommand, listenRetryDelay } from "@/lib/drivingVoice";
 import { CHAT_SCREEN_CLASS, CHAT_SCREEN_STYLE } from "@/lib/chatScreen";
+import NativeAdSlot from "@/components/NativeAdSlot";
 
 const FinanceAIPage = lazy(() => import("./FinanceAIPage"));
 
@@ -902,9 +903,12 @@ export default function AssistantPage() {
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-3 pb-4">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
-            <Bot className="h-12 w-12 mb-3 opacity-50" />
-            <p className="font-medium">{t("assistant.intro")}</p>
-            <p className="text-muted-foreground mt-1">{t("assistant.introHint")}</p>
+            <Bot className="h-8 w-8 mb-2 opacity-50" />
+            <p className="font-medium text-sm">{t("assistant.intro")}</p>
+            <p className="text-muted-foreground text-xs mt-1">{t("assistant.introHint")}</p>
+            <div className="w-full max-w-sm mt-4">
+            <NativeAdSlot />
+            </div>
           </div>
         )}
         <AnimatePresence>
