@@ -3,7 +3,6 @@ import { Outlet } from "react-router-dom";
 import { BottomNav } from "./BottomNav";
 import { UpdatePrompt } from "@/components/UpdatePrompt";
 import { TrialPopup } from "@/components/TrialPopup";
-import AnnouncementPopup from "@/components/AnnouncementPopup";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { showBannerAd } from "@/lib/admob";
 import { requestAllPermissions } from "@/lib/native-permissions";
@@ -44,11 +43,11 @@ export function AppLayout() {
     // Add native-app class to body for native-specific CSS
     if (isNativeContext()) {
       document.body.classList.add("native-app");
-    }
 
-    return () => {
-      document.body.classList.remove("native-app");
-    };
+      return () => {
+        document.body.classList.remove("native-app");
+      };
+    }
   }, []);
 
   return (
@@ -61,7 +60,6 @@ export function AppLayout() {
       <BottomNav />
       <UpdatePrompt />
       <TrialPopup />
-      <AnnouncementPopup />
     </div>
   );
 }
