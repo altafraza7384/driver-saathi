@@ -38,6 +38,13 @@ const CATEGORY_ICONS: Record<CarSosCategory, typeof Wrench> = {
   towing: Truck,
   other: HelpCircle, custom: PenLine,
 };
+const SOS_STAGES = [
+  { status: "pending", label: "carSos.statusPending" },
+  { status: "accepted", label: "carSos.statusAccepted" },
+  { status: "onway", label: "carSos.statusOnway" },
+  { status: "arrived", label: "carSos.statusArrived" },
+  { status: "completed", label: "carSos.statusCompleted" },
+  ];
 
 interface GpsFix {
   lat: number;
@@ -284,6 +291,24 @@ export default function CarSosPage() {
               <p className="text-xs text-muted-foreground">
                 {t("carSos.waitingNote")}
               </p>
+              {active.status === "cancelled" ? (
+          <p className="text-sm font-medium text-destructive">{t("carSos.cancelled")}</p>
+          ) : (
+          <ol className="space-y-3 border-l-2 border-primary/20 pl-4">
+            {SOS_STAGES.map((stage, index) => {
+            const activeIndex = SOS_STAGES.findIndex((s) => s.status === active.status);
+            const isDone = index < activeIndex;
+            const isCurrent = index === activeIndex;
+        return (
+              <li key={stage.status} className="flex items-center gap-3">
+              <span className={isDone ? "text-primary" : isCurrent ? "font-bold text-primary" : "text-muted-foreground"}>{isDone ? "✓" : index + 1}</span>
+                <span className={isCurrent ? "text-sm font-semibold" : isDone ? "text-sm" : "text-sm text-muted-foreground"}>{t(stage.label)}</span>
+              </li>
+                );
+          })}
+          </ol>
+          )}
+                
 
               {active.mechanicName && (
                 <div className="rounded-xl bg-muted p-3">
