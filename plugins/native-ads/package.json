@@ -1,0 +1,1 @@
+{"capacitor":{"android":{"src":"android"}},"description":"Local Capacitor plugin for Driver Saathi: inline AdMob native ad (video-capable) overlaid at a web slot rect on Android. Native-only; the JS side registers it by name via @capacitor/core.","main":"index.js","name":"native-ads","private":true,"version":"1.0.0"}
