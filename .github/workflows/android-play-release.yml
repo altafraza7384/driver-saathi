@@ -144,6 +144,9 @@ jobs:
               print("splash background set")
           PY
 
+      - name: Patch Android launch theme (system splash icon)
+        run: "bun run cap:patch"
+        
       - name: Bump versionCode / versionName
         # Play rejects a re-uploaded versionCode, so every run gets a
         # unique one from the run number (monotonic per workflow).
