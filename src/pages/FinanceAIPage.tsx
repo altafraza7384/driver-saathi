@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
@@ -9,6 +11,9 @@ import { Send, Bot, User, Trash2, TrendingUp, Mic, Square } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { BACKEND } from "@/lib/backend";
+import { db } from "@/lib/backend";
+import { getTrialState } from "@/lib/trial";
+import { useSubscriptionNudges } from "@/lib/nudges";
 import { callFinanceAiFunction } from "@/lib/ai";
 import { stripMarkdown } from "@/lib/plainText";
 import { loadChatHistory, saveChatHistory, toApiMessages, type ChatMsg } from "@/lib/chatHistory";
@@ -35,6 +40,19 @@ const SUGGESTED_PROMPTS = [
 export default function FinanceAIPage({ embedded = false }: { embedded?: boolean }) {
   const { session } = useAuth();
   const { t, language } = useI18n();
+  const navigate = useNavigate();
+  const { data: trialProfile } = useQuery({
+    queryKey: ["trial_profile_finance"],
+    queryFn: async () => {
+      const { data } = await db.from("users").select("*").eq("id", session!.user.id);
+      const row = Array.isArray(data) ? data[0] : data;
+      return row as { subscription_plan_id?: string | null; trial_ends_at?: unknown } | null;
+    },
+    enabled: !!session?.user?.id,
+  });
+  const trialState = getTrialState(trialProfile ?? null);
+  const { data: nudges } = useSubscriptionNudges();
+  const nudgesEnabled = nudges?.enabled === true;
   // Per-account chat key: history must never leak across accounts sharing
   // one browser. Null until the session loads; the load effect below fills
   // messages once the key is known.
@@ -234,6 +252,15 @@ export default function FinanceAIPage({ embedded = false }: { embedded?: boolean
       className={embedded ? "flex h-full min-h-0 flex-col p-4 pt-2" : CHAT_SCREEN_CLASS}
       style={embedded ? undefined : CHAT_SCREEN_STYLE}
     >
+      {trialState.kind === "expired" && nudgesEnabled && (
+        <Card className="mb-4 border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/40">
+            <p className="font-semibold">{t("trial.upgradeCardTitle")}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{t("trial.upgradeCardBody")}</p>
+          <Button className="mt-3" onClick={() => navigate("/plans")}>
+            {t("trial.viewPlans")}
+          </Button>
+        </Card>
+      )}
       <div className="flex shrink-0 items-center gap-3 mb-3">
         <div className="flex items-center gap-2 flex-1">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
