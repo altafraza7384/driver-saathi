@@ -1101,14 +1101,17 @@ export type Database = {
         Row: {
           id: string
           mechanic_strike_limit: number
+          enabled?: boolean
         }
         Insert: {
           id?: string
           mechanic_strike_limit?: number
+          enabled?: boolean
         }
         Update: {
           id?: string
           mechanic_strike_limit?: number
+          enabled?: boolean
         }
         Relationships: []
       }
