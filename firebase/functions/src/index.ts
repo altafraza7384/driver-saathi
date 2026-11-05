@@ -285,3 +285,4 @@ export const cleanupTransactions = onSchedule({ schedule: "0 3 * * *", timeZone:
   await writer.close();
 });
 export { earningsNudgeAfternoon, earningsNudgeNight } from "./earningsNudge";
+export { trialExpiryNudge } from "./trialExpiryNudge";
