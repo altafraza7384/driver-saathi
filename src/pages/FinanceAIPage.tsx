@@ -51,8 +51,7 @@ export default function FinanceAIPage({ embedded = false }: { embedded?: boolean
     enabled: !!session?.user?.id,
   });
   const trialState = getTrialState(trialProfile ?? null);
-  const { data: nudges } = useSubscriptionNudges();
-  const nudgesEnabled = nudges?.enabled === true;
+  const { enabled: nudgesEnabled } = useSubscriptionNudges();
   // Per-account chat key: history must never leak across accounts sharing
   // one browser. Null until the session loads; the load effect below fills
   // messages once the key is known.
