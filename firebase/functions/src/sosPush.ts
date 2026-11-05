@@ -21,6 +21,7 @@ type MechanicData = {
   lng?: unknown;
   serviceRadiusKm?: unknown;
   fcmToken?: unknown;
+  phoneVerified?: unknown;
 };
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -43,6 +44,7 @@ function normalizeCategory(c: unknown): string | null { if (c === "mechanic") re
 function mechanicMatches(m: MechanicData, r: SosRequestData): boolean {
   if (m.isOnline !== true) return false;
   if (m.status === "held") return false;
+  if (m.phoneVerified !== true) return false;
   const normalizedCategory = normalizeCategory(r.category);
     if (normalizedCategory === null) return false;
   const cats = Array.isArray(m.categories) ? (m.categories as unknown[]) : [];
