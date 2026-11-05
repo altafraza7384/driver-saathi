@@ -171,7 +171,7 @@ service cloud.firestore {
             // Pending requests are visible only to registered mechanics
             // (hardening 2026-10-26: previously ANY signed-in user could
             // list stranded drivers' approx locations).
-            || (resource.data.status == 'pending
+            || (resource.data.status == 'pending'
               && exists(/databases/$(database)/documents/mechanics/$(request.auth.uid))
              && get(/databases/$(database)/documents/mechanics/$(request.auth.uid)).data.get('phoneVerified', false) == true)
             // Assigned mechanic: without this branch an accepted job
