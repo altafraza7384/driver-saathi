@@ -171,8 +171,9 @@ service cloud.firestore {
             // Pending requests are visible only to registered mechanics
             // (hardening 2026-10-26: previously ANY signed-in user could
             // list stranded drivers' approx locations).
-            || (resource.data.status == 'pending'
-              && exists(/databases/$(database)/documents/mechanics/$(request.auth.uid)))
+            || (resource.data.status == 'pending
+              && exists(/databases/$(database)/documents/mechanics/$(request.auth.uid))
+             && get(/databases/$(database)/documents/mechanics/$(request.auth.uid)).data.get('phoneVerified', false) == true)
             // Assigned mechanic: without this branch an accepted job
             // vanished from the mechanic's Jobs page (audit 2026-10-24).
             || resource.data.mechanicId == request.auth.uid))
@@ -192,7 +193,8 @@ service cloud.firestore {
           && request.resource.data.mechanicId == request.auth.uid
           && request.resource.data.driverId == resource.data.driverId
           && exists(/databases/$(database)/documents/mechanics/$(request.auth.uid))
-          && get(/databases/$(database)/documents/mechanics/$(request.auth.uid)).data.get('status', '') != 'held')
+          && get(/databases/$(database)/documents/mechanics/$(request.auth.uid)).data.get('status', '') != 'held'
+             && get(/databases/$(database)/documents/mechanics/$(request.auth.uid)).data.get('phoneVerified', false) == true)
         // Assigned mechanic: move the job forward.
         || (resource.data.mechanicId == request.auth.uid
           && request.resource.data.mechanicId == request.auth.uid
@@ -222,7 +224,8 @@ service cloud.firestore {
           || isAdmin());
       allow update: if signedIn() && notBlocked()
         && get(/databases/$(database)/documents/sos_requests/$(requestId)).data.get('mechanicId', '') == request.auth.uid
-        && request.resource.data.mechanicId == request.auth.uid;
+        && request.resource.data.mechanicId == request.auth.uid
+&& request.resource.data.diff(resource.data).affectedKeys().hasOnly(['mechanicId']);
       allow delete: if false;
     }
 
@@ -232,14 +235,14 @@ service cloud.firestore {
     // mechanic can never clear their own strikes or unhold themselves.
     match /mechanics/{mechanicId} {
       allow create: if signedIn() && notBlocked() && mechanicId == request.auth.uid
-        && !request.resource.data.keys().hasAny(['status', 'warnings', 'warning_history', 'held_at', 'held_reason', 'isVerified']);
+        && !request.resource.data.keys().hasAny(['status', 'warnings', 'warning_history', 'held_at', 'held_reason', 'isVerified', 'phoneVerified', 'phoneVerifiedAt']);
       allow read: if signedIn() && ((mechanicId == request.auth.uid && notBlocked()) || isAdmin());
       // update: only CHANGED fields are checked (diff().affectedKeys()) —
       // the merged document of a held mechanic always contains status, so
       // the old whole-document check locked held mechanics out of ALL
       // profile edits, not just status changes.
       allow update: if (signedIn() && notBlocked() && mechanicId == request.auth.uid
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'warnings', 'warning_history', 'held_at', 'held_reason', 'isVerified']))
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'warnings', 'warning_history', 'held_at', 'held_reason', 'isVerified', 'phoneVerified', 'phoneVerifiedAt']))
         || isAdmin();
       allow delete: if false;
     }
