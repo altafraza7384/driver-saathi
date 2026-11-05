@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n";
 import { getTrialState, trialMilestone } from "@/lib/trial";
+import { useSubscriptionNudges } from "@/lib/nudges";
 import { httpsCallable } from "firebase/functions";
 import { firebaseFunctions } from "@/integrations/firebase/client";
 
@@ -17,6 +18,8 @@ import { firebaseFunctions } from "@/integrations/firebase/client";
 // users or admins, never blocks the app — "Baad me" just closes it.
 // The early milestone also prompts for the ₹1 mandate — skipped when the
 // subscription status is already authenticated.
+// Gated by the subscription-nudges master flag (config/subscription_nudges):
+// when the flag is OFF, no milestone shows at all.
 export function TrialPopup() {
   const { t } = useI18n();
   const { user } = useAuth();
@@ -61,9 +64,12 @@ export function TrialPopup() {
     enabled: !!user,
   });
 
+  const { enabled: nudgesEnabled, isLoading: nudgesLoading } = useSubscriptionNudges();
   useEffect(() => {
-    if (!profile || !roleRows || subStatusLoading) return;
+    if (!profile || !roleRows || subStatusLoading || nudgesLoading) return;
+    if (!nudgesEnabled) return;
     if (roleRows.includes("admin")) return;
+    
     // Owner's rule: popup only when 1–2 days are left, or after expiry —
     // at most ONCE per calendar day, every day until the user buys a plan.
     // Paid users never see it (getTrialState returns "paid" → no milestone).
@@ -75,7 +81,7 @@ export function TrialPopup() {
     localStorage.setItem(key, "1");
     setMilestone(m);
     setOpen(true);
-  }, [profile, roleRows, subStatusData, subStatusLoading]);
+  }, [profile, roleRows, subStatusData, subStatusLoading, nudgesEnabled, nudgesLoading]);
 
   if (!milestone) return null;
 
