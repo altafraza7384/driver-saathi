@@ -115,6 +115,14 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Subscription nudges master flag (admin on/off, default OFF).
+    // Regular users must be able to READ this one doc (the TrialPopup
+    // checks it); only admins may write it. The admin config doc stays
+    // admin-only under the rule below.
+    match /config/subscription_nudges {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
     // Admin-managed app config (e.g. the mechanic strike limit).
     match /config/{docId} {
       allow read, write: if isAdmin();
