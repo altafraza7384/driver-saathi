@@ -8,17 +8,21 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n";
 import { getTrialState, trialMilestone } from "@/lib/trial";
+import { httpsCallable } from "firebase/functions";
+import { firebaseFunctions } from "@/integrations/firebase/client";
 
 // Trial milestone popup, mounted once in AppLayout. Shows at most once per
 // calendar day (localStorage date gate), only when 1–2 days are left or the
 // trial has expired, every day until the user buys a plan — never for paid
 // users or admins, never blocks the app — "Baad me" just closes it.
+// The early milestone also prompts for the ₹1 mandate — skipped when the
+// subscription status is already authenticated.
 export function TrialPopup() {
   const { t } = useI18n();
   const { user } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const [milestone, setMilestone] = useState<"2days" | "lastDay" | "expired" | null>(null);
+  const [milestone, setMilestone] = useState<"early" | "2days" | "lastDay" | "expired" | null>(null);
 
   const { data: profile } = useQuery({
     queryKey: ["trial_profile"],
@@ -43,32 +47,48 @@ export function TrialPopup() {
     },
     enabled: !!user,
   });
+  const { data: subStatusData, isLoading: subStatusLoading } = useQuery({
+    queryKey: ["plans_sub_status"],
+    queryFn: async () => {
+      try {
+        const fn = httpsCallable(firebaseFunctions, "getSubscriptionStatus");
+        const res = await fn({});
+        return res.data as { status: string | null; planInterval: string | null };
+      } catch {
+        return null;
+      }
+    },
+    enabled: !!user,
+  });
 
   useEffect(() => {
-    if (!profile || !roleRows) return;
+    if (!profile || !roleRows || subStatusLoading) return;
     if (roleRows.includes("admin")) return;
     // Owner's rule: popup only when 1–2 days are left, or after expiry —
     // at most ONCE per calendar day, every day until the user buys a plan.
     // Paid users never see it (getTrialState returns "paid" → no milestone).
     const m = trialMilestone(getTrialState(profile));
     if (!m) return;
+    if (m === "early" && subStatusData?.status === "authenticated") return;
     const key = `ds-trial-popup-${localToday()}`; // once per LOCAL day
     if (localStorage.getItem(key)) return;
     localStorage.setItem(key, "1");
     setMilestone(m);
     setOpen(true);
-  }, [profile, roleRows]);
+  }, [profile, roleRows, subStatusData, subStatusLoading]);
 
   if (!milestone) return null;
 
   const title =
     milestone === "2days" ? t("trial.popup2daysTitle")
     : milestone === "lastDay" ? t("trial.popupLastDayTitle")
-    : t("trial.popupExpiredTitle");
+    : milestone === "early" ? t("trial.popupEarlyTitle")
+      : t("trial.popupExpiredTitle");
   const body =
     milestone === "2days" ? t("trial.popup2daysBody")
     : milestone === "lastDay" ? t("trial.popupLastDayBody")
-    : t("trial.popupExpiredBody");
+    : milestone === "early" ? t("trial.popupEarlyBody")
+      : t("trial.popupExpiredBody");
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
