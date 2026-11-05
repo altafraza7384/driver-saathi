@@ -37,9 +37,10 @@ export function getTrialState(
   return { kind: "trial", daysLeft };
 }
 
-// Popup milestone due today: 2 days left, last day, or expired. Anything
+// Popup milestone due today: early (day 1-2), 2 days left, last day, or expired. Anything
 // else returns null. Callers show each milestone at most once per day.
-export function trialMilestone(state: TrialState): "2days" | "lastDay" | "expired" | null {
+export function trialMilestone(state: TrialState): "early" | "2days" | "lastDay" | "expired" | null {
+  if (state.kind === "trial" && state.daysLeft >= 6) return "early";
   if (state.kind === "trial" && state.daysLeft === 2) return "2days";
   if (state.kind === "trial" && state.daysLeft === 1) return "lastDay";
   if (state.kind === "expired") return "expired";
