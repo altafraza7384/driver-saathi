@@ -316,6 +316,7 @@ export function SubscriptionPlansCard() {
                     <p className="text-sm text-muted-foreground">
                       {t("plans.thenAfterTrial", { price: formatINR(price), per })}
                     </p>
+                    <p className="text-sm text-muted-foreground">{t("plans.mandateNote")}</p>
                     <div className="rounded-lg border border-red-200 bg-red-50 p-3">
                       <p className="flex items-center justify-center gap-1 font-bold text-red-600"><Timer className="h-4 w-4" /> {t("plans.validOnlyToday")}</p>
                       <p className="mt-1 font-mono text-3xl font-bold tabular-nums text-red-600">{countdown}</p>
