@@ -153,8 +153,7 @@ export default function AssistantPage() {
     enabled: !!session?.user?.id,
   });
   const navigate = useNavigate();
-  const { data: nudges } = useSubscriptionNudges();
-  const nudgesEnabled = nudges?.enabled === true;
+  const { enabled: nudgesEnabled } = useSubscriptionNudges();
   const trialState = getTrialState(trialProfile ?? null);
   // Per-account chat key: history must never leak across accounts sharing
   // one browser. Null until the session loads; the load effect below fills
