@@ -109,9 +109,13 @@ export const createRazorpaySubscription = onCall(
                 trialDays: TRIAL_DAYS,
               };
           }
-        await rzp("/subscriptions/" + existingSubscriptionId + "/cancel", "POST", {
-          cancel_at_cycle_end: 0,
-        });
+        try {
+          await rzp("/subscriptions/" + existingSubscriptionId + "/cancel", "POST", {
+            cancel_at_cycle_end: 0,
+          });
+        } catch (e) {
+          console.error("Old subscription cancel failed, proceeding with new one:", existingSubscriptionId, e);
+        }
       } else if (existingStatus === "authenticated" || existingStatus === "active") {
         throw new HttpsError("failed-precondition", "Already subscribed");
       }
