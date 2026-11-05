@@ -38,6 +38,18 @@ export default function AdminPlansPage() {
     },
   });
 
+  const { data: nudgesDoc } = useQuery({
+    queryKey: ["admin_subscription_nudges"],
+    queryFn: async () => {
+      const { data, error } = await db.from("config").select("*").eq("id", "subscription_nudges");
+      if (error) throw error;
+      const rows = data as { id: string; enabled?: boolean }[];
+      return rows[0] ?? null;
+    },
+  });
+
+  const nudgesEnabled = nudgesDoc?.enabled === true;
+
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["admin_subscription_plans"] });
     qc.invalidateQueries({ queryKey: ["subscription_plans"] });
@@ -63,6 +75,23 @@ export default function AdminPlansPage() {
       if (error) throw error;
     },
     onSuccess: () => { refresh(); toast.success(edit ? "Plan updated" : "Plan created"); close(); },
+    onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
+  });
+
+  const saveNudges = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      if (nudgesDoc) {
+        const { error } = await db.from("config").update({ enabled }).eq("id", "subscription_nudges");
+        if (error) throw error;
+      } else {
+        const { error } = await db.from("config").insert({ id: "subscription_nudges", enabled });
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin_subscription_nudges"] });
+      qc.invalidateQueries({ queryKey: ["subscription_nudges"] });
+    },
     onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
 
@@ -131,7 +160,19 @@ export default function AdminPlansPage() {
         <p className="text-sm text-muted-foreground">Payments are not active yet. Drivers can only view active plans.</p>
       </div>
 
-      {isLoading ? (
+      <Card>
+      <CardContent className="pt-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <div className="font-medium">Subscription nudges</div>
+            <p className="text-sm text-muted-foreground">When ON, users see trial reminders (popup), expiry pushes and the AI upgrade card. When OFF, none of those show. The plans page, trial status lines and trial limits always stay on.</p>
+          </div>
+          <Switch aria-label="Subscription nudges" checked={nudgesEnabled} onCheckedChange={(v) => saveNudges.mutate(v)} />
+        </div>
+      </CardContent>
+    </Card>
+
+    {isLoading ? (
         <div className="flex justify-center py-10"><div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>
       ) : plansError ? (
         <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 space-y-1">
