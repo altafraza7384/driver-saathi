@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, lazy, Suspense } from "react";
+import { useNavigate } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
@@ -12,6 +13,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { BACKEND } from "@/lib/backend";
 import { db } from "@/lib/backend";
 import { getTrialState } from "@/lib/trial";
+import { useSubscriptionNudges } from "@/lib/nudges";
 import { callChatFunction } from "@/lib/ai";
 import { startNativeListening, cancelNativeListening, speechLangFor, type NativeListenSession } from "@/lib/nativeSpeech";
 import { stripMarkdown } from "@/lib/plainText";
@@ -150,6 +152,9 @@ export default function AssistantPage() {
     },
     enabled: !!session?.user?.id,
   });
+  const navigate = useNavigate();
+  const { data: nudges } = useSubscriptionNudges();
+  const nudgesEnabled = nudges?.enabled === true;
   const trialState = getTrialState(trialProfile ?? null);
   // Per-account chat key: history must never leak across accounts sharing
   // one browser. Null until the session loads; the load effect below fills
@@ -838,6 +843,15 @@ export default function AssistantPage() {
         </AnimatePresence>
 
     <div className={CHAT_SCREEN_CLASS} style={CHAT_SCREEN_STYLE}>
+      {trialState.kind === "expired" && nudgesEnabled && (
+        <Card className="mb-4 border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/40">
+                        <p className="font-semibold">{t("trial.upgradeCardTitle")}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{t("trial.upgradeCardBody")}</p>
+          <Button className="mt-3" onClick={() => navigate("/plans")}>
+            {t("trial.viewPlans")}
+          </Button>
+        </Card>
+      )}
       {/* Toggle + chat header */}
       <div className="flex shrink-0 flex-col gap-3 mb-4">
         <div className="flex items-center justify-center">
