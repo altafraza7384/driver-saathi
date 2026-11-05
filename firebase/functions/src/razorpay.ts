@@ -94,6 +94,29 @@ export const createRazorpaySubscription = onCall(
     }
     const adminPlanId = asString(req.data?.adminPlanId);
     if (!adminPlanId) throw new HttpsError("invalid-argument", "Invalid plan");
+    // Reuse an open created subscription instead of creating a new one on every tap.
+    const existingSnap = await db.doc(`subscriptions/${uid}`).get();
+    const existing = existingSnap.data();
+    if (existing) {
+        const existingStatus = asString(existing.status);
+      const existingSubscriptionId = asString(existing.razorpaySubscriptionId);
+      if (existingStatus === "created" && existingSubscriptionId) {
+          if (asString(existing.planInterval) === interval) {
+              return {
+                  subscriptionId: existingSubscriptionId,
+                keyId: RAZORPAY_KEY_ID.value(),
+                testMode: testMode(),
+                trialDays: TRIAL_DAYS,
+              };
+          }
+        await rzp("/subscriptions/" + existingSubscriptionId + "/cancel", "POST", {
+          cancel_at_cycle_end: 0,
+        });
+      } else if (existingStatus === "authenticated" || existingStatus === "active") {
+        throw new HttpsError("failed-precondition", "Already subscribed");
+      }
+    }
+    
     const planId = await ensurePlanId(interval);
     const startAt = Math.floor(Date.now() / 1000) + TRIAL_DAYS * 24 * 60 * 60;
     const sub = await rzp("/subscriptions", "POST", {
