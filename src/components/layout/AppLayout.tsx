@@ -4,7 +4,6 @@ import { BottomNav } from "./BottomNav";
 import { UpdatePrompt } from "@/components/UpdatePrompt";
 import { TrialPopup } from "@/components/TrialPopup";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
-import { showBannerAd } from "@/lib/admob";
 import { requestAllPermissions } from "@/lib/native-permissions";
 import { prefetchRoutes } from "@/lib/prefetchRoutes";
 import { isNativeContext } from "@/lib/platform";
@@ -23,7 +22,7 @@ export function AppLayout() {
   usePushNotifications();
 
   useEffect(() => {
-    // Defer native permission prompts + AdMob init until the browser is
+    // Defer native permission prompts until the browser is
     // idle (audit 2026-10-24): firing them on mount competed with the
     // Home page's own first data load. Home renders first; prompts
     // arrive a few seconds later instead of barraging on first paint.
@@ -35,7 +34,6 @@ export function AppLayout() {
       else setTimeout(fn, 2000);
     };
     defer(() => { requestAllPermissions(); });
-    defer(() => { void showBannerAd(); });
     // Warm the cache for daily-use pages while idle, so later taps open
     // instantly instead of downloading their chunk on the spot.
     prefetchRoutes();
@@ -52,7 +50,7 @@ export function AppLayout() {
 
   return (
     <div className="min-h-screen bg-background pt-safe">
-      <main className="mx-auto w-full max-w-md px-0 pb-28 pt-0 sm:max-w-lg" style={{ paddingBottom: 'calc(7rem + var(--admob-nav-lift, 0px))' }}>
+      <main className="mx-auto w-full max-w-md px-0 pb-28 pt-0 sm:max-w-lg">
         <Suspense fallback={<PageLoader />}>
           <Outlet />
         </Suspense>

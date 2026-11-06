@@ -3,9 +3,9 @@ import { hideNativeAd, isNativeAdsAvailable, setNativeAdRect, showNativeAd } fro
 
 /**
  * Inline AdMob native-ad slot. Renders nothing on web (native-only) and is
- * only mounted by the parent inside its messages.length === 0 block, so the
- * ad shows in the empty state, hides when chatting starts, and returns when
- * the 24h chat prune empties history again.
+ * The parent controls where the slot appears. The native view is positioned
+ * over this slot's exact WebView rectangle, so it stays inside page content
+ * instead of being attached to the bottom of the whole screen.
  */
 export default function NativeAdSlot() {
   const ref = useRef<HTMLDivElement>(null);
