@@ -225,7 +225,7 @@ export default function HomePage() {
       <div>
         <Card className="border-0 shadow-sm overflow-hidden">
           <CardContent className="p-2">
-            <NativeAdSlot />
+            <NativeAdSlot height={150} />
           </CardContent>
         </Card>
       </div>
