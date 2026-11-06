@@ -28,22 +28,19 @@ function errText(e: unknown): string {
 }
 
 const BANNER_MARGIN = 70;
-function measureSafeBottom(): number {
-  try {
-    const probe = document.createElement('div');
-    probe.style.cssText =
-      'position:fixed;left:0;bottom:0;width:0;height:0;padding-bottom:env(safe-area-inset-bottom,0px);visibility:hidden;pointer-events:none;';
-    document.body.appendChild(probe);
-    const v = parseFloat(getComputedStyle(probe).paddingBottom) || 0;
-    probe.remove();
-    return Math.max(v, 16);
-  } catch {
-    return 16;
-  }
-}
+// Bottom-nav lift = banner height ONLY. Why: the edge-to-edge plugin margins
+// the WebView up by the system bottom inset, so the WebView viewport already
+// ends above the system nav bar; the AdMob plugin (Android 15+) puts the
+// banner's bottom edge exactly on the viewport's bottom edge, so in viewport
+// coordinates the banner occupies [0, bannerHeight]. Lifting the nav by
+// exactly bannerHeight puts it right on top of the banner. Do NOT add the
+// margin (the plugin overwrites it with the system inset on Android 15+)
+// and do NOT subtract the safe area (env(safe-area-inset-bottom) is 0 here
+// because the edge-to-edge plugin consumes the insets; the nav's own padding
+// already sits above the banner). The old formula (height + 70 - safe)
+// over-lifted the nav by ~54dp on the user's phone (v19 video).
 function navLiftForBanner(bannerHeight: number): number {
-  if (!bannerHeight) return 0;
-  return Math.max(0, bannerHeight + BANNER_MARGIN - measureSafeBottom());
+  return bannerHeight > 0 ? bannerHeight : 0;
 }
 
 let initPromise: Promise<boolean> | null = null;
@@ -125,7 +122,7 @@ export async function showBannerAd(): Promise<void> {
       adId: ADMOB_BANNER_ID,
       adSize: BannerAdSize.ADAPTIVE_BANNER,
       position: BannerAdPosition.BOTTOM_CENTER,
-      margin: BANNER_MARGIN, // bottom edge of the banner; the nav lift (navLiftForBanner) clears the rest
+      margin: BANNER_MARGIN, // pre-Android-15 only: lifts the banner above the system nav bar; on Android 15+ the plugin's insets listener overwrites it with the system inset
       isTesting: false,
     };
 
