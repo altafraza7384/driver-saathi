@@ -16,7 +16,7 @@ export function BottomNav() {
   const { t } = useI18n();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t-2 bg-card/98 backdrop-blur-md safe-bottom shadow-lg" style={{ bottom: 'var(--admob-nav-lift, 0px)' }}>
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t-2 bg-card/98 backdrop-blur-md safe-bottom shadow-lg">
       <div className="mx-auto flex w-full max-w-md items-stretch justify-around sm:max-w-lg">
         {navItems.map((item) => {
           const isActive = location.pathname === item.path;

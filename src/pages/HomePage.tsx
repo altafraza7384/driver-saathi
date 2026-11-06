@@ -1,6 +1,6 @@
 import { categoryLabel } from "@/lib/categories";
 import { Plus, Minus, Car, StickyNote, ChevronRight, Target, CreditCard, Heart, AlertTriangle, Wallet } from "lucide-react";
-import { AdBanner } from "@/components/AdBanner";
+import NativeAdSlot from "@/components/NativeAdSlot";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -225,7 +225,7 @@ export default function HomePage() {
       <div>
         <Card className="border-0 shadow-sm overflow-hidden">
           <CardContent className="p-2">
-            <AdBanner className="max-h-[60px]" />
+            <NativeAdSlot />
           </CardContent>
         </Card>
       </div>
