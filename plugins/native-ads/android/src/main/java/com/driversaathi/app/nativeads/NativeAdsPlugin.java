@@ -1,6 +1,8 @@
 package com.driversaathi.app.nativeads;
 
 import android.app.Activity;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebView;
@@ -35,6 +37,9 @@ import com.google.android.gms.ads.nativead.NativeAdView;
 @CapacitorPlugin(name = "NativeAds")
 public class NativeAdsPlugin extends Plugin {
 
+    // Serialize slot state, load callbacks and view cleanup on the UI thread.
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private long loadGeneration = 0;
     private NativeAd nativeAd;
     private NativeAdView adView;
     private float density = 1.0f;
@@ -53,33 +58,42 @@ public class NativeAdsPlugin extends Plugin {
             call.reject("No activity");
             return;
         }
-        density = activity.getResources().getDisplayMetrics().density;
-        VideoOptions videoOptions = new VideoOptions.Builder().setStartMuted(true).build();
-        NativeAdOptions options = new NativeAdOptions.Builder().setVideoOptions(videoOptions).build();
-        AdLoader loader = new AdLoader.Builder(getContext(), adUnitId)
-            .forNativeAd(ad -> {
-                destroyAd();
-                nativeAd = ad;
-                activity.runOnUiThread(() -> {
+        mainHandler.post(() -> {
+            final long generation = ++loadGeneration;
+            density = activity.getResources().getDisplayMetrics().density;
+            VideoOptions videoOptions = new VideoOptions.Builder().setStartMuted(true).build();
+            NativeAdOptions options = new NativeAdOptions.Builder().setVideoOptions(videoOptions).build();
+            AdLoader loader = new AdLoader.Builder(getContext(), adUnitId)
+                .forNativeAd(ad -> mainHandler.post(() -> {
+                    // Hide or a newer show invalidates this load, even after a remount.
+                    if (generation != loadGeneration) {
+                        ad.destroy();
+                        return;
+                    }
+                    releaseAd();
+                    nativeAd = ad;
                     attachAdView();
                     JSObject ret = new JSObject();
                     ret.put("loaded", true);
                     notifyListeners("nativeAdLoaded", ret);
-                });
-            })
-            .withAdListener(new AdListener() {
-                @Override
-                public void onAdFailedToLoad(LoadAdError error) {
-                    JSObject ret = new JSObject();
-                    ret.put("code", error.getCode());
-                    ret.put("message", error.getMessage());
-                    notifyListeners("nativeAdFailedToLoad", ret);
-                }
-            })
-            .withNativeAdOptions(options)
-            .build();
-        loader.loadAd(new AdRequest.Builder().build());
-        call.resolve();
+                }))
+                .withAdListener(new AdListener() {
+                    @Override
+                    public void onAdFailedToLoad(LoadAdError error) {
+                        mainHandler.post(() -> {
+                            if (generation != loadGeneration) return;
+                            JSObject ret = new JSObject();
+                            ret.put("code", error.getCode());
+                            ret.put("message", error.getMessage());
+                            notifyListeners("nativeAdFailedToLoad", ret);
+                        });
+                    }
+                })
+                .withNativeAdOptions(options)
+                .build();
+            loader.loadAd(new AdRequest.Builder().build());
+            call.resolve();
+        });
     }
 
     @PluginMethod
@@ -92,27 +106,23 @@ public class NativeAdsPlugin extends Plugin {
             call.reject("x, y, width and height are required and width/height must be positive");
             return;
         }
-        lastX = x;
-        lastY = y;
-        lastW = w;
-        lastH = h;
-        hasRect = true;
-        Activity activity = getActivity();
-        if (activity != null && adView != null) {
-            activity.runOnUiThread(this::repositionAdView);
-        }
-        call.resolve();
+        mainHandler.post(() -> {
+            lastX = x;
+            lastY = y;
+            lastW = w;
+            lastH = h;
+            hasRect = true;
+            repositionAdView();
+            call.resolve();
+        });
     }
 
     @PluginMethod
     public void hideNativeAd(PluginCall call) {
-        Activity activity = getActivity();
-        if (activity != null) {
-            activity.runOnUiThread(this::destroyAd);
-        } else {
+        mainHandler.post(() -> {
             destroyAd();
-        }
-        call.resolve();
+            call.resolve();
+        });
     }
 
     private void attachAdView() {
@@ -163,6 +173,14 @@ public class NativeAdsPlugin extends Plugin {
     }
 
     private void destroyAd() {
+        ++loadGeneration;
+        hasRect = false;
+        lastX = lastY = lastW = lastH = 0;
+        releaseAd();
+    }
+
+    // Replacing an accepted ad must preserve the current slot's rect and generation.
+    private void releaseAd() {
         if (adView != null) {
             ViewGroup parent = (ViewGroup) adView.getParent();
             if (parent != null) parent.removeView(adView);
