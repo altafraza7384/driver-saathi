@@ -120,6 +120,7 @@ export async function showBannerAd(): Promise<void> {
     // Listeners must exist BEFORE the request, or a fast Loaded/FailedToLoad
     // event is missed.
     await addBannerListeners();
+
     const options: BannerAdOptions = {
       adId: ADMOB_BANNER_ID,
       adSize: BannerAdSize.ADAPTIVE_BANNER,
@@ -127,6 +128,7 @@ export async function showBannerAd(): Promise<void> {
       margin: BANNER_MARGIN, // bottom edge of the banner; the nav lift (navLiftForBanner) clears the rest
       isTesting: false,
     };
+
     bannerRequested = true;
     adLog('requesting banner…');
     await AdMob.showBanner(options);
