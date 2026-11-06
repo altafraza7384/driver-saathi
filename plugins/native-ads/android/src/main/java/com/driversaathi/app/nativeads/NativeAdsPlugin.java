@@ -129,14 +129,15 @@ public class NativeAdsPlugin extends Plugin {
         Activity activity = getActivity();
         if (activity == null || nativeAd == null || !hasRect) return;
         ViewGroup decor = (ViewGroup) activity.getWindow().getDecorView();
-        NativeAdView view = (NativeAdView) activity.getLayoutInflater().inflate(R.layout.native_ad_layout, decor, false);
+        int layoutId = lastH < 180 ? R.layout.native_ad_compact_layout : R.layout.native_ad_layout;
+        NativeAdView view = (NativeAdView) activity.getLayoutInflater().inflate(layoutId, decor, false);
         MediaView mediaView = view.findViewById(R.id.ad_media);
         TextView headline = view.findViewById(R.id.ad_headline);
         TextView body = view.findViewById(R.id.ad_body);
         TextView advertiser = view.findViewById(R.id.ad_advertiser);
         Button cta = view.findViewById(R.id.ad_cta);
         ImageView icon = view.findViewById(R.id.ad_icon);
-        view.setMediaView(mediaView);
+        if (mediaView != null) view.setMediaView(mediaView);
         view.setHeadlineView(headline);
         view.setBodyView(body);
         view.setAdvertiserView(advertiser);
@@ -147,7 +148,7 @@ public class NativeAdsPlugin extends Plugin {
         if (nativeAd.getAdvertiser() != null) advertiser.setText(nativeAd.getAdvertiser()); else advertiser.setVisibility(View.GONE);
         if (nativeAd.getCallToAction() != null) cta.setText(nativeAd.getCallToAction()); else cta.setVisibility(View.GONE);
         if (nativeAd.getIcon() != null) icon.setImageDrawable(nativeAd.getIcon().getDrawable()); else icon.setVisibility(View.GONE);
-        if (nativeAd.getMediaContent() != null) mediaView.setMediaContent(nativeAd.getMediaContent());
+        if (mediaView != null && nativeAd.getMediaContent() != null) mediaView.setMediaContent(nativeAd.getMediaContent());
         view.setNativeAd(nativeAd);
         decor.addView(view, layoutParams());
         adView = view;
