@@ -18,6 +18,7 @@
         "@capacitor/push-notifications": "^8.0.1",
         "@capacitor/splash-screen": "^8.0.2",
         "@capacitor/status-bar": "8.0.4",
+        "@capawesome/capacitor-android-edge-to-edge-support": "^8.0.8",
         "@capawesome/capacitor-app-update": "^8.1.0",
         "@fontsource/montserrat": "^5.2.8",
         "@fontsource/roboto": "^5.2.9",
@@ -145,6 +146,8 @@
     "@capacitor/status-bar": ["@capacitor/status-bar@8.0.4", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-ZMzBUyHBzwDUxcHadEhvOvmoPmMQGMZgaMRJu8ohELeI6IaxoVH9ZhdF/OHnY3/yykv3Glev8Tnbh4aZY/0B0w=="],
 
     "@capacitor/synapse": ["@capacitor/synapse@1.0.4", "", {}, "sha512-/C1FUo8/OkKuAT4nCIu/34ny9siNHr9qtFezu4kxm6GY1wNFxrCFWjfYx5C1tUhVGz3fxBABegupkpjXvjCHrw=="],
+
+    "@capawesome/capacitor-android-edge-to-edge-support": ["@capawesome/capacitor-android-edge-to-edge-support@8.0.8", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-+eKz15uhfOwft5IRZFL1QQZT/FHeeE5scNnlP9CIMrhW0Ctc9cJM13Ec2vOTd9oYGz3mCF3kf39C2spDDuSUVw=="],
 
     "@capawesome/capacitor-app-update": ["@capawesome/capacitor-app-update@8.1.0", "https://europe-west1-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@capawesome/capacitor-app-update/-/capacitor-app-update-8.1.0.tgz", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-MmCbXULPFAsRr6wSsGwLKqp8cUao6eTC1ToE/d5jGi1g79Se325cuf3Ef15KGf6vCPNC8tV1iIRwSGvTHeYu+A=="],
 
