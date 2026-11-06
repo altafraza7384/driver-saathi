@@ -1,13 +1,18 @@
 import { useEffect, useRef } from "react";
 import { hideNativeAd, isNativeAdsAvailable, setNativeAdRect, showNativeAd } from "@/lib/nativeAds";
 
+interface NativeAdSlotProps {
+  /** Slot height in CSS pixels. Compact slots use the compact native layout. */
+  height?: number;
+}
+
 /**
  * Inline AdMob native-ad slot. Renders nothing on web (native-only) and is
  * The parent controls where the slot appears. The native view is positioned
  * over this slot's exact WebView rectangle, so it stays inside page content
  * instead of being attached to the bottom of the whole screen.
  */
-export default function NativeAdSlot() {
+export default function NativeAdSlot({ height = 300 }: NativeAdSlotProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -39,7 +44,7 @@ export default function NativeAdSlot() {
   }, []);
 
   if (!isNativeAdsAvailable()) return null;
-  return <div ref={ref} className="w-full" style={{ height: 300 }} aria-hidden="true" />;
+  return <div ref={ref} className="w-full" style={{ height }} aria-hidden="true" />;
 }
 
 function findScroller(el: HTMLElement): HTMLElement | null {
