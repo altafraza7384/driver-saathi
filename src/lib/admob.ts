@@ -85,11 +85,14 @@ function addBannerListeners(): Promise<void> {
       clearWatchdog();
       adLog('banner loaded ✅');
     }),
-    AdMob.addListener(BannerAdPluginEvents.FailedToLoad, (e: AdMobError) => {
-      adLog(`banner load failed: ${errText(e)}`, true);
+    AdMob.addListener(BannerAdPluginEvents.FailedToLoad, (err: AdMobError) => {
+      clearWatchdog();
+      // Common codes: 0 internal, 1 invalid request, 2 network, 3 no fill
+      // (normal for a new / not-yet-reviewed app), 8 app id missing.
+      adLog(`banner failed: code ${err?.code} ${err?.message ?? ''}`, true);
       document.documentElement.style.setProperty('--admob-banner-height', '0px');
       document.documentElement.style.setProperty('--admob-nav-lift', '0px');
-      bannerRequested = false;
+      bannerRequested = false; // plugin destroys the view; allow a retry later
     }),
     AdMob.addListener(BannerAdPluginEvents.SizeChanged, (size: AdMobBannerSize) => {
       const height = size?.height ?? 0;
@@ -97,42 +100,25 @@ function addBannerListeners(): Promise<void> {
       document.documentElement.style.setProperty('--admob-nav-lift', `${navLiftForBanner(height)}px`);
       if (height) adLog(`banner size ${size.width}x${size.height}`);
     }),
+    AdMob.addListener(BannerAdPluginEvents.AdImpression, () => {
+      adLog('impression counted');
+    }),
   ];
-  listenersPromise = (async () => {
-    await Promise.all(handles);
-    adLog('banner listeners ready');
-  })();
+  listenersPromise = Promise.all(handles).then(() => undefined).catch((e) => {
+    adLog(`listener setup failed: ${errText(e)}`, true);
+  });
   return listenersPromise;
 }
 
-/** Hide the banner, if any. Safe to call when nothing is showing. */
-export async function hideBannerAd(): Promise<void> {
-  try {
-    if (!Capacitor.isNativePlatform()) return;
-    if (!bannerRequested) return;
-    bannerRequested = false;
-    document.documentElement.style.setProperty('--admob-banner-height', '0px');
-    await AdMob.hideBanner();
-    adLog('banner hidden');
-  } catch (e) {
-    adLog(`hideBanner failed: ${errText(e)}`, true);
-  }
-}
-
-/**
- * Show (or re-show) the adaptive banner pinned to the bottom of the screen.
- * Positioned above the bottom nav via margin and the banner-height CSS var.
- */
+/** Show the bottom banner. Never throws; every failure is logged. */
 export async function showBannerAd(): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+  if (bannerRequested) return;
   try {
-    if (!Capacitor.isNativePlatform()) return;
-    if (bannerRequested) return;
-    bannerRequested = true;
     const ok = await initAdMob();
-    if (!ok) {
-      bannerRequested = false;
-      return;
-    }
+    if (!ok) return;
+    // Listeners must exist BEFORE the request, or a fast Loaded/FailedToLoad
+    // event is missed.
     await addBannerListeners();
     const options: BannerAdOptions = {
       adId: ADMOB_BANNER_ID,
@@ -141,17 +127,31 @@ export async function showBannerAd(): Promise<void> {
       margin: BANNER_MARGIN, // bottom edge of the banner; the nav lift (navLiftForBanner) clears the rest
       isTesting: false,
     };
+    bannerRequested = true;
+    adLog('requesting banner…');
+    await AdMob.showBanner(options);
+    adLog('request sent, waiting for Google…');
     clearWatchdog();
     watchdog = setTimeout(() => {
-      adLog('banner watchdog: no Loaded event in 8s — will not retry this session', true);
-    }, 8000);
-    await AdMob.showBanner(options);
-    adLog('banner requested');
+      adLog('no answer from Google after 30 s', true);
+    }, 30000);
   } catch (e) {
-    adLog(`showBanner failed: ${errText(e)}`, true);
-    clearWatchdog();
     document.documentElement.style.setProperty('--admob-banner-height', '0px');
     document.documentElement.style.setProperty('--admob-nav-lift', '0px');
     bannerRequested = false;
+    adLog(`showBanner failed: ${errText(e)}`, true);
   }
+}
+
+export async function hideBannerAd(): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+  try {
+    await AdMob.hideBanner();
+  } catch (e) {
+    // ignore
+  }
+}
+
+export function isNative(): boolean {
+  return Capacitor.isNativePlatform();
 }
