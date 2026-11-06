@@ -29,6 +29,7 @@
         "native-ads": "file:plugins/native-ads",
     "@capacitor/status-bar": "8.0.4",
     "@capawesome/capacitor-app-update": "^8.1.0",
+        "@capawesome/capacitor-android-edge-to-edge-support": "^8.0.8",
     "@fontsource/montserrat": "^5.2.8",
     "@fontsource/roboto": "^5.2.9",
     "@hookform/resolvers": "^3.10.0",
