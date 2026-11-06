@@ -24,6 +24,13 @@ const config: CapacitorConfig = {
       splashFullScreen: false,
       splashImmersive: false,
     },
+        SystemBars: {
+      // Edge-to-edge: the @capawesome/capacitor-android-edge-to-edge-support
+      // plugin applies native insets to the WebView (fixes Razorpay checkout
+      // logo/button sitting under the system bars). The built-in SystemBars
+      // insets handling must be OFF or the two fight and double-count.
+      insetsHandling: 'disable',
+        },          
     FirebaseAuthentication: {
       // The native plugin only brokers the Google account pick and returns
       // the credential; the Firebase JS SDK performs the actual sign-in, so
