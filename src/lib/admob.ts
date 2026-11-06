@@ -1,15 +1,5 @@
-import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
-import {
-  AdMob,
-  BannerAdOptions,
-  BannerAdSize,
-  BannerAdPosition,
-  BannerAdPluginEvents,
-  type AdMobBannerSize,
-  type AdMobError,
-} from '@capacitor-community/admob';
-
-const ADMOB_BANNER_ID = 'ca-app-pub-1994214977986364/7524617781';
+import { Capacitor } from '@capacitor/core';
+import { AdMob } from '@capacitor-community/admob';
 
 function adLog(message: string, isError = false): void {
   if (isError) console.warn(`[AdMob] ${message}`);
@@ -27,30 +17,7 @@ function errText(e: unknown): string {
   return String(e);
 }
 
-const BANNER_MARGIN = 70;
-// Bottom-nav lift = banner height ONLY. Why: the edge-to-edge plugin margins
-// the WebView up by the system bottom inset, so the WebView viewport already
-// ends above the system nav bar; the AdMob plugin (Android 15+) puts the
-// banner's bottom edge exactly on the viewport's bottom edge, so in viewport
-// coordinates the banner occupies [0, bannerHeight]. Lifting the nav by
-// exactly bannerHeight puts it right on top of the banner. Do NOT add the
-// margin (the plugin overwrites it with the system inset on Android 15+)
-// and do NOT subtract the safe area (env(safe-area-inset-bottom) is 0 here
-// because the edge-to-edge plugin consumes the insets; the nav's own padding
-// already sits above the banner). The old formula (height + 70 - safe)
-// over-lifted the nav by ~54dp on the user's phone (v19 video).
-function navLiftForBanner(bannerHeight: number): number {
-  return bannerHeight > 0 ? bannerHeight : 0;
-}
-
 let initPromise: Promise<boolean> | null = null;
-let listenersPromise: Promise<void> | null = null;
-let bannerRequested = false;
-let watchdog: ReturnType<typeof setTimeout> | null = null;
-
-function clearWatchdog() {
-  if (watchdog) { clearTimeout(watchdog); watchdog = null; }
-}
 
 /** Initialise the Mobile Ads SDK once. Resolves true on success. */
 export function initAdMob(): Promise<boolean> {
@@ -73,84 +40,4 @@ export function initAdMob(): Promise<boolean> {
     }
   })();
   return initPromise;
-}
-
-function addBannerListeners(): Promise<void> {
-  if (listenersPromise) return listenersPromise;
-  const handles: Promise<PluginListenerHandle>[] = [
-    AdMob.addListener(BannerAdPluginEvents.Loaded, () => {
-      clearWatchdog();
-      adLog('banner loaded ✅');
-    }),
-    AdMob.addListener(BannerAdPluginEvents.FailedToLoad, (err: AdMobError) => {
-      clearWatchdog();
-      // Common codes: 0 internal, 1 invalid request, 2 network, 3 no fill
-      // (normal for a new / not-yet-reviewed app), 8 app id missing.
-      adLog(`banner failed: code ${err?.code} ${err?.message ?? ''}`, true);
-      document.documentElement.style.setProperty('--admob-banner-height', '0px');
-      document.documentElement.style.setProperty('--admob-nav-lift', '0px');
-      bannerRequested = false; // plugin destroys the view; allow a retry later
-    }),
-    AdMob.addListener(BannerAdPluginEvents.SizeChanged, (size: AdMobBannerSize) => {
-      const height = size?.height ?? 0;
-      document.documentElement.style.setProperty('--admob-banner-height', `${height}px`);
-      document.documentElement.style.setProperty('--admob-nav-lift', `${navLiftForBanner(height)}px`);
-      if (height) adLog(`banner size ${size.width}x${size.height}`);
-    }),
-    AdMob.addListener(BannerAdPluginEvents.AdImpression, () => {
-      adLog('impression counted');
-    }),
-  ];
-  listenersPromise = Promise.all(handles).then(() => undefined).catch((e) => {
-    adLog(`listener setup failed: ${errText(e)}`, true);
-  });
-  return listenersPromise;
-}
-
-/** Show the bottom banner. Never throws; every failure is logged. */
-export async function showBannerAd(): Promise<void> {
-  if (!Capacitor.isNativePlatform()) return;
-  if (bannerRequested) return;
-  try {
-    const ok = await initAdMob();
-    if (!ok) return;
-    // Listeners must exist BEFORE the request, or a fast Loaded/FailedToLoad
-    // event is missed.
-    await addBannerListeners();
-
-    const options: BannerAdOptions = {
-      adId: ADMOB_BANNER_ID,
-      adSize: BannerAdSize.ADAPTIVE_BANNER,
-      position: BannerAdPosition.BOTTOM_CENTER,
-      margin: BANNER_MARGIN, // pre-Android-15 only: lifts the banner above the system nav bar; on Android 15+ the plugin's insets listener overwrites it with the system inset
-      isTesting: false,
-    };
-
-    bannerRequested = true;
-    adLog('requesting banner…');
-    await AdMob.showBanner(options);
-    adLog('request sent, waiting for Google…');
-    clearWatchdog();
-    watchdog = setTimeout(() => {
-      adLog('no answer from Google after 30 s', true);
-    }, 30000);
-  } catch (e) {
-    document.documentElement.style.setProperty('--admob-banner-height', '0px');
-    document.documentElement.style.setProperty('--admob-nav-lift', '0px');
-    bannerRequested = false;
-    adLog(`showBanner failed: ${errText(e)}`, true);
-  }
-}
-
-export async function hideBannerAd(): Promise<void> {
-  if (!Capacitor.isNativePlatform()) return;
-  try {
-    await AdMob.hideBanner();
-  } catch (e) {
-    // ignore
-  }
-}
-
-export function isNative(): boolean {
-  return Capacitor.isNativePlatform();
 }
