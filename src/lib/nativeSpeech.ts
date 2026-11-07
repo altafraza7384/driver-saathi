@@ -1,4 +1,5 @@
 import type { Language } from "@/lib/i18n";
+import { silenceBeep } from "./speechSilence";
 
 // Native (Android app) speech-to-text through the
 // @capacitor-community/speech-recognition plugin. Inside the APK the
@@ -183,6 +184,7 @@ export async function startNativeListening(opts: NativeListenOptions): Promise<N
 
   const requestStop = () => {
     if (finished) return;
+    void silenceBeep(800);
     SpeechRecognition.stop().catch(() => undefined);
     finishSoon();
   };
@@ -205,6 +207,7 @@ export async function startNativeListening(opts: NativeListenOptions): Promise<N
     });
 
     if (finished) return null; // abandoned while starting
+    await silenceBeep(1200);
     await SpeechRecognition.start({
       language: opts.lang,
       maxResults: 5,
