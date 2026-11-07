@@ -70,6 +70,7 @@ export default function SupportPage() {
         <div className="border-t pt-3 space-y-2">
           <h4 className="font-bold">{t("more.termsOfUse")}</h4>
           <p className="text-muted-foreground text-xs leading-relaxed">{t("more.termsText")}</p>
+          <Button variant="link" className="p-0 h-auto text-primary text-xs" onClick={() => navigate("/terms")}>{t("more.readFullTerms")}</Button>
         </div>
         <p className="text-center text-xs text-muted-foreground pt-2">{t("more.copyright")}</p>
       </div>
