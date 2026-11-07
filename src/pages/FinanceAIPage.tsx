@@ -230,6 +230,16 @@ export default function FinanceAIPage({ embedded = false }: { embedded?: boolean
             <Trash2 className="h-4 w-4" />
           </Button>
         )}
+        <Button
+          variant={drivingMode ? "default" : "outline"}
+          size="sm"
+          className="gap-1"
+          onClick={toggleDrivingMode}
+          title={t("assistant.drivingModeTip")}
+      >
+        <Car className="h-4 w-4" />
+          <span className="hidden sm:inline">{t("assistant.drive")}</span>
+        </Button>
       </div>
 
       {/* Messages */}
@@ -244,7 +254,7 @@ export default function FinanceAIPage({ embedded = false }: { embedded?: boolean
               <p className="text-xs mt-1 max-w-xs">{t("financeAi.askHint")}</p>
             </div>
             <div className="w-full max-w-sm mx-auto">
-            <NativeAdSlot />
+            <NativeAdSlot hidden={drivingMode} />
             </div>
           </div>
         )}
