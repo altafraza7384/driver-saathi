@@ -74,7 +74,7 @@ const SOURCES: Array<[string, [string, unknown] | null, string, string, string]>
   ["goals", ["is_completed", false], "Goal Reminder", "/goals", "goal"],
   ["car_checks", ["is_completed", false], "Car Check Reminder", "/car-checks", "car check"],
   ["car_documents", null, "Document Reminder", "/car-checks", "document"],
-  ["recurring_expenses", ["is_active", true], "Bill Reminder", "/transactions", "bill"],
+  ["recurring_expenses", ["is_active", true], "Bill Reminder", "/debts", "bill"],
 ];
 
 export const sendNotifications = onSchedule(
