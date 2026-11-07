@@ -220,9 +220,14 @@ export default function FinanceAIPage({ embedded = false }: { embedded?: boolean
           title, status and the big mic never move; the reply is caption-size
           and scrolls inside its own small box. While the AI speaks, a tap
           anywhere stops the voice and the loop listens. */}
-      <AnimatePresence>
-        {drivingMode && (
-          <motion.div
+      {/* Portal: the overlay must escape the Assistant tab's chat-screen box,
+          or its bottom (Response + Exit button) hides behind the bottom nav
+          on the phone. As a body child it behaves exactly like the Assistant
+          page's own overlay. */}
+      {createPortal(
+        <AnimatePresence>
+          {drivingMode && (
+            <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -279,12 +284,17 @@ export default function FinanceAIPage({ embedded = false }: { embedded?: boolean
                   </div>
                 )}
 
-                {/* Last assistant response: caption size, scrolls inside */}
-                {messages.length > 0 && messages[messages.length - 1].role === "assistant" && (
+                {/* Last assistant response (or the send failure, so a failed
+                    reply is visible instead of silent): caption size, scrolls inside */}
+                {(driveError || (messages.length > 0 && messages[messages.length - 1].role === "assistant")) && (
                   <div className="flex min-h-0 flex-col rounded-lg border bg-card px-3 py-1.5">
                     <p className="shrink-0 text-[11px] leading-tight text-muted-foreground">{t("assistant.response")}</p>
                     <div className="min-h-0 overflow-y-auto overscroll-contain">
-                      <p className="whitespace-pre-wrap text-[13px] leading-snug">{stripMarkdown(messages[messages.length - 1].content)}</p>
+                      {driveError ? (
+                        <p className="whitespace-pre-wrap text-[13px] leading-snug text-destructive">{driveError}</p>
+                      ) : (
+                        <p className="whitespace-pre-wrap text-[13px] leading-snug">{stripMarkdown(messages[messages.length - 1].content)}</p>
+                      )}
                     </div>
                   </div>
                 )}
@@ -299,8 +309,10 @@ export default function FinanceAIPage({ embedded = false }: { embedded?: boolean
               </div>
             </div>
           </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
       <div
       className={embedded ? "flex h-full min-h-0 flex-col p-4 pt-2" : CHAT_SCREEN_CLASS}
       style={embedded ? undefined : CHAT_SCREEN_STYLE}
