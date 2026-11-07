@@ -50,7 +50,9 @@ export function cancelNativeListening(): void {
   current = null;
 }
 
-const SILENCE_STOP_MS = 2000; // stop this long after the last words heard
+// Android can pause briefly between Hinglish words or while the driver is
+// speaking over road noise. A longer debounce prevents mid-sentence cuts.
+const SILENCE_STOP_MS = 3500; // stop this long after the last words heard
 const NO_SPEECH_MS = 8000; // give up if nothing is heard at all
 const MAX_LISTEN_MS = 60000; // hard cap for one listen
 const POLL_MS = 700;
