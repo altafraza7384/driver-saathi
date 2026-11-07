@@ -19,11 +19,23 @@ interface Notification {
   date: string;
 }
 
-export function NotificationBell() { 
-  const navigate = useNavigate();
-  const { user } = useAuth();
-  const { t } = useI18n();
-  const [open, setOpen] = useState(false);
+interface NotificationBellProps {
+    /** Controlled open state. When provided, the parent owns the popover state. */
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
+}
+
+export function NotificationBell({ open: controlledOpen, onOpenChange }: NotificationBellProps = {}) {
+    const navigate = useNavigate();
+    const { user } = useAuth();
+    const { t } = useI18n();
+    const [internalOpen, setInternalOpen] = useState(false);
+    // Controlled when the parent passes open; otherwise internal state.
+    const open = controlledOpen ?? internalOpen;
+    const setOpen = (v: boolean) => {
+          if (controlledOpen !== undefined) onOpenChange?.(v);
+          else setInternalOpen(v);
+    };
   const todayKey = format(new Date(), "yyyy-MM-dd");
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => {
     try {
