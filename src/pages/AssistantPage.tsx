@@ -55,38 +55,13 @@ export default function AssistantPage() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [isListening, setIsListening] = useState(false);
   const [speakEnabled, setSpeakEnabled] = useState(true);
-  const [drivingMode, setDrivingMode] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const recognitionRef = useRef<any>(null);
-  const drivingModeRef = useRef(false);
   const isLoadingRef = useRef(false);
-  // Last reply actually spoken aloud. The mic must never re-send the AI's
-  // own voice: without headphones the phone mic hears the speaker, so a
-  // verbatim replay of this text is an echo, not a user message.
-  const lastSpokenRef = useRef("");
-  // Latest values for the hands-free loop. Driving Mode calls send() and
-  // startListening() from timers and plugin callbacks long after the render
-  // that created them; through these refs the loop always uses the CURRENT
-  // chat (a stale history made "haan" reach the server without the
-  // "sahi hai?" proposal it confirms).
+  // Latest messages for the page's send() (a stale history once made "haan"
+  // reach the server without the "sahi hai?" proposal it confirms).
   const messagesRef = useRef<Msg[]>([]);
-  const sendRef = useRef<(text?: string) => Promise<void>>(async () => undefined);
-  const startListeningRef = useRef<() => void>(() => undefined);
-  const exitDrivingRef = useRef<() => void>(() => undefined);
-  const languageRef = useRef(language);
-  languageRef.current = language;
-  // UI language is not necessarily the spoken language. Start with the UI
-  // locale, then learn a better locale from each useful transcript.
-  const voiceLangRef = useRef(speechLangFor(language));
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const speakingRef = useRef(false);
-  // What the user said last in Driving Mode (shown small under the mic).
-  const [lastHeard, setLastHeard] = useState("");
-  const listenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const listenFailsRef = useRef(0);
-
+  
   useEffect(() => { messagesRef.current = messages; }, [messages]);
 
   useEffect(() => {
@@ -115,11 +90,7 @@ export default function AssistantPage() {
     saveChatHistory(chatKey, messages);
   }, [messages, chatKey]);
 
-  const speakEnabledRef = useRef(speakEnabled);
-  useEffect(() => { speakEnabledRef.current = speakEnabled; }, [speakEnabled]);
-  useEffect(() => { drivingModeRef.current = drivingMode; }, [drivingMode]);
   useEffect(() => { isLoadingRef.current = isLoading; }, [isLoading]);
-  useEffect(() => { voiceLangRef.current = speechLangFor(language); }, [language]);
   // Normalize Hinglish transcript
   const normalizeTranscript = useCallback((text: string): string => {
     let t = text;
