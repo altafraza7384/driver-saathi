@@ -17,7 +17,7 @@ import { callChatFunction } from "@/lib/ai";
 import { stripMarkdown } from "@/lib/plainText";
 import { loadChatHistory, saveChatHistory, toApiMessages, type ChatMsg } from "@/lib/chatHistory";
 import { useDrivingMode } from "@/lib/useDrivingMode";
-import { stopSpeaking, speakText } from "@/lib/speechTts";
+import { stopSpeaking } from "@/lib/speechTts";
 import { CHAT_SCREEN_CLASS, CHAT_SCREEN_STYLE } from "@/lib/chatScreen";
 import NativeAdSlot from "@/components/NativeAdSlot";
 
@@ -147,33 +147,6 @@ export default function AssistantPage() {
 
     return t;
   }, []);
-
-  // Driving Mode: listen again after `delay` ms, unless the loop ended, a
-  // reply is on its way, the AI is speaking, or a listen is already running.
-  const scheduleListen = (delay: number) => {
-    if (listenTimerRef.current) clearTimeout(listenTimerRef.current);
-    listenTimerRef.current = setTimeout(() => {
-      listenTimerRef.current = null;
-      if (drivingModeRef.current && !isLoadingRef.current && !speakingRef.current && !recognitionRef.current) {
-        startListeningRef.current();
-      }
-    }, delay);
-  };
-
-  // Speak a reply in full. Resolves when the voice finishes or is
-  // interrupted (tap or exit). Never open a second microphone session while
-  // TTS is playing: the phone speaker would be transcribed as user input.
-  const speakReply = async (text: string) => {
-    lastSpokenRef.current = text;
-    speakingRef.current = true;
-    setIsSpeaking(true);
-    try {
-      await speakText(text);
-    } finally {
-      speakingRef.current = false;
-      setIsSpeaking(false);
-    }
-  };
 
   // Driving Mode only: the server sends "save ho gaya" lines in `actions`;
   // when the model's own words skip them, add them so the save is heard.
