@@ -64,14 +64,17 @@ export const adminDeleteUser = onCall({ region: REGION }, async (req) => {
     return { success: true };
 });
 
-type Due = { uid: string; source: string; id: string; notifyAt: string; title: string; body: string; url: string; item: string; label: string; desc: string | null };
+type Due = { uid: string; source: string; id: string; notifyAt: string; title: string; body: string; url: string; item: string; label: string; desc: string | null; amount: number | null };
+// Notification title = the saved name + " Reminder" (like "Car Loan Reminder")
+// or "Amazon Reminder"); when the item has no name, the type is used instead
+// ("EMI Reminder", "Bill Reminder"). No emoji: the shade reads cleaner that way.
 const SOURCES: Array<[string, [string, unknown] | null, string, string, string]> = [
-  ["reminders", null, "🔔 Reminder: ", "/reminders", "reminder"],
-  ["debts", ["is_active", true], "💳 EMI due: ", "/debts", "EMI"],
-  ["goals", ["is_completed", false], "🎯 Goal: ", "/goals", "goal"],
-  ["car_checks", ["is_completed", false], "🚗 Car check: ", "/car-checks", "car check"],
-  ["car_documents", null, "📄 Document expiry: ", "/car-checks", "document"],
-  ["recurring_expenses", ["is_active", true], "🧾 Bill due: ", "/transactions", "bill"],
+  ["reminders", null, "Reminder", "/reminders", "reminder"],
+  ["debts", ["is_active", true], "EMI Reminder", "/debts", "EMI"],
+  ["goals", ["is_completed", false], "Goal Reminder", "/goals", "goal"],
+  ["car_checks", ["is_completed", false], "Car Check Reminder", "/car-checks", "car check"],
+  ["car_documents", null, "Document Reminder", "/car-checks", "document"],
+  ["recurring_expenses", ["is_active", true], "Bill Reminder", "/transactions", "bill"],
 ];
 
 export const sendNotifications = onSchedule(
@@ -88,7 +91,7 @@ export const sendNotifications = onSchedule(
     // both shapes as real instants (they used to fire 5h30m late).
     const { from, to } = notifyQueryBounds(now);
     const due: Due[] = [];
-    for (const [col, filter, prefix, url, label] of SOURCES) {
+    for (const [col, filter, fallbackTitle, url, label] of SOURCES) {
       let q = db.collectionGroup(col).where("notify_at", ">=", from).where("notify_at", "<=", to);
       if (filter) q = q.where(filter[0], "==", filter[1]);
       // One failing source (e.g. a missing collection-group index) must not
@@ -107,7 +110,11 @@ export const sendNotifications = onSchedule(
         if (col === "reminders" && d.get("is_completed") === true) continue;
         const uid = d.ref.parent.parent!.id;
         const name = d.get("title") ?? d.get("name") ?? d.get("document_name") ?? d.get("check_type") ?? "";
-        due.push({ uid, source: col, id: d.id, notifyAt: d.get("notify_at"), title: prefix + name, body: "", url, item: String(name), label, desc: (d.get("description") as string | null) ?? null });
+        // "Reminder" is appended once: a name that already ends with it stays as-is.
+        const title = name ? (/reminder\s*$/i.test(String(name)) ? String(name) : `${name} Reminder`) : fallbackTitle;
+        const amountRaw = d.get("emi_amount") ?? d.get("amount") ?? d.get("target_amount") ?? null;
+        const amount = typeof amountRaw === "number" && Number.isFinite(amountRaw) && amountRaw > 0 ? amountRaw : null;
+        due.push({ uid, source: col, id: d.id, notifyAt: d.get("notify_at"), title, body: "", url, item: String(name), label, desc: ((d.get("description") ?? d.get("note")) as string | null) ?? null, amount });
       }
     }
     // Rich, CRED-style body: first name + detail, so the shade shows a
@@ -127,7 +134,12 @@ export const sendNotifications = onSchedule(
         firstNames.set(n.uid, first);
       }
       const who = firstNames.get(n.uid);
-      const detail = n.desc ? n.desc : `your ${n.label} "${n.item}" is due.`;
+      // Amount first (like the Jio example's "pack of Rs.349"): the EMI/bill
+      // amount when the record has one, else the saved description/note,
+      // else the plain due line.
+      const detail = n.amount !== null
+        ? `your ${n.label} "${n.item}" of ₹${n.amount.toLocaleString("en-IN", { maximumFractionDigits: 2 })} is due.`
+          : n.desc ? n.desc : `your ${n.label} "${n.item}" is due.`;
       n.body = who ? `${who}, ${detail}` : detail;
     }
     // One log line per item and per run (never the token itself), so
