@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect, useCallback, lazy, Suspense } from "react";
 import { useNavigate } from "react-router-dom";
-import { Capacitor } from "@capacitor/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
@@ -15,10 +14,11 @@ import { db } from "@/lib/backend";
 import { getTrialState } from "@/lib/trial";
 import { useSubscriptionNudges } from "@/lib/nudges";
 import { callChatFunction } from "@/lib/ai";
-import { startNativeListening, cancelNativeListening, speechLangFor, inferSpeechLangFromText, type NativeListenSession } from "@/lib/nativeSpeech";
+import { normalizeTranscript } from "@/lib/transcript";
 import { stripMarkdown } from "@/lib/plainText";
 import { loadChatHistory, saveChatHistory, toApiMessages, type ChatMsg } from "@/lib/chatHistory";
-import { isStopCommand, listenRetryDelay } from "@/lib/drivingVoice";
+import { useDrivingMode } from "@/lib/useDrivingMode";
+import { stopSpeaking } from "@/lib/speechTts";
 import { CHAT_SCREEN_CLASS, CHAT_SCREEN_STYLE } from "@/lib/chatScreen";
 import NativeAdSlot from "@/components/NativeAdSlot";
 
