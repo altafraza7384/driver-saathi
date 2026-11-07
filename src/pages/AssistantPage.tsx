@@ -15,10 +15,10 @@ import { db } from "@/lib/backend";
 import { getTrialState } from "@/lib/trial";
 import { useSubscriptionNudges } from "@/lib/nudges";
 import { callChatFunction } from "@/lib/ai";
-import { startNativeListening, cancelNativeListening, speechLangFor, type NativeListenSession } from "@/lib/nativeSpeech";
+import { startNativeListening, cancelNativeListening, speechLangFor, inferSpeechLangFromText, type NativeListenSession } from "@/lib/nativeSpeech";
 import { stripMarkdown } from "@/lib/plainText";
 import { loadChatHistory, saveChatHistory, toApiMessages, type ChatMsg } from "@/lib/chatHistory";
-import { detectBargeIn, isStopCommand, listenRetryDelay } from "@/lib/drivingVoice";
+import { isStopCommand, listenRetryDelay } from "@/lib/drivingVoice";
 import { CHAT_SCREEN_CLASS, CHAT_SCREEN_STYLE } from "@/lib/chatScreen";
 import NativeAdSlot from "@/components/NativeAdSlot";
 
@@ -184,13 +184,15 @@ export default function AssistantPage() {
   const exitDrivingRef = useRef<() => void>(() => undefined);
   const languageRef = useRef(language);
   languageRef.current = language;
+  // UI language is not necessarily the spoken language. Start with the UI
+  // locale, then learn a better locale from each useful transcript.
+  const voiceLangRef = useRef(speechLangFor(language));
   const [isSpeaking, setIsSpeaking] = useState(false);
   const speakingRef = useRef(false);
   // What the user said last in Driving Mode (shown small under the mic).
   const [lastHeard, setLastHeard] = useState("");
   const listenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listenFailsRef = useRef(0);
-  const bargeSessionRef = useRef<NativeListenSession | null>(null);
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
 
@@ -224,6 +226,7 @@ export default function AssistantPage() {
   useEffect(() => { speakEnabledRef.current = speakEnabled; }, [speakEnabled]);
   useEffect(() => { drivingModeRef.current = drivingMode; }, [drivingMode]);
   useEffect(() => { isLoadingRef.current = isLoading; }, [isLoading]);
+  useEffect(() => { voiceLangRef.current = speechLangFor(language); }, [language]);
   // Normalize Hinglish transcript
   const normalizeTranscript = useCallback((text: string): string => {
     let t = text;
@@ -294,63 +297,18 @@ export default function AssistantPage() {
     }, delay);
   };
 
-  const stopBargeListener = () => {
-    const s = bargeSessionRef.current;
-    bargeSessionRef.current = null;
-    s?.cancel();
-  };
-
-  // Barge-in (Driving Mode, Android app only): while the reply is spoken, a
-  // second listen runs. The phone mic also hears the speaker, so whatever
-  // matches the reply being spoken is treated as the AI's own voice and
-  // ignored; "ruko"/"stop"/"bas" or several new words stop the voice, and
-  // the loop then listens to the user. "band karo" ends Driving Mode. These
-  // words are never sent to the AI — a fresh listen takes over.
-  const startBargeListener = (spoken: string) => {
-    if (!Capacitor.isNativePlatform()) return;
-    const run = () => {
-      if (!speakingRef.current || !drivingModeRef.current) return;
-      const startedAt = Date.now();
-      const again = () => {
-        if (!speakingRef.current || !drivingModeRef.current) return;
-        // An instant end means the recognizer refused: back off.
-        setTimeout(run, Date.now() - startedAt < 1500 ? 1500 : 200);
-      };
-      void startNativeListening({
-        lang: speechLangFor(languageRef.current),
-        onPartial: (partial) => {
-          if (!speakingRef.current || !drivingModeRef.current) return;
-          const barge = detectBargeIn(partial, spoken);
-          if (barge === "exit") exitDrivingRef.current();
-          else if (barge === "interrupt") stopSpeaking();
-        },
-        onEnd: again,
-        onError: (error) => {
-          if (error === "permission-denied" || error === "unavailable") return;
-          again();
-        },
-      }).then((s) => {
-        if (!s) return;
-        if (speakingRef.current && drivingModeRef.current) bargeSessionRef.current = s;
-        else s.cancel();
-      });
-    };
-    run();
-  };
-
   // Speak a reply in full. Resolves when the voice finishes or is
-  // interrupted (tap, mic, barge-in, exit).
+  // interrupted (tap or exit). Never open a second microphone session while
+  // TTS is playing: the phone speaker would be transcribed as user input.
   const speakReply = async (text: string) => {
     lastSpokenRef.current = text;
     speakingRef.current = true;
     setIsSpeaking(true);
-    if (drivingModeRef.current) startBargeListener(text);
     try {
       await speakText(text);
     } finally {
       speakingRef.current = false;
       setIsSpeaking(false);
-      stopBargeListener();
     }
   };
 
@@ -493,7 +451,6 @@ export default function AssistantPage() {
     // loop). Mic dabane ka matlab hai "bolna band karo, meri suno".
     stopSpeaking();
     if (listenTimerRef.current) { clearTimeout(listenTimerRef.current); listenTimerRef.current = null; }
-    stopBargeListener();
     const startedAt = Date.now();
 
     // What happens with the words once listening ends (web and native alike).
@@ -507,6 +464,7 @@ export default function AssistantPage() {
         return;
       }
       if (trimmed) {
+        voiceLangRef.current = inferSpeechLangFromText(trimmed, voiceLangRef.current);
         const normalized = normalizeTranscript(trimmed);
         // Echo guard: a long verbatim chunk of the last spoken reply is the
         // AI's own voice leaking into the mic, not the user. Drop it instead
@@ -549,7 +507,7 @@ export default function AssistantPage() {
       recognitionRef.current = handle;
       setIsListening(true);
       void startNativeListening({
-        lang: speechLangFor(language),
+        lang: voiceLangRef.current,
         onPartial: (text) => setInput(text),
         onEnd: (text) => {
           if (recognitionRef.current === handle) recognitionRef.current = null;
@@ -593,9 +551,11 @@ export default function AssistantPage() {
     }
 
     const recognition = new SpeechRecognition();
-    recognition.lang = "hi-IN";
+    recognition.lang = voiceLangRef.current;
     recognition.interimResults = true;
-    recognition.continuous = true;
+    // A single utterance is easier to finalize reliably than a continuous
+    // WebView recognizer that can restart or duplicate segments on Android.
+    recognition.continuous = false;
     recognition.maxAlternatives = 5;
 
     let finalTranscript = "";
@@ -681,7 +641,6 @@ export default function AssistantPage() {
     const r = recognitionRef.current;
     recognitionRef.current = null;
     r?.cancel?.();
-    stopBargeListener();
     cancelNativeListening();
     setIsListening(false);
     setInput("");
