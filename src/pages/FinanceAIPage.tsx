@@ -1,13 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Capacitor } from "@capacitor/core";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Send, Bot, User, Trash2, TrendingUp, Mic, Square } from "lucide-react";
+import { Send, Bot, User, Trash2, TrendingUp, Mic, Square, Car } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { BACKEND } from "@/lib/backend";
@@ -18,7 +17,8 @@ import { callFinanceAiFunction } from "@/lib/ai";
 import { stripMarkdown } from "@/lib/plainText";
 import { loadChatHistory, saveChatHistory, toApiMessages, type ChatMsg } from "@/lib/chatHistory";
 import { CHAT_SCREEN_CLASS, CHAT_SCREEN_STYLE } from "@/lib/chatScreen";
-import { startNativeListening, speechLangFor, type NativeListenSession } from "@/lib/nativeSpeech";
+import { useDrivingMode } from "@/lib/useDrivingMode";
+import { stopSpeaking } from "@/lib/speechTts";
 import NativeAdSlot from "@/components/NativeAdSlot";
 
 type Msg = ChatMsg;
@@ -59,10 +59,8 @@ export default function FinanceAIPage({ embedded = false }: { embedded?: boolean
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [isListening, setIsListening] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const recognitionRef = useRef<any>(null);
-
+  
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
