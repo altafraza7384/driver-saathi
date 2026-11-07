@@ -7,7 +7,7 @@ import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Send, Bot, User, Trash2, Mic, Square, Volume2, VolumeX, Headphones, TrendingUp } from "lucide-react";
+import { Send, Bot, User, Trash2, Mic, Square, Volume2, VolumeX, Headphones, TrendingUp, Car } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { BACKEND } from "@/lib/backend";
@@ -733,7 +733,7 @@ export default function AssistantPage() {
             >
               <div className="mx-auto flex h-full w-full max-w-sm flex-col">
                 <div className="flex shrink-0 items-center justify-center gap-2 pt-2">
-                  <Headphones className="h-6 w-6 text-primary" />
+                  <Car className="h-6 w-6 text-primary" />
                   <h2 className="text-xl font-bold">{t("assistant.drivingMode")}</h2>
                 </div>
 
