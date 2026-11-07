@@ -30,6 +30,9 @@ export default function NativeAdSlot({ height = 300 }: NativeAdSlotProps) {
     void showNativeAd().then(update);
     const scroller = findScroller(el);
     scroller?.addEventListener("scroll", update, { passive: true });
+    // The page scrolls on the window, not on a parent div: without this the
+    // native view stays at its old rect and floats over the content.
+    window.addEventListener("scroll", update, { passive: true });
     window.addEventListener("resize", update);
     const interval = window.setInterval(update, 1000);
     const stopTimer = window.setTimeout(() => window.clearInterval(interval), 5000);
@@ -38,6 +41,7 @@ export default function NativeAdSlot({ height = 300 }: NativeAdSlotProps) {
       window.clearInterval(interval);
       window.clearTimeout(stopTimer);
       scroller?.removeEventListener("scroll", update);
+      window.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
       void hideNativeAd();
     };
