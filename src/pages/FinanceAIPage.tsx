@@ -178,71 +178,28 @@ export default function FinanceAIPage({ embedded = false }: { embedded?: boolean
       toast.error(t(code === "resource-exhausted" ? "ai.quotaExceeded" : "ai.failedResponse"));
     } finally {
       setIsLoading(false);
+      // Driving Mode: speak the reply, then listen again (no-op otherwise).
+      await handleReply(assistantSoFar);
     }
   }, [input, isLoading, messages, session]);
 
-  const toggleVoice = useCallback(() => {
-    if (isListening) {
-      recognitionRef.current?.stop();
-      setIsListening(false);
-      return;
-    }
-    // Android app: native speech-recognition plugin (the WebView's web
-    // Speech API fails with "not-allowed" there). Same flow as Assistant.
-    if (Capacitor.isNativePlatform()) {
-      let session: NativeListenSession | null = null;
-      let cancelled = false;
-      const handle = { stop: () => { cancelled = true; session?.stop(); } };
-      recognitionRef.current = handle;
-      setIsListening(true);
-      void startNativeListening({
-        lang: speechLangFor(language),
-        onPartial: (text) => setInput(text),
-        onEnd: (text) => {
-          if (recognitionRef.current === handle) recognitionRef.current = null;
-          setIsListening(false);
-          if (text) { setInput(""); send(text); }
-        },
-        onError: (error) => {
-          if (recognitionRef.current === handle) recognitionRef.current = null;
-          setIsListening(false);
-          if (error === "permission-denied") toast.error(t("ai.micPermissionDenied"), { duration: 10000 });
-          else if (error === "unavailable") toast.error(t("ai.speechUnavailableApp"));
-          else toast.error(t("ai.voiceError", { error }));
-        },
-      }).then((s) => {
-        session = s;
-        if (s && cancelled) s.stop();
-      });
-      return;
-    }
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) { toast.error(t("ai.voiceUnsupported")); return; }
-    const recognition = new SpeechRecognition();
-    recognition.lang = "hi-IN";
-    recognition.interimResults = true;
-    recognition.continuous = false;
-    let finalTranscript = "";
-    recognition.onresult = (event: any) => {
-      finalTranscript = "";
-      let interim = "";
-      for (let i = 0; i < event.results.length; i++) {
-        if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript;
-        else interim += event.results[i][0].transcript;
-      }
-      setInput((finalTranscript + interim).trim());
-    };
-    recognition.onend = () => {
-      setIsListening(false);
-      if (finalTranscript.trim()) { setInput(""); send(finalTranscript.trim()); }
-    };
-    recognition.onerror = () => setIsListening(false);
-    recognitionRef.current = recognition;
-    recognition.start();
-    setIsListening(true);
-  }, [isListening, send, language]);
-
-  useEffect(() => () => { recognitionRef.current?.stop(); }, []);
+  // Shared Driving Mode voice loop (same hook as the Assistant page).
+  const {
+    drivingMode,
+    isListening,
+    isSpeaking,
+    lastHeard,
+    toggleVoice,
+    exitDriving,
+    toggleDrivingMode,
+    handleReply,
+  } = useDrivingMode({
+    send,
+    setInput,
+    isLoading,
+    language,
+    t,
+  });
 
   return (
     <div
