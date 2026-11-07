@@ -838,7 +838,7 @@ export default function AssistantPage() {
               onClick={toggleDrivingMode}
               title={t("assistant.drivingModeTip")}
             >
-              <Headphones className="h-4 w-4" />
+              <Car className="h-4 w-4" />
               <span className="hidden sm:inline">{t("assistant.drive")}</span>
             </Button>
             <Button
