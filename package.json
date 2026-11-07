@@ -19,7 +19,6 @@
     "@capacitor-community/text-to-speech": "^8.0.0",
     "@capacitor-firebase/analytics": "^8.0.0",
     "@capacitor-firebase/authentication": "^8.0.0",
-    "@capacitor-firebase/crashlytics": "^8.0.0",
     "@capacitor/android": "8.1.0",
     "@capacitor/app": "^8.1.2",
     "@capacitor/cli": "^8.1.0",
