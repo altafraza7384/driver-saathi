@@ -185,8 +185,8 @@ export default function FinanceAIPage({ embedded = false }: { embedded?: boolean
       // the hourly AI limit, not a generic failure.
       const code = (e as { code?: string })?.code;
       const errMsg = t(code === "resource-exhausted" ? "ai.quotaExceeded" : "ai.failedResponse");
-            toast.error(errMsg);
-            setDriveError(errMsg);
+      toast.error(errMsg);
+      setDriveError(errMsg);
     } finally {
       setIsLoading(false);
       // Driving Mode: speak the reply, then listen again (no-op otherwise).
@@ -324,21 +324,32 @@ export default function FinanceAIPage({ embedded = false }: { embedded?: boolean
             <p className="text-xs text-muted-foreground">{t("financeAi.tagline")}</p>
           </div>
         </div>
-        {messages.length > 0 && (
-          <Button variant="ghost" size="icon" onClick={() => setMessages([])}>
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        )}
         <Button
           variant={drivingMode ? "default" : "outline"}
           size="sm"
           className="gap-1"
           onClick={toggleDrivingMode}
           title={t("assistant.drivingModeTip")}
-      >
-        <Car className="h-4 w-4" />
+        >
+          <Car className="h-4 w-4" />
           <span className="hidden sm:inline">{t("assistant.drive")}</span>
         </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => {
+            setSpeakEnabled(!speakEnabled);
+            if (speakEnabled) stopSpeaking();
+          }}
+          title={speakEnabled ? "Mute voice replies" : "Enable voice replies"}
+        >
+          {speakEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+        </Button>
+        {messages.length > 0 && (
+          <Button variant="ghost" size="icon" onClick={() => { setMessages([]); stopSpeaking(); }}>
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
       {/* Messages */}
