@@ -273,14 +273,33 @@ export default function AssistantPage() {
       setIsLoading(false);
       // Speak the whole response, then (Driving Mode) listen again at once:
       // the user never has to tap the mic. An error still continues the loop.
-      if (speakEnabledRef.current && assistantSoFar) {
-        await speakReply(assistantSoFar);
-      }
-      if (drivingModeRef.current) scheduleListen(assistantSoFar ? 300 : 1000);
+      await handleReply(assistantSoFar);
     }
   }, [input, session, t, queryClient]);
-  sendRef.current = send;
 
+  // Shared Driving Mode voice loop (same hook as Finance AI).
+  const {
+    drivingMode,
+    isListening,
+    isSpeaking,
+    lastHeard,
+    toggleVoice,
+    exitDriving,
+    toggleDrivingMode,
+    handleReply,
+    drivingModeRef,
+  } = useDrivingMode({
+    send,
+    setInput,
+    isLoading,
+    language,
+    t,
+    speakEnabled,
+    speakOutsideDriving: true,
+    normalize: normalizeTranscript,
+    onDrivingStart: () => setSpeakEnabled(true),
+  });
+  
   const startListening = useCallback(() => {
     // Never listen while the AI is still speaking: the phone mic hears the
     // speaker, so the AI's own words would come back as user input (echo
