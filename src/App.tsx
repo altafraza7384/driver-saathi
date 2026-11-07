@@ -35,6 +35,7 @@ const SettingsPage = lazyWithRetry(() => import("./pages/SettingsPage"));
 const DataBackupPage = lazyWithRetry(() => import("./pages/DataBackupPage"));
 const FinanceAIPage = lazyWithRetry(() => import("./pages/FinanceAIPage"));
 const PrivacyPolicyPage = lazyWithRetry(() => import("./pages/PrivacyPolicyPage"));
+const TermsPage = lazyWithRetry(() => import("./pages/TermsPage"));
 const AuthPage = lazyWithRetry(() => import("./pages/AuthPage"));
 const ResetPasswordPage = lazyWithRetry(() => import("./pages/ResetPasswordPage"));
 const NotFound = lazyWithRetry(() => import("./pages/NotFound"));
@@ -259,6 +260,7 @@ const App = () => (
                   <Route path="/auth" element={<AuthPage />} />
                   <Route path="/reset-password" element={<ResetPasswordPage />} />
                   <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+                  <Route path="/terms" element={<TermsPage />} />
                   <Route element={<ProtectedRoutes />}>
                     <Route path="/" element={<HomePage />} />
                     <Route path="/transactions" element={<TransactionsPage />} />
