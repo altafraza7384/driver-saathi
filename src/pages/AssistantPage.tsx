@@ -7,7 +7,7 @@ import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Send, Bot, User, Trash2, Mic, Square, Volume2, VolumeX, Headphones, TrendingUp, Car } from "lucide-react";
+import { Send, Bot, User, Trash2, Mic, Square, Volume2, VolumeX, TrendingUp, Car } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { BACKEND } from "@/lib/backend";
