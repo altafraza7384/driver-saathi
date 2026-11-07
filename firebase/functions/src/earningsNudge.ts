@@ -70,7 +70,7 @@ async function sendEarningsNudge(targetDate: string, body: string): Promise<void
       await getMessaging().sendEach(
         batch.map((token) => ({
           token,
-notification: { title: "Daily Entry Reminder", body },
+          notification: { title: "Daily Entry Reminder", body },
           data: { url: "/transactions/add" },
           android: { priority: "high", notification: { channelId: "reminders" } },
         })),
@@ -84,7 +84,7 @@ export const earningsNudgeAfternoon = onSchedule(
   async () => {
     await sendEarningsNudge(
       addDays(istDateString(new Date()), -1),
-"Kal ki kamai ki entry karein aur tension-free rahein.",
+      "Kal ki kamai ki entry karein aur tension-free rahein.",
     );
   },
 );
@@ -94,7 +94,7 @@ export const earningsNudgeNight = onSchedule(
   async () => {
     await sendEarningsNudge(
       istDateString(new Date()),
-"Aaj ki kamai ki entry karein aur tension-free rahein.",
+      "Aaj ki kamai ki entry karein aur tension-free rahein.",
     );
   },
 );
