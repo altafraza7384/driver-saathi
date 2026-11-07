@@ -46,7 +46,7 @@ const quickActions = [
 function HomeSkeleton() {
   return (
     <div className="space-y-5 min-h-dvh bg-[#0b2a5b]">
-            <div className="px-4 pt-6 pb-3">
+      <div className="px-4 pt-6 pb-3">
         <Skeleton className="h-4 w-32 mb-2" />
         <Skeleton className="h-8 w-48" />
       </div>
