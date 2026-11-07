@@ -12,6 +12,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { lazyWithRetry } from "@/lib/lazyWithRetry";
 import { AndroidBackButton } from "@/components/AndroidBackButton";
+import { logScreen } from "@/lib/analytics";
 import { useToast } from "@/hooks/use-toast";
 import { sendVerificationEmailToCurrentUser, reloadCurrentUser } from "@/integrations/firebase/adapter";
 
@@ -232,6 +233,15 @@ function ProtectedRoutes() {
   return <AppLayout />;
 }
 
+// Logs the current route as the Analytics screen (native only, fire-and-forget).
+function RouteTracker() {
+  const location = useLocation();
+  useEffect(() => {
+    logScreen(location.pathname);
+  }, [location.pathname]);
+  return null;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
@@ -242,6 +252,7 @@ const App = () => (
             <Sonner />
             <BrowserRouter>
               <AndroidBackButton />
+              <RouteTracker />
               <ErrorBoundary>
               <Suspense fallback={<BootScreen />}>
                 <Routes>
