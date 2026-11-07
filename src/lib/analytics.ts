@@ -1,26 +1,25 @@
 import { Capacitor } from "@capacitor/core";
 import { FirebaseAnalytics } from "@capacitor-firebase/analytics";
-import { FirebaseCrashlytics } from "@capacitor-firebase/crashlytics";
 
 /**
- * Firebase Analytics + Crashlytics (native only).
+ * Firebase Analytics (native only).
  *
- * Both plugins are Android/iOS-only: their web implementations either
- * throw ("not implemented") or need a measurementId, which this app
- * does not have in its web Firebase config. So every call is gated on
- * native platform and wrapped in try/catch — analytics must never
- * break the app or block a page open (performance rule).
+ * The plugin is Android/iOS-only: its web implementation needs a
+ * measurementId, which this app does not have in its web Firebase config.
+ * So every call is gated on native platform and wrapped in try/catch —
+ * analytics must never break the app or block a page open (performance rule).
  *
  * No personal data is ever sent: no user id, no phone, no email, no
  * amounts. Only screen names and generic event names.
+ *
+ * NOTE: Crashlytics was REMOVED 2026-11-07 — its Gradle plugin was never
+ * applied, so the Crashlytics SDK had no build ID and crashed the app on
+ * startup (v25). Do not re-add @capacitor-firebase/crashlytics without
+ * applying the Crashlytics Gradle plugin first.
  */
 
 function isAnalyticsAvailable(): boolean {
   return Capacitor.isNativePlatform() && Capacitor.isPluginAvailable("FirebaseAnalytics");
-}
-
-function isCrashlyticsAvailable(): boolean {
-  return Capacitor.isNativePlatform() && Capacitor.isPluginAvailable("FirebaseCrashlytics");
 }
 
 /** Log the current screen (route) to Analytics. Fire-and-forget. */
@@ -39,13 +38,5 @@ export function logAppEvent(
   if (!isAnalyticsAvailable()) return;
   void FirebaseAnalytics.logEvent({ name, params }).catch(() => {
     // Analytics is best-effort; never surface a failure to the user.
-  });
-}
-
-/** Record a non-fatal error (e.g. a React render error) to Crashlytics. Fire-and-forget. */
-export function recordNonFatal(message: string): void {
-  if (!isCrashlyticsAvailable()) return;
-  void FirebaseCrashlytics.recordException({ message }).catch(() => {
-    // Crash reporting is best-effort; never surface a failure to the user.
   });
 }
