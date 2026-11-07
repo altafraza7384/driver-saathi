@@ -14,7 +14,6 @@ import { db } from "@/lib/backend";
 import { getTrialState } from "@/lib/trial";
 import { useSubscriptionNudges } from "@/lib/nudges";
 import { callChatFunction } from "@/lib/ai";
-import { normalizeTranscript } from "@/lib/transcript";
 import { stripMarkdown } from "@/lib/plainText";
 import { loadChatHistory, saveChatHistory, toApiMessages, type ChatMsg } from "@/lib/chatHistory";
 import { useDrivingMode } from "@/lib/useDrivingMode";
