@@ -15,7 +15,7 @@ import { db } from "@/lib/backend";
 import { getTrialState } from "@/lib/trial";
 import { useSubscriptionNudges } from "@/lib/nudges";
 import { callChatFunction } from "@/lib/ai";
-import { startNativeListening, cancelNativeListening, speechLangFor, type NativeListenSession } from "@/lib/nativeSpeech";
+import { startNativeListening, cancelNativeListening, speechLangFor, inferSpeechLangFromText, type NativeListenSession } from "@/lib/nativeSpeech";
 import { stripMarkdown } from "@/lib/plainText";
 import { loadChatHistory, saveChatHistory, toApiMessages, type ChatMsg } from "@/lib/chatHistory";
 import { isStopCommand, listenRetryDelay } from "@/lib/drivingVoice";
@@ -184,6 +184,9 @@ export default function AssistantPage() {
   const exitDrivingRef = useRef<() => void>(() => undefined);
   const languageRef = useRef(language);
   languageRef.current = language;
+  // UI language is not necessarily the spoken language. Start with the UI
+  // locale, then learn a better locale from each useful transcript.
+  const voiceLangRef = useRef(speechLangFor(language));
   const [isSpeaking, setIsSpeaking] = useState(false);
   const speakingRef = useRef(false);
   // What the user said last in Driving Mode (shown small under the mic).
@@ -223,6 +226,7 @@ export default function AssistantPage() {
   useEffect(() => { speakEnabledRef.current = speakEnabled; }, [speakEnabled]);
   useEffect(() => { drivingModeRef.current = drivingMode; }, [drivingMode]);
   useEffect(() => { isLoadingRef.current = isLoading; }, [isLoading]);
+  useEffect(() => { voiceLangRef.current = speechLangFor(language); }, [language]);
   // Normalize Hinglish transcript
   const normalizeTranscript = useCallback((text: string): string => {
     let t = text;
@@ -460,6 +464,7 @@ export default function AssistantPage() {
         return;
       }
       if (trimmed) {
+        voiceLangRef.current = inferSpeechLangFromText(trimmed, voiceLangRef.current);
         const normalized = normalizeTranscript(trimmed);
         // Echo guard: a long verbatim chunk of the last spoken reply is the
         // AI's own voice leaking into the mic, not the user. Drop it instead
@@ -502,7 +507,7 @@ export default function AssistantPage() {
       recognitionRef.current = handle;
       setIsListening(true);
       void startNativeListening({
-        lang: speechLangFor(language),
+        lang: voiceLangRef.current,
         onPartial: (text) => setInput(text),
         onEnd: (text) => {
           if (recognitionRef.current === handle) recognitionRef.current = null;
@@ -546,7 +551,7 @@ export default function AssistantPage() {
     }
 
     const recognition = new SpeechRecognition();
-    recognition.lang = speechLangFor(language);
+    recognition.lang = voiceLangRef.current;
     recognition.interimResults = true;
     // A single utterance is easier to finalize reliably than a continuous
     // WebView recognizer that can restart or duplicate segments on Android.

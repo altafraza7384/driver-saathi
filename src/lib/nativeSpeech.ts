@@ -8,7 +8,9 @@ import type { Language } from "@/lib/i18n";
 // replies use the native text-to-speech plugin. The browser (web.app) keeps
 // using the web Speech API.
 
-// Recognizer language for the app language.
+// Recognizer language for the app language. The assistant can replace this
+// after the first useful transcript with inferSpeechLangFromText(), so the UI
+// language and the user's spoken language do not have to be the same.
 export function speechLangFor(language: Language): string {
   switch (language) {
     case "hi": return "hi-IN";
@@ -17,6 +19,31 @@ export function speechLangFor(language: Language): string {
     case "kn": return "kn-IN";
     default: return "en-IN";
   }
+}
+
+/**
+ * Infer a useful next Android recognizer locale from a transcript. This is a
+ * lightweight feedback loop, not a claim of perfect language identification:
+ * Android's recognizer still needs one locale per session. It lets an English
+ * UI user who speaks Hinglish/Marathi stay on that voice locale after the
+ * first utterance, without adding a cloud speech service or microphone loop.
+ */
+export function inferSpeechLangFromText(text: string, fallback: string): string {
+  const s = text.trim();
+  if (!s) return fallback;
+  if (/[\u0C80-\u0CFF]/.test(s)) return "kn-IN";
+  if (/[\u0980-\u09FF]/.test(s)) return "bn-IN";
+  if (/[\u0900-\u097F]/.test(s)) {
+    return /(मी|मला|तुम्ही|तुला|माझा|माझे|पाहिजे|कुठे|काय|झाले|होय)/.test(s) ? "mr-IN" : "hi-IN";
+  }
+  const words = s.toLowerCase().replace(/[^a-z\s]/g, " ").split(/\s+/).filter(Boolean);
+  const romanMarathi = new Set(["mala", "mi", "ahe", "aahe", "aahet", "tumhi", "tula", "majha", "maza", "kiti", "kevha", "zala", "zali", "zale", "udya", "sakali", "dupari", "sanga", "kharchu", "nako"]);
+  const romanHindi = new Set(["aaj", "kya", "kaise", "hai", "mujhe", "mera", "meri", "aapko", "karo", "karna", "kitna", "kharcha", "kamai", "kamaya", "batao", "kal", "subah", "rupaye", "paisa", "petrol", "gaadi", "yaad", "dilana"]);
+  const mr = words.filter((w) => romanMarathi.has(w)).length;
+  const hi = words.filter((w) => romanHindi.has(w)).length;
+  if (mr >= 2 && mr > hi) return "mr-IN";
+  if (hi >= 2 && hi > mr) return "hi-IN";
+  return fallback;
 }
 
 export type NativeSpeechError = "permission-denied" | "unavailable" | string;
