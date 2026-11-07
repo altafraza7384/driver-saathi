@@ -129,7 +129,14 @@ public class NativeAdsPlugin extends Plugin {
         Activity activity = getActivity();
         if (activity == null || nativeAd == null || !hasRect) return;
         ViewGroup decor = (ViewGroup) activity.getWindow().getDecorView();
-        int layoutId = lastH < 180 ? R.layout.native_ad_compact_layout : R.layout.native_ad_layout;
+        int layoutId;
+        if (lastH <= 60) {
+            layoutId = R.layout.native_ad_banner_layout;
+        } else if (lastH < 180) {
+            layoutId = R.layout.native_ad_compact_layout;
+        } else {
+            layoutId = R.layout.native_ad_layout;
+        }
         NativeAdView view = (NativeAdView) activity.getLayoutInflater().inflate(layoutId, decor, false);
         MediaView mediaView = view.findViewById(R.id.ad_media);
         TextView headline = view.findViewById(R.id.ad_headline);
