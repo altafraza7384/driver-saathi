@@ -4,6 +4,14 @@ import { hideNativeAd, isNativeAdsAvailable, setNativeAdRect, showNativeAd } fro
 interface NativeAdSlotProps {
   /** Slot height in CSS pixels. Compact slots use the compact native layout. */
   height?: number;
+  /**
+   * When true, the native view is hidden (e.g. while an overlay such as the
+   * notifications popover covers the slot). The div stays mounted so the page
+   * layout does not shift; the view is re-shown when hidden turns false.
+   * A native view always renders above WebView content, so without this it
+   * would float over the overlay.
+   */
+  hidden?: boolean;
 }
 
 /**
@@ -12,13 +20,18 @@ interface NativeAdSlotProps {
  * over this slot's exact WebView rectangle, so it stays inside page content
  * instead of being attached to the bottom of the whole screen.
  */
-export default function NativeAdSlot({ height = 300 }: NativeAdSlotProps) {
+export default function NativeAdSlot({ height = 300, hidden = false }: NativeAdSlotProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!isNativeAdsAvailable()) return;
     const el = ref.current;
     if (!el) return;
+    // Hidden (overlay open): keep the native view off the screen.
+    if (hidden) {
+      void hideNativeAd();
+      return;
+    }
     let stopped = false;
     const update = () => {
       if (stopped || !ref.current) return;
@@ -45,7 +58,7 @@ export default function NativeAdSlot({ height = 300 }: NativeAdSlotProps) {
       window.removeEventListener("resize", update);
       void hideNativeAd();
     };
-  }, []);
+  }, [hidden]);
 
   if (!isNativeAdsAvailable()) return null;
   return <div ref={ref} className="w-full" style={{ height }} aria-hidden="true" />;
