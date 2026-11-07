@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { categoryLabel } from "@/lib/categories";
 import { Plus, Minus, Car, StickyNote, ChevronRight, Target, CreditCard, Heart, AlertTriangle, Wallet } from "lucide-react";
 import NativeAdSlot from "@/components/NativeAdSlot";
@@ -45,6 +46,7 @@ const quickActions = [
 function HomeSkeleton() {
   return (
     <div className="space-y-5 min-h-dvh bg-[#0b2a5b]">
+      
       <div className="px-4 pt-6 pb-3">
         <Skeleton className="h-4 w-32 mb-2" />
         <Skeleton className="h-8 w-48" />
@@ -70,6 +72,10 @@ export default function HomePage() {
   const { t } = useI18n();
   const { user } = useAuth();
   const navigate = useNavigate();
+    // Bell popover open state: while it is open the Home native ad is hidden
+    // (a native view always renders above WebView content, so it would float
+    // over the popover otherwise).
+    const [bellOpen, setBellOpen] = useState(false);
   const today = localToday(); // local date, not UTC (audit 2026-10-24)
 
   const { data: profile, isLoading: profileLoading } = useQuery({
@@ -188,7 +194,7 @@ export default function HomePage() {
             <p className="text-sm text-muted-foreground">{t("home.greeting")} {t(getGreetingKey())} 👋</p>
             <h1 className="text-2xl font-bold">{driverName}</h1>
           </div>
-          <NotificationBell />
+          <NotificationBell open={bellOpen} onOpenChange={setBellOpen} />
         </div>
       </div>
 
@@ -225,7 +231,7 @@ export default function HomePage() {
       <div>
         <Card className="border-0 shadow-sm overflow-hidden">
           <CardContent className="p-2">
-            <NativeAdSlot height={50} />
+            <NativeAdSlot height={50} hidden={bellOpen} />
           </CardContent>
         </Card>
       </div>
