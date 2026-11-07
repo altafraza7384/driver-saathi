@@ -202,7 +202,93 @@ export default function FinanceAIPage({ embedded = false }: { embedded?: boolean
   });
 
   return (
-    <div
+    <>
+      {/* Driving Mode Full Screen Overlay (same layout as the Assistant page:
+          title, status and the big mic never move; the reply is caption-size
+          and scrolls inside its own small box. While the AI speaks, a tap
+          anywhere stops the voice and the loop listens. */}
+      <AnimatePresence>
+        {drivingMode && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex flex-col bg-background px-6"
+            style={{
+              paddingTop: "max(env(safe-area-inset-top, 0px), 1rem)",
+              paddingBottom: "max(env(safe-area-inset-bottom, 0px), 1rem)",
+            }}
+            onClick={() => { if (isSpeaking) stopSpeaking(); }}
+          >
+            <div className="mx-auto flex h-full w-full max-w-sm flex-col">
+              <div className="flex shrink-0 items-center justify-center gap-2 pt-2">
+                <Car className="h-6 w-6 text-primary" />
+                <h2 className="text-xl font-bold">{t("assistant.drivingMode")}</h2>
+              </div>
+
+              <div className="flex h-[6rem] shrink-0 flex-col items-center justify-center overflow-hidden text-center">
+                <p className="text-lg text-foreground" aria-live="polite">
+                  {isLoading
+                    ? "Soch raha hoon... 🤔"
+                    : isSpeaking
+                      ? t("assistant.drivingSpeaking")
+                      : isListening
+                        ? "Sun raha hoon... bolo! 🎤"
+                        : "Ready — bolo kuch bhi!"}
+                </p>
+                <p className="text-[12px] leading-snug text-muted-foreground">{t("assistant.drivingStopHint")}</p>
+              </div>
+
+              {/* Big mic, fixed in the centre of the free space */}
+              <div className="flex min-h-0 flex-1 items-center justify-center py-4">
+                <motion.button
+                  onClick={(e) => { e.stopPropagation(); toggleVoice(); }}
+                  disabled={isLoading}
+                  animate={isListening ? { scale: [1, 1.12, 1] } : { scale: 1 }}
+                  transition={isListening ? { repeat: Infinity, duration: 1.2 } : {}}
+                  className={`flex h-36 w-36 shrink-0 items-center justify-center rounded-full shadow-lg transition-colors ${
+                    isListening || isSpeaking
+                      ? "bg-destructive text-destructive-foreground"
+                      : "bg-primary text-primary-foreground"
+                  }`}
+                >
+                  {isListening || isSpeaking ? <Square className="h-14 w-14" /> : <Mic className="h-14 w-14" />}
+                </motion.button>
+              </div>
+
+              {/* Fixed-height caption area: its content can never move the mic */}
+              <div className="flex h-[36%] shrink-0 flex-col justify-end gap-2">
+                {/* Heard transcript (live while listening, else the last thing said) */}
+                {(input || lastHeard) && (
+                  <div className="shrink-0 rounded-lg border bg-card px-3 py-1.5">
+                    <p className="text-[11px] leading-tight text-muted-foreground">{t("assistant.heard")}</p>
+                    <p className="line-clamp-2 text-[13px] leading-snug">{input || lastHeard}</p>
+                  </div>
+                )}
+
+                {/* Last assistant response: caption size, scrolls inside */}
+                {messages.length > 0 && messages[messages.length - 1].role === "assistant" && (
+                  <div className="flex min-h-0 flex-col rounded-lg border bg-card px-3 py-1.5">
+                    <p className="shrink-0 text-[11px] leading-tight text-muted-foreground">{t("assistant.response")}</p>
+                    <div className="min-h-0 overflow-y-auto overscroll-contain">
+                      <p className="whitespace-pre-wrap text-[13px] leading-snug">{stripMarkdown(messages[messages.length - 1].content)}</p>
+                    </div>
+                  </div>
+                )}
+
+                <Button
+                  variant="outline"
+                  className="w-full shrink-0 gap-2"
+                  onClick={(e) => { e.stopPropagation(); exitDriving(); }}
+                >
+                  <Square className="h-4 w-4" /> {t("assistant.exitDrivingMode")}
+                </Button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <div
       className={embedded ? "flex h-full min-h-0 flex-col p-4 pt-2" : CHAT_SCREEN_CLASS}
       style={embedded ? undefined : CHAT_SCREEN_STYLE}
     >
@@ -316,5 +402,6 @@ export default function FinanceAIPage({ embedded = false }: { embedded?: boolean
         </Button>
       </div>
     </div>
-  );
+    </>
+    );
 }
