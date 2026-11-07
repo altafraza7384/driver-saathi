@@ -879,7 +879,7 @@ export default function AssistantPage() {
             <p className="font-medium text-sm">{t("assistant.intro")}</p>
             <p className="text-muted-foreground text-xs mt-1">{t("assistant.introHint")}</p>
             <div className="w-full max-w-sm mt-4">
-            <NativeAdSlot />
+            <NativeAdSlot hidden={drivingMode} />
             </div>
           </div>
         )}
