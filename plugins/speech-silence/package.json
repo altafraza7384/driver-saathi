@@ -1,0 +1,1 @@
+{"capacitor":{"android":{"src":"android"}},"description":"Local Capacitor plugin for Driver Saathi: briefly mutes the SpeechRecognizer start/stop beep (STREAM_MUSIC) with a built-in auto-unmute, so the phone can never be left muted. Native-only; the JS side registers it by name via @capacitor/core.","main":"index.js","name":"speech-silence","private":true,"version":"1.0.0"}
