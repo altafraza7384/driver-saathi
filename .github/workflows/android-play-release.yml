@@ -74,6 +74,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PLAY_TRACK: ${{ inputs.track || 'internal' }}
+      PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -240,7 +241,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload to Google Play
-        if: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
+        if: ${{ env.PLAY_SERVICE_ACCOUNT_JSON != '' }}
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
@@ -250,6 +251,6 @@ jobs:
           status: completed
 
       - name: Note when Play upload is skipped
-        if: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON == '' }}
+        if: ${{ env.PLAY_SERVICE_ACCOUNT_JSON == '' }}
         run: |
           echo "::notice::PLAY_SERVICE_ACCOUNT_JSON is not set, so the signed AAB was kept as an artifact only and NOT uploaded to Play. Add the Play service-account secret (see docs/PLAY_PIPELINE.md) to make uploads automatic, or upload the artifact manually in Play Console."
