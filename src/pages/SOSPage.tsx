@@ -107,7 +107,7 @@ export default function SOSPage() {
       <button onClick={() => navigate("/more")} className="flex items-center gap-1 text-sm text-muted-foreground mb-2"><ArrowLeft className="h-4 w-4" /> {t("common.back")}</button>
       <h1 className="text-2xl font-bold">{t("sos.title")}</h1>
       {/* Compact ad keeps the emergency button visible without a large video card. */}
-      <NativeAdSlot height={150} />
+      <NativeAdSlot height={50} />
       <motion.div className="flex justify-center py-2" animate={sosTriggered ? { scale: [1, 1.05, 1] } : {}} transition={{ repeat: sosTriggered ? Infinity : 0, duration: 0.5 }}>
         <button onClick={triggerSOS} className="flex h-32 w-32 flex-col items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-2xl transition-transform active:scale-95">
           <AlertTriangle className="h-10 w-10" /><span className="mt-2 text-base font-extrabold">SOS</span><span className="text-xs opacity-80">{t("sos.tapForHelp")}</span>
