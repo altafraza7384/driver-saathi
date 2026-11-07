@@ -8,7 +8,9 @@
         "@capacitor-community/admob": "^8.0.0",
         "@capacitor-community/speech-recognition": "^7.0.1",
         "@capacitor-community/text-to-speech": "^8.0.0",
+"@capacitor-firebase/analytics": "^8.0.0",
         "@capacitor-firebase/authentication": "^8.0.0",
+        "@capacitor-firebase/crashlytics": "^8.0.0",
         "@capacitor/android": "8.1.0",
         "@capacitor/app": "^8.1.2",
         "@capacitor/cli": "^8.1.0",
@@ -125,7 +127,11 @@
 
     "@capacitor-community/text-to-speech": ["@capacitor-community/text-to-speech@8.0.0", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-8GCRavhp4uJft+DsJTywxUmMidMxJVTWHtrCKHjai5LPcJwHI93zpf1LsuvNtTSv/AeC0+oB0ULi/kHzqoB5Bg=="],
 
+  "@capacitor-firebase/analytics": ["@capacitor-firebase/analytics@8.6.0", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0", "firebase": "^12.6.0" }, "optionalPeers": ["firebase"] }, "sha512-SiEgcC75secpgSVZncSoSB8mrx9mPVyDgO0PrFsknK9OYs8xZcoh7PIEfNENjvBrmfX0QDFA+bX7UDNSbhCPgg=="],
+
     "@capacitor-firebase/authentication": ["@capacitor-firebase/authentication@8.5.2", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0", "firebase": "^12.6.0" }, "optionalPeers": ["firebase"] }, "sha512-URpL6nxrCS9E/3OfpJDUJx5Kxbhi1KqnzY5bvpt1B3va48o7aaksz7RTggjNGW5J4EsG+Q5U2vSZ/ycJkcODQw=="],
+
+  "@capacitor-firebase/crashlytics": ["@capacitor-firebase/crashlytics@8.6.0", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0", "firebase": "*" }, "optionalPeers": ["firebase"] }, "sha512-01Geqo9xNdIcdKle8F/vrkYrC7jZiQ2Zq8WKaqQK8z/wZQM0LHugw4dn6bpFatYSIOQbzK+UMhR/xt1sEIcztg=="],
 
     "@capacitor/android": ["@capacitor/android@8.1.0", "", { "peerDependencies": { "@capacitor/core": "^8.1.0" } }, "sha512-z0acTPxj5DCy/U2FU7w+GA93oC+wdyKnsOcRg5rutDmSYa8Do1tzYqApKgf+hnuTNPbtrCTHp0Zy1cLiK/4MEw=="],
 
