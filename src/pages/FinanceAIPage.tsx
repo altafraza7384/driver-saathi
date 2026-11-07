@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
@@ -6,7 +7,7 @@ import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Send, Bot, User, Trash2, TrendingUp, Mic, Square, Car } from "lucide-react";
+import { Send, Bot, User, Trash2, TrendingUp, Mic, Square, Car, Volume2, VolumeX } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { BACKEND } from "@/lib/backend";
@@ -59,6 +60,13 @@ export default function FinanceAIPage({ embedded = false }: { embedded?: boolean
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+    // Speaker toggle (same as the Assistant page): OFF by default, so normal
+    // Finance AI replies stay silent as before; turning it ON also speaks
+    // replies outside Driving Mode. Driving Mode always speaks.
+    const [speakEnabled, setSpeakEnabled] = useState(false);
+    // Last send failure, shown inside the Driving Mode overlay so a failed
+    // reply (e.g. hourly limit) is visible instead of silent.
+    const [driveError, setDriveError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   
   useEffect(() => {
@@ -95,6 +103,7 @@ export default function FinanceAIPage({ embedded = false }: { embedded?: boolean
     if (!text) setInput("");
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
+        setDriveError(null);
 
     let assistantSoFar = "";
     const allMessages = [...messages, userMsg];
@@ -175,7 +184,9 @@ export default function FinanceAIPage({ embedded = false }: { embedded?: boolean
       // Same quota distinction as AssistantPage: resource-exhausted means
       // the hourly AI limit, not a generic failure.
       const code = (e as { code?: string })?.code;
-      toast.error(t(code === "resource-exhausted" ? "ai.quotaExceeded" : "ai.failedResponse"));
+      const errMsg = t(code === "resource-exhausted" ? "ai.quotaExceeded" : "ai.failedResponse");
+            toast.error(errMsg);
+            setDriveError(errMsg);
     } finally {
       setIsLoading(false);
       // Driving Mode: speak the reply, then listen again (no-op otherwise).
@@ -199,6 +210,8 @@ export default function FinanceAIPage({ embedded = false }: { embedded?: boolean
     isLoading,
     language,
     t,
+        speakEnabled,
+        speakOutsideDriving: speakEnabled,
   });
 
   return (
