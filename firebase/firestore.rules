@@ -45,6 +45,14 @@ service cloud.firestore {
     // as null, same as the app writing null.
     function isValidApproxLat(v) { return v == null || (v is number && v >= -90 && v <= 90); }
     function isValidApproxLng(v) { return v == null || (v is number && v >= -180 && v <= 180); }
+    // The mechanic must serve the request's category. Legacy mechanic docs
+    // may carry 'mechanic' (old name for 'car'); 'tyre' never appears in
+    // requests any more, so it needs no mapping here. Callers must check
+    // the mechanic doc exists first (this get() errors on a missing doc).
+    function mechanicServesCategory(mechanicId, category) {
+      return category in get(/databases/$(database)/documents/mechanics/$(mechanicId)).data.get('categories', [])
+        || (category == 'car' && 'mechanic' in get(/databases/$(database)/documents/mechanics/$(mechanicId)).data.get('categories', []));
+    }
 
     match /users/{uid} {
       // Profile document. Admins may read any profile and update any field
@@ -213,6 +221,7 @@ service cloud.firestore {
           && exists(/databases/$(database)/documents/mechanics/$(request.auth.uid))
           && get(/databases/$(database)/documents/mechanics/$(request.auth.uid)).data.get('status', '') != 'held'
              && get(/databases/$(database)/documents/mechanics/$(request.auth.uid)).data.get('phoneVerified', false) == true
+          && mechanicServesCategory(request.auth.uid, resource.data.category)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'mechanicId', 'mechanicName', 'mechanicPhone']))
         // Assigned mechanic: move the job forward.
         || (resource.data.mechanicId == request.auth.uid
