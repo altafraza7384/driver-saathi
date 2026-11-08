@@ -8,8 +8,8 @@ import { defineSecret } from "firebase-functions/params";
 import { db, requireUser, FieldValue } from "./shared";
 
 const REGION = "asia-south1";
-const RAZORPAY_KEY_ID = defineSecret("RAZORPAY_KEY_ID");
-const RAZORPAY_KEY_SECRET = defineSecret("RAZORPAY_KEY_SECRET");
+export const RAZORPAY_KEY_ID = defineSecret("RAZORPAY_KEY_ID");
+export const RAZORPAY_KEY_SECRET = defineSecret("RAZORPAY_KEY_SECRET");
 
 const TRIAL_DAYS = 7;
 
@@ -212,3 +212,22 @@ export const cancelRazorpaySubscription = onCall(
     return { cancelled: true };
   },
 );
+
+// Cancels the user's Razorpay subscription (if any) when their account is
+// deleted, so the UPI mandate and auto-debit stop. Best-effort: a Razorpay
+// API failure is logged, not thrown, so account deletion is not blocked.
+// The subscriptions doc is deleted either way.
+export async function cancelSubscriptionForUser(uid: string): Promise<void> {
+  const snap = await db.doc(`subscriptions/${uid}`).get();
+  const subscriptionId = asString(snap.data()?.razorpaySubscriptionId);
+  if (subscriptionId) {
+    try {
+      await rzp("/subscriptions/" + subscriptionId + "/cancel", "POST", {
+        cancel_at_cycle_end: 0,
+      });
+    } catch (e) {
+      console.error("Account delete: Razorpay cancel failed for", uid, e);
+    }
+  }
+  await db.doc(`subscriptions/${uid}`).delete();
+}
