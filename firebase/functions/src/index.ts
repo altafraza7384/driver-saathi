@@ -145,7 +145,7 @@ export const sendNotifications = onSchedule(
       // amount when the record has one, else the saved description/note,
       // else the plain due line.
       const detail = dueDetail(lang, n.label, n.item, n.amount, n.desc);
-        n.body = who ? `${who}, ${detail}` : detail;
+    n.body = who ? `${who}, ${detail}` : detail;
     }
     // One log line per item and per run (never the token itself), so
     // "was it sent, to how many devices, and why not" is answerable from
