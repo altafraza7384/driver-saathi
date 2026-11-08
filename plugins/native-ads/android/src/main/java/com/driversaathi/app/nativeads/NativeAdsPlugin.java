@@ -112,6 +112,10 @@ public class NativeAdsPlugin extends Plugin {
             lastW = w;
             lastH = h;
             hasRect = true;
+            // The ad may have loaded before the first rect arrived (cached
+            // or instant load): attachAdView() only runs from onAdLoaded and
+            // returns early without a rect, so attach it here when needed.
+            if (nativeAd != null && adView == null) attachAdView();
             repositionAdView();
             call.resolve();
         });
