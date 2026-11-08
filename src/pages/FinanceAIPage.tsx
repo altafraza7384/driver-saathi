@@ -90,7 +90,7 @@ export default function FinanceAIPage({ embedded = false }: { embedded?: boolean
   const send = useCallback(async (text?: string) => {
     const msgText = text || input.trim();
     if (!msgText || isLoading) return;
-    if (!session?.access_token) { toast.error(t("ai.signInFinance")); return; }
+    if (!session?.access_token) { toast.error(session?.user ? t("ai.noConnection") : t("ai.signInFinance")); return; }
     const userMsg: Msg = { role: "user", content: msgText, ts: Date.now() };
     if (!text) setInput("");
     setMessages((prev) => [...prev, userMsg]);
