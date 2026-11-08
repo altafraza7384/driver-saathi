@@ -51,6 +51,7 @@ export default function GoalsPage() {
 
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [showAddSavings, setShowAddSavings] = useState<string | null>(null);
   const [addAmount, setAddAmount] = useState("");
@@ -84,9 +85,20 @@ export default function GoalsPage() {
   }, [user]);
 
   const fetchGoals = async () => {
-    const { data } = await db.from("goals").select("*").order("created_at", { ascending: false });
+    const { data, error } = await db.from("goals").select("*").order("created_at", { ascending: false });
+    if (error) {
+      setLoadError(true);
+      setLoading(false);
+      return;
+    }
     setGoals((data as Goal[]) || []);
     setLoading(false);
+  };
+
+  const retryLoad = () => {
+    setLoadError(false);
+    setLoading(true);
+    fetchGoals();
   };
 
   const handleAdd = async (e: React.FormEvent) => {
@@ -282,6 +294,16 @@ export default function GoalsPage() {
       {loading ? (
         <div className="flex justify-center py-8">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        </div>
+      ) : loadError ? (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm">
+          <p className="font-medium">{t("home.loadError")}</p>
+          <button
+            className="mt-1 font-medium text-primary underline"
+            onClick={retryLoad}
+          >
+            {t("common.retry")}
+          </button>
         </div>
       ) : goals.length === 0 ? (
         <Card><CardContent className="p-6 text-center text-muted-foreground">{t("goal.noGoals")}</CardContent></Card>
