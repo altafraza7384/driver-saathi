@@ -99,10 +99,23 @@ export async function deleteUserData(uid: string): Promise<void> {
   const insurance = await db.collection("insurance_leads").where("user_id", "==", uid).get();
   insurance.docs.forEach((d) => writer.delete(d.ref));
   const sos = await db.collection("sos_requests").where("driverId", "==", uid).get();
-  sos.docs.forEach((d) => writer.delete(d.ref));
+  // Live SOS requests are cancelled first (the status update fires the
+  // cancel push that clears the mechanic's full-screen popup); deleting
+  // them outright would leave the popup showing forever.
+  const liveStatuses = ["pending", "accepted", "onway", "arrived"];
+  for (const d of sos.docs) {
+    if (liveStatuses.includes(d.get("status"))) {
+      await d.ref.update({ status: "cancelled" });
+    }
+    writer.delete(d.ref);
+  }
   const sosDetails = await db.collection("sos_request_details").where("driverId", "==", uid).get();
   sosDetails.docs.forEach((d) => writer.delete(d.ref));
   await writer.close();
   await db.recursiveDelete(db.doc(`users/${uid}`));
   await db.doc(`roles/${uid}`).delete();
+  // A deleted account must not keep a live mechanic profile (it would keep
+  // receiving SOS pushes) or a subscription record.
+  await db.doc(`mechanics/${uid}`).delete();
+  await db.doc(`subscriptions/${uid}`).delete();
 }
