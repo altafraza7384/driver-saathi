@@ -94,6 +94,12 @@ export const createRazorpaySubscription = onCall(
     }
     const adminPlanId = asString(req.data?.adminPlanId);
     if (!adminPlanId) throw new HttpsError("invalid-argument", "Invalid plan");
+    // The client sends the plan id; verify it exists and matches the paid
+    // interval, so a modified client cannot record a different plan.
+    const planDoc = await db.doc(`subscription_plans/${adminPlanId}`).get();
+    if (!planDoc.exists || asString(planDoc.get("billing_interval")) !== interval) {
+      throw new HttpsError("invalid-argument", "Invalid plan");
+    }
     // Reuse an open created subscription instead of creating a new one on every tap.
     const existingSnap = await db.doc(`subscriptions/${uid}`).get();
     const existing = existingSnap.data();
