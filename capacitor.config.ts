@@ -35,7 +35,7 @@ const config: CapacitorConfig = {
       // The native plugin only brokers the Google account pick and returns
       // the credential; the Firebase JS SDK performs the actual sign-in, so
       // it stays the single source of truth for auth state (the Firestore
-      // adapter listens to the JS SDK's onAuthStateChanged).
+      // adapter listens to the JS SDK's onIdTokenChanged).
       skipNativeAuth: true,
       providers: ['google.com'],
     },
