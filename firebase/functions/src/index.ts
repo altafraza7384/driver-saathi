@@ -330,7 +330,7 @@ export const sendAnnouncementPush = onDocumentCreated(
           android: { priority: "high" },
         }))
       );
-            // Best-effort cleanup of dead tokens, one doc per failed token.
+      // Best-effort cleanup of dead tokens, one doc per failed token.
       for (let i = 0; i < batch.length; i++) {
         const r = res.responses[i];
         if (!r.success && (r.error?.code === "messaging/registration-token-not-registered" || r.error?.code === "messaging/invalid-registration-token")) {
