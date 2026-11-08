@@ -66,7 +66,7 @@ export default function InsuranceLeadPage() {
   const [fieldErrors, setFieldErrors] = useState<{ name?: string; phone?: string; vehicle_number?: string; vehicle_year?: string; vehicle_model?: string; city?: string; policy_expiry?: string; consent?: string }>({});
   const clearFieldError = (key: keyof typeof fieldErrors) => setFieldErrors((prev) => ({ ...prev, [key]: undefined }));
 
-  const { data: myLeads = [], isLoading: leadsLoading } = useQuery({
+  const { data: myLeads = [], isLoading: leadsLoading, isError: leadsError, refetch: refetchLeads } = useQuery({
     queryKey: ["insurance_leads_mine"],
     queryFn: async () => {
       const { data, error } = await db
@@ -246,7 +246,17 @@ export default function InsuranceLeadPage() {
 
       <div className="space-y-2">
         <h2 className="font-bold">{t("insurance.myRequests")}</h2>
-        {myLeads.length === 0 ? (
+        {leadsError ? (
+          <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm">
+            <p className="font-medium">{t("home.loadError")}</p>
+            <button
+              className="mt-1 font-medium text-primary underline"
+              onClick={() => refetchLeads()}
+            >
+              {t("common.retry")}
+            </button>
+          </div>
+        ) : myLeads.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t("insurance.noRequests")}</p>
         ) : (
           myLeads.map((l) => (
