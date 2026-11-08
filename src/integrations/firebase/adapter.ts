@@ -195,9 +195,9 @@ async function buildSession(u: FirebaseUser | null) {
     if (!u) return null;
     let access_token = "";
     try {
-          access_token = await getAccessToken(u);
+              access_token = await getAccessToken(u);
     } catch (e) {
-          // Network still down after retries: keep the user logged in with an
+            // Network still down after retries: keep the user logged in with an
           // empty token. API calls that need one fail until the SDK refreshes it,
           // but the user is NOT kicked to the login screen. A non-network error
           // means the account itself is invalid, so re-throw it.
