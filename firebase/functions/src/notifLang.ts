@@ -46,7 +46,7 @@ const AMOUNT_BODY: Record<NotifLang, (label: string, item: string, amount: strin
 en: (label, item, amount) => item ? `your ${label} "${item}" of ₹${amount} is due.` : `your ${label} of ₹${amount} is due.`,
 hi: (label, item, amount) => item ? `${label} "${item}" — ₹${amount} आज देय है।` : `${label} — ₹${amount} आज देय है।`,
 mr: (label, item, amount) => item ? `${label} "${item}" — ₹${amount} आज देय आहे.` : `${label} — ₹${amount} आज देय आहे.`,
-bn: (label, item, amount) => item ? `আপনার ${label} "${item}" — ₹${amount} আজ দেয।` : `আপনার ${label} — ₹${amount} আজ দেয।`,
+bn: (label, item, amount) => item ? `আপনার ${label} "${item}" — ₹${amount} আজ দেয়।` : `আপনার ${label} — ₹${amount} আজ দেয়।`,
 kn: (label, item, amount) => item ? `ನಿಮ್ಮ ${label} "${item}" — ₹${amount} ಇಂದು ಪಾವತಿಸಬೇಕು.` : `ನಿಮ್ಮ ${label} — ₹${amount} ಇಂದು ಪಾವತಿಸಬೇಕು.`,
 };
 
