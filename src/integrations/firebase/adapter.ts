@@ -165,6 +165,7 @@ const isNetworkError = (e: unknown) => {
   const msg = (e instanceof Error ? e.message : String(e ?? "")).toLowerCase();
   return (
     code === "auth/network-request-failed" ||
+    code === "auth/internal-error" ||
     msg.includes("network") ||
     msg.includes("failed to fetch") ||
     msg.includes("load failed") ||
@@ -319,10 +320,10 @@ const authAdapter = {
   },
 
   onAuthStateChange(callback: (event: string, session: unknown) => void) {
-        // onIdTokenChanged (not onAuthStateChanged): it also fires when the ID
-        // token is refreshed, so a token that recovers after a network outage
-        // flows into the session instead of leaving it with an empty token
-        // until the next app restart. Sign-in/out still fire it the same way.
+    // onIdTokenChanged (not onAuthStateChanged): it also fires when the ID
+    // token is refreshed, so a token that recovers after a network outage
+    // flows into the session instead of leaving it with an empty token
+    // until the next app restart. Sign-in/out still fire it the same way.
     const unsubscribe = onIdTokenChanged(firebaseAuth, async (u) => {
       try {
         callback(u ? "SIGNED_IN" : "SIGNED_OUT", await buildSession(u));
