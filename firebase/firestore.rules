@@ -194,10 +194,13 @@ service cloud.firestore {
             || resource.data.mechanicId == request.auth.uid))
           || isAdmin());
       allow update: if signedIn() && notBlocked() && (
-        // Driver: cancel or complete their own request.
+                // Driver: cancel or complete their own request. Only status, rating
+        // and the adapter-stamped updated_at may change (the app adapter
+        // adds updated_at to every update).
         (resource.data.driverId == request.auth.uid
           && request.resource.data.driverId == request.auth.uid
-          && request.resource.data.status in ['cancelled', 'completed'])
+          && request.resource.data.status in ['cancelled', 'completed']
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'rating', 'updated_at']))
         // Assigned mechanic: accept a pending request. A held mechanic is
         // blocked server-side (not just in the app UI); a missing status
         // field counts as not held (old mechanic docs have no status field).
@@ -209,19 +212,22 @@ service cloud.firestore {
           && request.resource.data.driverId == resource.data.driverId
           && exists(/databases/$(database)/documents/mechanics/$(request.auth.uid))
           && get(/databases/$(database)/documents/mechanics/$(request.auth.uid)).data.get('status', '') != 'held'
-             && get(/databases/$(database)/documents/mechanics/$(request.auth.uid)).data.get('phoneVerified', false) == true)
+             && get(/databases/$(database)/documents/mechanics/$(request.auth.uid)).data.get('phoneVerified', false) == true
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'mechanicId', 'mechanicName', 'mechanicPhone']))
         // Assigned mechanic: move the job forward.
         || (resource.data.mechanicId == request.auth.uid
           && request.resource.data.mechanicId == request.auth.uid
           && request.resource.data.driverId == resource.data.driverId
-          && request.resource.data.status in ['onway', 'arrived', 'completed'])
+          && request.resource.data.status in ['onway', 'arrived', 'completed']
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']))
          // Assigned mechanic: cancel an active job, with a reason recorded.        
         || (resource.data.mechanicId == request.auth.uid
             && request.resource.data.mechanicId == request.auth.uid
         && request.resource.data.driverId == resource.data.driverId
         && resource.data.status in ['accepted', 'onway', 'arrived']
         && request.resource.data.status == 'cancelled'
-        && request.resource.data.keys().hasAny(['cancelReason']))
+        && request.resource.data.keys().hasAny(['cancelReason'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelReason']))
       );
       allow delete: if false;
     }
