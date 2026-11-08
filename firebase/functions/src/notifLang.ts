@@ -43,11 +43,11 @@ function inr(amount: number): string {
 
 // Amount first, like the Jio example's "pack of Rs.349".
 const AMOUNT_BODY: Record<NotifLang, (label: string, item: string, amount: string) => string> = {
-  en: (label, item, amount) => `your ${label} "${item}" of ₹${amount} is due.`,
-  hi: (label, item, amount) => `${label} "${item}" — ₹${amount} आज देय है।`,
-  mr: (label, item, amount) => `${label} "${item}" — ₹${amount} आज देय आहे.`,
-  bn: (label, item, amount) => `আপনার ${label} "${item}" — ₹${amount} আজ দেয়।`,
-  kn: (label, item, amount) => `ನಿಮ್ಮ ${label} "${item}" — ₹${amount} ಇಂದು ಪಾವತಿಸಬೇಕು.`,
+en: (label, item, amount) => item ? `your ${label} "${item}" of ₹${amount} is due.` : `your ${label} of ₹${amount} is due.`,
+hi: (label, item, amount) => item ? `${label} "${item}" — ₹${amount} आज देय है।` : `${label} — ₹${amount} आज देय है।`,
+mr: (label, item, amount) => item ? `${label} "${item}" — ₹${amount} आज देय आहे.` : `${label} — ₹${amount} आज देय आहे.`,
+bn: (label, item, amount) => item ? `আপনার ${label} "${item}" — ₹${amount} আজ দেয।` : `আপনার ${label} — ₹${amount} আজ দেয।`,
+kn: (label, item, amount) => item ? `ನಿಮ್ಮ ${label} "${item}" — ₹${amount} ಇಂದು ಪಾವತಿಸಬೇಕು.` : `ನಿಮ್ಮ ${label} — ₹${amount} ಇಂದು ಪಾವತಿಸಬೇಕು.`,
 };
 
 // Plain due line, when there is no amount and no saved description.
