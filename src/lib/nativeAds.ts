@@ -16,11 +16,19 @@ export function isNativeAdsAvailable(): boolean {
 }
 
 export async function showNativeAd(): Promise<void> {
-  await NativeAds.showNativeAd({ adUnitId: NATIVE_AD_UNIT_ID });
+  try {
+    await NativeAds.showNativeAd({ adUnitId: NATIVE_AD_UNIT_ID });
+  } catch {
+    // Ad failed to show; nothing to clean up.
+  }
 }
 
 export async function setNativeAdRect(rect: { x: number; y: number; width: number; height: number }): Promise<void> {
-  await NativeAds.setAdRect(rect);
+  try {
+    await NativeAds.setAdRect(rect);
+  } catch {
+    // Ad rect update failed; nothing to clean up.
+  }
 }
 
 export async function hideNativeAd(): Promise<void> {
