@@ -45,7 +45,7 @@ async function hasIncomeOn(uid: string, date: string): Promise<boolean> {
   const snap = await db
     .collection(`users/${uid}/transactions`)
     .where("type", "==", "income")
-    .where("date", "==", date)
+    .where("transaction_date", "==", date)
     .limit(1)
     .get();
   return !snap.empty;
