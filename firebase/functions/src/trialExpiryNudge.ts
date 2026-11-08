@@ -86,7 +86,7 @@ async function sendTrialExpiryNudge(): Promise<void> {
     const role = await db.doc(`roles/${userDoc.id}`).get();
     if ((role.get("roles") as string[] | undefined)?.includes("admin")) continue;
     // Tokens first: if the user has no push tokens, do NOT claim the
-  // milestone — claiming it here would lose this milestone forever
+    // milestone — claiming it here would lose this milestone forever
     // (no sent_at is ever written for a user with no tokens).
     const subsSnap = await db
       .collection(`users/${userDoc.id}/push_subscriptions`)
