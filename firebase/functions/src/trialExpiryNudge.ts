@@ -140,7 +140,7 @@ async function sendTrialExpiryNudge(): Promise<void> {
 }
 
 export const trialExpiryNudge = onSchedule(
-  { schedule: "0 10 * * *", timeZone: TIME_ZONE, region: REGION },
+  { schedule: "0 10 * * *", timeZone: TIME_ZONE, region: REGION, retryCount: 2 },
   async () => {
     await sendTrialExpiryNudge();
   },
