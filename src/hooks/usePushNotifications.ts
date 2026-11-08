@@ -138,7 +138,6 @@ export function usePushNotifications() {
     const timer = setTimeout(() => {
       subscribe();
     }, 3000);
-
     return () => clearTimeout(timer);
   }, [subscribe]);
 }
