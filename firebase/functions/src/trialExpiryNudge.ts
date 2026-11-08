@@ -85,6 +85,20 @@ async function sendTrialExpiryNudge(): Promise<void> {
     // Admins never get a trial-expiry nudge (as in getAiLimits).
     const role = await db.doc(`roles/${userDoc.id}`).get();
     if ((role.get("roles") as string[] | undefined)?.includes("admin")) continue;
+   // Tokens first: if the user has no push tokens, do NOT claim the
+       // milestone — claiming it here would lose this milestone forever
+    // (no sent_at is ever written for a user with no tokens).
+    const subsSnap = await db
+      .collection(`users/${userDoc.id}/push_subscriptions`)
+      .get();
+    const tokens = [
+      ...new Set(
+        subsSnap.docs
+          .map((d) => extractFcmToken(d.get("endpoint")))
+          .filter((t): t is string => t !== null),
+      ),
+    ];
+    if (tokens.length === 0) continue;
     // Exactly-once: claim the uid+milestone marker in a transaction.
     const logRef = db.doc(`trial_expiry_push_log/${userDoc.id}_${hit.milestone}`);
     let claimed = false;
@@ -101,17 +115,6 @@ async function sendTrialExpiryNudge(): Promise<void> {
       }
     });
     if (!claimed) continue;
-    const subsSnap = await db
-      .collection(`users/${userDoc.id}/push_subscriptions`)
-      .get();
-    const tokens = [
-      ...new Set(
-        subsSnap.docs
-          .map((d) => extractFcmToken(d.get("endpoint")))
-          .filter((t): t is string => t !== null),
-      ),
-    ];
-    if (tokens.length === 0) continue;
     for (const batch of chunkTokens(tokens)) {
       const res = await getMessaging().sendEach(
         batch.map((token) => ({
