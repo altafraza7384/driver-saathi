@@ -352,6 +352,10 @@ export const cleanupTransactions = onSchedule({ schedule: "0 3 * * *", timeZone:
   const writer = db.bulkWriter();
   const dayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
   (await db.collectionGroup("chat_messages").where("created_at", "<", dayAgo).get()).docs.forEach((d) => writer.delete(d.ref));
+  // AI quota buckets are hourly and only the current hour is ever read —
+  // delete buckets older than 48h so they do not accumulate forever.
+  const twoDaysAgo = new Date(Date.now() - 48 * 3600 * 1000);
+  (await db.collectionGroup("aiUsage").where("bucket_start", "<", twoDaysAgo).get()).docs.forEach((d) => writer.delete(d.ref));
   await writer.close();
 });
 export { earningsNudgeAfternoon, earningsNudgeNight } from "./earningsNudge";
