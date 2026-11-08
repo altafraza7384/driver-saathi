@@ -77,9 +77,21 @@ const ensureOnline = () => {
   }
 };
 
+// A failed sign-in must NEVER destroy an existing session. The old code
+// called db.auth.signOut({ scope: "local" }), but the adapter's signOut
+// ignores the scope and does a FULL fbSignOut — so one failed sign-in
+// attempt wiped the stored session and turned a temporary login screen
+// into a permanent logout. Now we only clear the native plugin's partial
+// state (the Google account-chooser state) and leave any existing Firebase
+// JS session untouched. A deliberate logout still goes through the normal
+// signOut path, which wipes everything.
 const clearLocalAuthSession = async () => {
   try {
-    await db.auth.signOut({ scope: "local" });
+        const { Capacitor } = await import("@capacitor/core");
+    if (Capacitor.isNativePlatform()) {
+      const { FirebaseAuthentication } = await import("@capacitor-firebase/authentication");
+      await FirebaseAuthentication.signOut();
+    }
   } catch (error) {
     console.warn("Failed to clear local auth session", error);
   }
