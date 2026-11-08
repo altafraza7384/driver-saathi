@@ -145,7 +145,7 @@ export const sendNotifications = onSchedule(
       // amount when the record has one, else the saved description/note,
       // else the plain due line.
       const detail = dueDetail(lang, n.label, n.item, n.amount, n.desc);
-    n.body = who ? `${who}, ${detail}` : detail;
+      n.body = who ? `${who}, ${detail}` : detail;
     }
     // One log line per item and per run (never the token itself), so
     // "was it sent, to how many devices, and why not" is answerable from
@@ -168,7 +168,7 @@ export const sendNotifications = onSchedule(
         result.webSubs++;
         try {
           await webpush.sendNotification({ endpoint, keys: { p256dh: s.get("p256dh"), auth: s.get("auth") } },
-          JSON.stringify({ title: n.title, body: n.body, url: n.url }));
+            JSON.stringify({ title: n.title, body: n.body, url: n.url }));
           ok = true; result.webOk++;
         } catch (e: any) {
           result.errors.push(`web:${e?.statusCode ?? "error"}`);
