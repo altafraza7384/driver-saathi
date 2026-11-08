@@ -32,7 +32,9 @@ export const razorpayWebhook = onRequest({ region: REGION, secrets: [RAZORPAY_WE
   if (!signature || !raw) { res.status(400).send("Missing signature or body"); return; }
   const expected = await hmacHex(RAZORPAY_WEBHOOK_SECRET.value(), raw);
   if (!safeEqual(expected, signature)) { res.status(400).send("Invalid signature"); return; }
-  const eventId = req.header("x-razorpay-event-id") ?? "";
+    // Fallback: when Razorpay omits the event-id header, hash the raw body so a
+    // repeated delivery is still deduped instead of processed twice.
+  const eventId = req.header("x-razorpay-event-id") ?? `body-${await hmacHex(RAZORPAY_WEBHOOK_SECRET.value(), raw)}`;
   const body = (req.body ?? {}) as { event?: unknown; payload?: { subscription?: { entity?: { id?: unknown; status?: unknown } }; payment?: { entity?: { subscription_id?: unknown } } } };
 
   
