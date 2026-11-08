@@ -110,6 +110,12 @@ export async function registerNativePush(userId: string): Promise<void> {
     listenersAdded = true;
   }
 
-  // Register with FCM, which fires the registration listener above.
+  // Register with FCM
   await PushNotifications.register();
+}
+
+export async function requestLocalNotificationPermission(): Promise<boolean> {
+  if (!Capacitor.isNativePlatform()) return true;
+  const result = await LocalNotifications.requestPermissions();
+  return result.display === "granted";
 }
