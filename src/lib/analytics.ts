@@ -29,14 +29,3 @@ export function logScreen(screenName: string): void {
     // Analytics is best-effort; never surface a failure to the user.
   });
 }
-
-/** Log a generic event to Analytics. Fire-and-forget. No PII in params. */
-export function logAppEvent(
-  name: string,
-  params?: Record<string, string | number | boolean>,
-): void {
-  if (!isAnalyticsAvailable()) return;
-  void FirebaseAnalytics.logEvent({ name, params }).catch(() => {
-    // Analytics is best-effort; never surface a failure to the user.
-  });
-}
