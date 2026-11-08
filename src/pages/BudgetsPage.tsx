@@ -59,6 +59,7 @@ export default function BudgetsPage() {
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [spentByCategory, setSpentByCategory] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   // Add/edit dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -87,6 +88,9 @@ export default function BudgetsPage() {
     // budgets" empty state (audit 2026-10-24).
     if (budgetError || txError) {
       toast({ title: t("home.loadError"), variant: "destructive" });
+      setLoadError(true);
+      setLoading(false);
+      return;
     }
     setBudgets((budgetData as Budget[]) || []);
     const spent: Record<string, number> = {};
@@ -98,7 +102,13 @@ export default function BudgetsPage() {
     setLoading(false);
   }, [user, month]);
 
-  useEffect(() => {
+  const retryLoad = () => {
+    setLoadError(false);
+    setLoading(true);
+    fetchData();
+  };
+
+    useEffect(() => {
     fetchData();
   }, [fetchData]);
 
@@ -292,6 +302,16 @@ export default function BudgetsPage() {
 
       {loading ? (
         <div className="space-y-2"><Skeleton className="h-16 w-full rounded-xl" /><Skeleton className="h-16 w-full rounded-xl" /></div>
+      ) : loadError ? (
+              <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm">
+          <p className="font-medium">{t("home.loadError")}</p>      
+                          <button
+                                        className="mt-1 font-medium text-primary underline"
+            onClick={retryLoad}
+          >
+                            {t("common.retry")}
+                          </button>
+              </div>
       ) : budgets.length === 0 ? (
         <Card><CardContent className="p-4 text-center text-sm text-muted-foreground">
           {t("budget.noBudgets")} {t("budget.addFirst")}
