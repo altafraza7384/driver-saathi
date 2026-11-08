@@ -157,7 +157,7 @@ export async function startNativeListening(opts: NativeListenOptions): Promise<N
     clearTimers();
     if (current === claim) current = null;
     SpeechRecognition.removeAllListeners().catch(() => undefined);
-        // Mute the mic-off beep here too: requestStop's 800ms mute has expired
+// Mute the mic-off beep here too: requestStop's 800ms mute has expired
     // by the time this runs (the grace timer is 1000ms).
     void silenceBeep(800);
     SpeechRecognition.stop().catch(() => undefined);
