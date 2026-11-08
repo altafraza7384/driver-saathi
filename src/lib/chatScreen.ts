@@ -10,11 +10,10 @@ import type { CSSProperties } from "react";
 // above the keyboard too.
 //
 // Bottom nav = 68px buttons + 2px top border + safe-area padding
-// (max(inset, 16px)). An AdMob banner, when one is showing, sits right below
-// the lifted nav and publishes its height as --admob-banner-height (0 otherwise).
+// (max(inset, 16px)).
 export const CHAT_SCREEN_CLASS = "fixed inset-x-0 mx-auto flex w-full max-w-md flex-col p-4 pt-6 sm:max-w-lg";
 
 export const CHAT_SCREEN_STYLE: CSSProperties = {
   top: "env(safe-area-inset-top, 0px)",
-  bottom: "calc(70px + max(env(safe-area-inset-bottom, 0px), 16px) + var(--admob-banner-height, 0px))",
+  bottom: "calc(70px + max(env(safe-area-inset-bottom, 0px), 16px))",
 };
