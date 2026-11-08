@@ -4,12 +4,11 @@ import { z } from "zod";
 import { db, requireUser, consumeQuota, getAiLimits } from "./shared";
 import { detectLang, languageHint, istContextLine, REMINDER_RULES, REMINDER_TOOL, resolveReminder, finalizeReply, type UserLang } from "./aiLogic";
 
-const GOOGLE_AI_API_KEY = defineSecret("GOOGLE_AI_API_KEY");
 const GROQ_API_KEY = defineSecret("GROQ_API_KEY");
 const Msgs = z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(4000) }))
   .min(1).max(20).refine((m) => m.reduce((s, x) => s + x.content.length, 0) <= 20000, "Conversation too long");
 
-async function gemini(system: string, messages: z.infer<typeof Msgs>, key: string, tools?: unknown[], maxTokens = 768) {
+async function groq(system: string, messages: z.infer<typeof Msgs>, key: string, tools?: unknown[], maxTokens = 768) {
   const delays = [3000, 10000];
   for (let attempt = 1; attempt <= 3; attempt++) {
     let r;
@@ -23,7 +22,7 @@ async function gemini(system: string, messages: z.infer<typeof Msgs>, key: strin
       });
     } catch {
       if (attempt < 3) {
-        console.log(`gemini retry ${attempt + 1} timeout`);
+        console.log(`groq retry ${attempt + 1} timeout`);
         await new Promise((resolve) => setTimeout(resolve, delays[attempt - 1]));
         continue;
       }
@@ -31,11 +30,11 @@ async function gemini(system: string, messages: z.infer<typeof Msgs>, key: strin
     }
     if (r.ok) return r.json() as Promise<any>;
     if ((r.status === 429 || r.status === 503) && attempt < 3) {
-      console.log(`gemini retry ${attempt + 1} status ${r.status}`);
+      console.log(`groq retry ${attempt + 1} status ${r.status}`);
       await new Promise((resolve) => setTimeout(resolve, delays[attempt - 1]));
       continue;
     }
-    console.error("gemini upstream status", r.status);
+    console.error("groq upstream status", r.status);
     throw new HttpsError("internal", "AI provider error");
   }
   throw new HttpsError("internal", "AI provider error");
@@ -118,7 +117,7 @@ Reply in plain text only, because the app shows your reply as plain text: never 
   // counts against the limit, so long Marathi/Devanagari replies were cut
   // mid-word ("3. **Bajat"). The reply is also cleaned server-side: markdown
   // stripped (closed or not) and a cut-off tail trimmed to the last sentence.
-  const json = await gemini(system, parsed.data, GROQ_API_KEY.value(), undefined, 2048);
+  const json = await groq(system, parsed.data, GROQ_API_KEY.value(), undefined, 2048);
   const choice = json.choices?.[0];
   return { content: finalizeReply(choice?.message?.content ?? "", choice?.finish_reason === "length") };
 });
@@ -148,7 +147,7 @@ export const chat = onCall({ secrets: [GROQ_API_KEY], region: "asia-south1" }, a
   const userLang = detectLang(parsed.data);
 
   const nowDate = new Date();
-  const json = await gemini(languageHint(parsed.data) + istContextLine(nowDate) + "You are Driver Saathi, a Hinglish assistant for Indian drivers. You are Driver Saathi's own assistant: if asked who made you or who your owner is, say you are Driver Saathi's assistant — never say you are OpenAI, ChatGPT, or any other company's product. Use tools to save data the user mentions, but NEVER save on the first mention: before calling any save tool, first reply with exactly what you understood — amount, income or expense, category, and date — and ask the user to confirm it. If the user did not name a category, propose the most sensible one yourself in that reply (for driving income, 'Ride Earnings') so that a plain confirmation covers every field — never present a confirmation with the category missing. Call a save tool ONLY in a later message after the user confirms (for example 'haan' or 'save karo'). A plain 'yes', 'haan', or 'save karo' confirms ONLY the proposal in your immediately preceding message: if that message was not asking for confirmation (for example it already said an entry was saved), there is nothing to confirm — do NOT call any save tool, ask the user what they want to record instead. If you flagged an entry as already saved and the user confirms it is a separate entry, call the save tool again with force set to true. If the user's message is garbled, repetitive, or unclear, do NOT guess what they meant — ask them instead of saving. Never save a transaction, note, or reminder from a message the user has not confirmed. " + REMINDER_RULES + "Reply in plain text only: never use #, *, |, backticks, tables, or any markdown formatting. Always put a normal space before the \u20B9 sign (write 'an \u20B9100 income', never 'an\u20B9100'). Reply in the same language and script as the user's message: Marathi in Marathi, Hindi in Hindi, English in English, Bengali in Bengali, Kannada in Kannada. Never answer a Marathi user in Hindi or English. " + languageHint(parsed.data),
+  const json = await groq(languageHint(parsed.data) + istContextLine(nowDate) + "You are Driver Saathi, a Hinglish assistant for Indian drivers. You are Driver Saathi's own assistant: if asked who made you or who your owner is, say you are Driver Saathi's assistant — never say you are OpenAI, ChatGPT, or any other company's product. Use tools to save data the user mentions, but NEVER save on the first mention: before calling any save tool, first reply with exactly what you understood — amount, income or expense, category, and date — and ask the user to confirm it. If the user did not name a category, propose the most sensible one yourself in that reply (for driving income, 'Ride Earnings') so that a plain confirmation covers every field — never present a confirmation with the category missing. Call a save tool ONLY in a later message after the user confirms (for example 'haan' or 'save karo'). A plain 'yes', 'haan', or 'save karo' confirms ONLY the proposal in your immediately preceding message: if that message was not asking for confirmation (for example it already said an entry was saved), there is nothing to confirm — do NOT call any save tool, ask the user what they want to record instead. If you flagged an entry as already saved and the user confirms it is a separate entry, call the save tool again with force set to true. If the user's message is garbled, repetitive, or unclear, do NOT guess what they meant — ask them instead of saving. Never save a transaction, note, or reminder from a message the user has not confirmed. " + REMINDER_RULES + "Reply in plain text only: never use #, *, |, backticks, tables, or any markdown formatting. Always put a normal space before the \u20B9 sign (write 'an \u20B9100 income', never 'an\u20B9100'). Reply in the same language and script as the user's message: Marathi in Marathi, Hindi in Hindi, English in English, Bengali in Bengali, Kannada in Kannada. Never answer a Marathi user in Hindi or English. " + languageHint(parsed.data),
     parsed.data, GROQ_API_KEY.value(), TOOLS);
   const msg = json.choices?.[0]?.message ?? {};
   const base = db.collection("users").doc(uid);
@@ -216,7 +215,7 @@ export const chat = onCall({ secrets: [GROQ_API_KEY], region: "asia-south1" }, a
   if (unclearReminder && !actions.length && !duplicateNote) {
     // The model called add_reminder without a day or time we could read.
     // Never claim "Done": ask once, in the user's language, in plain words.
-    const follow = await gemini(languageHint(parsed.data) + istContextLine(nowDate) + "You are Driver Saathi's own assistant. Reply in plain text only: never use #, *, |, backticks, tables, or any markdown formatting. Reply in the same language and script as the user's messages.",
+    const follow = await groq(languageHint(parsed.data) + istContextLine(nowDate) + "You are Driver Saathi's own assistant. Reply in plain text only: never use #, *, |, backticks, tables, or any markdown formatting. Reply in the same language and script as the user's messages.",
       [...parsed.data, { role: "user" as const, content: "System note: the reminder was NOT saved because its day or time could not be understood. In one short sentence ask the user which day and time they want, giving an example in their language like 'kal subah 7 baje'. Never ask for a format like yyyy-mm-dd." }],
       GROQ_API_KEY.value());
     return { content: finalizeReply(follow.choices?.[0]?.message?.content ?? "", false), actions };
@@ -225,7 +224,7 @@ export const chat = onCall({ secrets: [GROQ_API_KEY], region: "asia-south1" }, a
     // The single-turn tool flow never shows the model a tool result, so ask
     // again through a second model call — it phrases the question in the
     // user's own language instead of leaking a hardcoded message.
-    const follow = await gemini(languageHint(parsed.data) + "You are Driver Saathi's own assistant. Reply in plain text only: never use #, *, |, backticks, tables, or any markdown formatting. Reply in the same language and script as the user's messages.",
+    const follow = await groq(languageHint(parsed.data) + "You are Driver Saathi's own assistant. Reply in plain text only: never use #, *, |, backticks, tables, or any markdown formatting. Reply in the same language and script as the user's messages.",
       [...parsed.data, { role: "user" as const, content: `System note: the user just confirmed, but this was already saved a few minutes ago: ${duplicateNote}. Ask the user whether this is a separate new entry or the same one. Do not save anything yet.` }],
       GROQ_API_KEY.value());
     return { content: finalizeReply(follow.choices?.[0]?.message?.content ?? "", false) || actions.join("\n") || doneText(userLang), actions };
