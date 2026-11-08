@@ -15,6 +15,7 @@ export { createRazorpaySubscription, confirmRazorpaySubscription, cancelRazorpay
 export { razorpayWebhook } from "./webhook";
 export { dedupeInsuranceLead } from "./leads";
 export { sendSosRequestPush, sendSosCancelPush } from "./sosPush";
+export { clearPhoneVerifiedOnChange } from "./mechanicPhone";
 
 const REGION = "asia-south1";
 const VAPID_PUBLIC_KEY = defineSecret("VAPID_PUBLIC_KEY");
