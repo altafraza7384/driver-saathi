@@ -55,6 +55,7 @@ export default function TransactionsPage() {
   // lands, show a skeleton instead of ₹0 (QA 2026-11-01).
   const [totalsLoading, setTotalsLoading] = useState(true);
   const [weeklyLoading, setWeeklyLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [editTx, setEditTx] = useState<Transaction | null>(null);
   const [editAmount, setEditAmount] = useState("");
   const [editCategory, setEditCategory] = useState("");
@@ -68,11 +69,13 @@ export default function TransactionsPage() {
   const fetchTotals = async () => {
     let query = db.from("transactions").select("*");
     if (filter !== "all") query = query.eq("type", filter);
-    const { data } = await query;
+    const { data, error } = await query;
+    if (error) { setLoadError(true); setTotalsLoading(false); return; }
     const list = (data as Transaction[]) || [];
     setAllTotals({
       income: list.filter((t) => t.type === "income").reduce((s, t) => s + toAmount(t.amount), 0),
       expense: list.filter((t) => t.type !== "income").reduce((s, t) => s + toAmount(t.amount), 0),
+      
     });
     setTotalsLoading(false);
   };
@@ -80,7 +83,8 @@ export default function TransactionsPage() {
   const fetchWeeklyData = async () => {
     const weekStart = format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd");
     const weekEnd = format(endOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd");
-    const { data } = await db.from("transactions").select("*").gte("transaction_date", weekStart).lte("transaction_date", weekEnd);
+    const { data, error } = await db.from("transactions").select("*").gte("transaction_date", weekStart).lte("transaction_date", weekEnd);
+    if (error) { setLoadError(true); setWeeklyLoading(false); return; }
     setWeeklyTx((data as Transaction[]) || []);
     setWeeklyLoading(false);
   };
@@ -88,9 +92,16 @@ export default function TransactionsPage() {
   const fetchTransactions = async () => {
     let query = db.from("transactions").select("*").order("transaction_date", { ascending: false }).limit(limit);
     if (filter !== "all") query = query.eq("type", filter);
-    const { data } = await query;
+    const { data, error } = await query;
+    if (error) { setLoadError(true); setLoading(false); return; }
     setTransactions((data as Transaction[]) || []);
     setLoading(false);
+  };
+  
+  const retryLoad = () => {
+    setLoadError(false);
+    setLoading(true); setTotalsLoading(true); setWeeklyLoading(true);
+    fetchTransactions(); fetchWeeklyData(); fetchTotals();
   };
 
   const handleDelete = async (id: string) => {
@@ -221,6 +232,17 @@ export default function TransactionsPage() {
       <div className="space-y-2">
         {loading ? (
           <div className="flex justify-center py-8"><div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>
+        ) : loadError ? (
+            <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm">
+                        <p className="font-medium">{t("home.loadError")}</p>
+              <button
+                className="mt-1 font-medium text-primary underline"
+                onClick={retryLoad}
+                >
+                {t("common.retry")}
+              </button>
+            </div>
+      
         ) : transactions.length === 0 ? (
           <Card><CardContent className="p-6 text-center text-muted-foreground">{t("home.noTransactions")}</CardContent></Card>
         ) : (
