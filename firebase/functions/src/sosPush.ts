@@ -55,7 +55,7 @@ function mechanicMatches(m: MechanicData, r: SosRequestData): boolean {
     typeof r.approxLat === "number" &&
     typeof r.approxLng === "number"
   ) {
-    const radius = typeof m.serviceRadiusKm === "number" ? m.serviceRadiusKm : 0;
+    const radius = typeof m.serviceRadiusKm === "number" ? m.serviceRadiusKm : 10;
     if (haversineKm(m.lat, m.lng, r.approxLat, r.approxLng) > radius) return false;
   }
   return true;
@@ -65,8 +65,10 @@ function mechanicMatches(m: MechanicData, r: SosRequestData): boolean {
 // push a data-only FCM message to every ONLINE, non-held mechanic whose
 // categories + radius match. Payload carries ONLY public fields (request
 // id, category, area text) — never the driver phone or exact location.
-// Exactly-once: the sos_push_log doc is claimed in a transaction first,
-// so a function redelivery stops instead of double-pushing.
+// At-least-once: the sos_push_log doc is claimed in a transaction first,
+// and sent is marked true only after the send. A redelivery stops when
+// sent is true, and re-attempts when a previous run crashed before
+// marking sent — a lost SOS push is worse than a rare duplicate.
 export const sendSosRequestPush = onDocumentCreated(
   { document: "sos_requests/{requestId}", region: REGION },
   async (event) => {
@@ -76,15 +78,19 @@ export const sendSosRequestPush = onDocumentCreated(
     if (req.status !== "pending") return;
     const requestId = event.params.requestId;
     const logRef = db.doc(`sos_push_log/${requestId}`);
-    let claimed = false;
+    // Claim the log, and re-attempt if a previous run crashed after
+    // claiming but before the send was marked done (sent === true means
+    // the push really went out; anything else means it may have been lost).
+    let alreadySent = false;
     await db.runTransaction(async (tx) => {
       const existing = await tx.get(logRef);
       if (!existing.exists) {
-        tx.set(logRef, { claimed_at: new Date().toISOString() });
-        claimed = true;
+        tx.set(logRef, { claimed_at: new Date().toISOString(), sent: false });
+      } else if (existing.get("sent") === true) {
+        alreadySent = true;
       }
     });
-    if (!claimed) return;
+    if (alreadySent) return;
     const mechanics = await db.collection("mechanics").where("isOnline", "==", true).get();
     const targets: Array<{ token: string; uid: string }> = [];
     for (const d of mechanics.docs) {
@@ -95,10 +101,13 @@ export const sendSosRequestPush = onDocumentCreated(
     // Record recipients for the cancel fan-out, even when zero (so the
     // update trigger knows nobody was pushed).
     await logRef.set(
-      { request_id: requestId, tokens: targets.map((t) => t.token), mechanic_uids: targets.map((t) => t.uid), sent_at: new Date().toISOString() },
+      { request_id: requestId, tokens: targets.map((t) => t.token), mechanic_uids: targets.map((t) => t.uid), sent: false },
       { merge: true },
     );
-    if (!targets.length) return;
+    if (!targets.length) {
+      await logRef.set({ sent: true, sent_at: new Date().toISOString() }, { merge: true });
+      return;
+    }
     const messaging = getMessaging();
     const area = typeof req.areaText === "string" ? req.areaText : "";
     const category = typeof req.category === "string" ? req.category : "";
@@ -116,6 +125,9 @@ export const sendSosRequestPush = onDocumentCreated(
         if (!r.success) console.error("sendSosRequestPush: send failed", { uid: batch[i].uid, code: r.error?.code ?? "error" });
       });
     }
+    // Mark sent only after every batch was attempted, so a crash before
+    // this point lets a retry re-attempt instead of losing the push.
+    await logRef.set({ sent: true, sent_at: new Date().toISOString() }, { merge: true });
   },
 );
 
