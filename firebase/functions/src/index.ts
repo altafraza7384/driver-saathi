@@ -182,8 +182,17 @@ export const sendNotifications = onSchedule(
       const key = `${n.source}_${n.id}_${n.notifyAt}`.replace(/[/:.]/g, "-");
       const sentRef = db.doc(`users/${n.uid}/sentNotifications/${key}`);
       // Idempotent: create() fails if already claimed, so retries never double-send.
+      // A claim with sent_at set was truly sent. A claim with sent_at null means
+      // a previous run died mid-item — delete the stale claim and re-claim it
+      // so this run retries the item instead of skipping it forever.
       try { await sentRef.create({ source_table: n.source, source_id: n.id, notify_at: n.notifyAt, sent_at: null }); }
-      catch { summary.alreadySent++; continue; }
+      catch {
+        const existing = await sentRef.get().catch(() => null);
+        if (existing?.exists && existing.get("sent_at")) { summary.alreadySent++; continue; }
+        await sentRef.delete().catch(() => undefined);
+        try { await sentRef.create({ source_table: n.source, source_id: n.id, notify_at: n.notifyAt, sent_at: null }); }
+        catch { summary.alreadySent++; continue; }
+      }
       const subs = await db.collection(`users/${n.uid}/push_subscriptions`).get();
       let ok = false;
       const result = { fcmTokens: 0, webSubs: 0, fcmOk: 0, webOk: 0, errors: [] as string[] };
