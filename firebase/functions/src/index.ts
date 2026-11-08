@@ -284,6 +284,21 @@ export const sendAnnouncementPush = onDocumentCreated(
     if (!snap) return;
     const a = snap.data() as Record<string, unknown>;
     if (a.is_active !== true) return;
+    // Exactly-once: claim this announcement in a transaction. A throw after
+    // some batches makes the trigger retry — without a claim the retry would
+    // re-push to everyone. A claim with sent:true is skipped; a claim with
+    // sent:false (crashed mid-send) is re-attempted, like sos_push_log.
+    const logRef = db.doc(`announcement_push_log/${event.params.announcementId}`);
+    let alreadySent = false;
+    await db.runTransaction(async (tx) => {
+      const existing = await tx.get(logRef);
+      if (!existing.exists) {
+        tx.set(logRef, { announcementId: event.params.announcementId, claimed_at: new Date().toISOString(), sent: false });
+      } else if (existing.get("sent") === true) {
+        alreadySent = true;
+      }
+    });
+    if (alreadySent) return;
     const title = typeof a.title === "string" && a.title ? a.title : "Driver Saathi";
     const body = typeof a.message === "string" ? a.message : "";
     const url = a.type === "offer" ? "/more" : "/";
@@ -315,7 +330,7 @@ export const sendAnnouncementPush = onDocumentCreated(
           android: { priority: "high" },
         }))
       );
-      // Best-effort cleanup of dead tokens, one doc per failed token.
+            // Best-effort cleanup of dead tokens, one doc per failed token.
       for (let i = 0; i < batch.length; i++) {
         const r = res.responses[i];
         if (!r.success && (r.error?.code === "messaging/registration-token-not-registered" || r.error?.code === "messaging/invalid-registration-token")) {
@@ -323,6 +338,7 @@ export const sendAnnouncementPush = onDocumentCreated(
         }
       }
     }
+    await logRef.set({ sent: true, sent_at: new Date().toISOString() }, { merge: true });
   }
 );
 
