@@ -2,7 +2,7 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import { z } from "zod";
 import { db, requireUser, consumeQuota, getAiLimits } from "./shared";
-import { detectLang, languageHint, istContextLine, REMINDER_RULES, REMINDER_TOOL, resolveReminder, finalizeReply, type UserLang } from "./aiLogic";
+import { detectLang, languageHint, istNow, istContextLine, REMINDER_RULES, REMINDER_TOOL, resolveReminder, finalizeReply, type UserLang } from "./aiLogic";
 
 const GROQ_API_KEY = defineSecret("GROQ_API_KEY");
 const Msgs = z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(4000) }))
@@ -97,7 +97,7 @@ export const financeAi = onCall({ secrets: [GROQ_API_KEY], region: "asia-south1"
   if (!(await consumeQuota(uid, "finance-ai", (await getAiLimits(uid)).financeAi))) throw new HttpsError("resource-exhausted", "AI usage limit reached");
 
   const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  const monthStart = istNow(now).date.slice(0, 7) + "-01";
   const base = db.collection("users").doc(uid);
   const [tx, debts, goals] = await Promise.all([
     base.collection("transactions").where("transaction_date", ">=", monthStart).get(),
@@ -172,7 +172,7 @@ export const chat = onCall({ secrets: [GROQ_API_KEY], region: "asia-south1" }, a
   }
   for (const call of msg.tool_calls ?? []) {
     let a: any; try { a = JSON.parse(call.function.arguments); } catch { continue; }
-    const today = now.slice(0, 10);
+    const today = istNow(nowDate).date;
     if (call.function.name === "add_transaction" && Number(a.amount) > 0 && ["income", "expense"].includes(a.type)) {
       const amt = Number(a.amount);
       const cat = String(a.category).slice(0, 100);
