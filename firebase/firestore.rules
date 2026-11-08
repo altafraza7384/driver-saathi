@@ -40,6 +40,11 @@ service cloud.firestore {
     function ownsPayload(uid) {
       return !('user_id' in request.resource.data) || request.resource.data.user_id == uid;
     }
+    // Approx coords are null when the driver has no GPS (area-text only);
+    // otherwise they must be valid lat/lng numbers. A missing field counts
+    // as null, same as the app writing null.
+    function isValidApproxLat(v) { return v == null || (v is number && v >= -90 && v <= 90); }
+    function isValidApproxLng(v) { return v == null || (v is number && v >= -180 && v <= 180); }
 
     match /users/{uid} {
       // Profile document. Admins may read any profile and update any field
@@ -172,7 +177,9 @@ service cloud.firestore {
         // The public doc must never carry phone/exact coords (audit
         // 2026-10-24 hardening; the app never writes them here).
         && !request.resource.data.keys().hasAny(['driverPhone', 'phone', 'exactLat', 'exactLng'])
-        && request.resource.data.category in ['car', 'battery', 'towing', 'other', 'custom'];
+        && request.resource.data.category in ['car', 'battery', 'towing', 'other', 'custom']
+        && isValidApproxLat(request.resource.data.get('approxLat', null))
+        && isValidApproxLng(request.resource.data.get('approxLng', null));
       allow read: if signedIn()
         && ((notBlocked()
           && (resource.data.driverId == request.auth.uid
