@@ -44,7 +44,7 @@ export default function RemindersPage() {
   // the toast, and form values are retained on failure.
   const [formErrors, setFormErrors] = useState<{ title?: string; date?: string; category?: string }>({});
 
-  const { data: reminders = [], isLoading } = useQuery({
+  const { data: reminders = [], isLoading, isError, refetch } = useQuery({
     queryKey: ["reminders"],
     queryFn: async () => { const { data, error } = await db.from("reminders").select("*").order("reminder_date", { ascending: true }); if (error) throw error; return data; },
     enabled: !!user,
@@ -126,6 +126,16 @@ export default function RemindersPage() {
 
       {isLoading ? (
         <div className="flex justify-center py-10"><div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>
+      ) : isError ? (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm">
+          <p className="font-medium">{t("home.loadError")}</p>
+          <button
+            className="mt-1 font-medium text-primary underline"
+            onClick={() => refetch()}
+          >
+                      {t("common.retry")}
+          </button>
+        </div>
       ) : (
         <>
           {pending.length > 0 && (
