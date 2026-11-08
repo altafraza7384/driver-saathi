@@ -11,13 +11,22 @@ import { db, FieldValue } from "./shared";
 
 const REGION = "asia-south1";
 
+// Normalize to digits only (strip spaces, +, country code) so a reformatted
+// same number does not clear a valid verification — same rule as leads.ts.
+function normalizePhone(raw: unknown): string {
+  const digits = String(raw ?? "").replace(/\D/g, "");
+  if (digits.length === 11 && digits.startsWith("0")) return digits.slice(1);
+  if (digits.length === 12 && digits.startsWith("91")) return digits.slice(2);
+  return digits;
+}
+
 export const clearPhoneVerifiedOnChange = onDocumentUpdated(
   { document: "mechanics/{mechanicId}", region: REGION },
   async (event) => {
     const before = event.data?.before.data();
     const after = event.data?.after.data();
     if (!before || !after) return;
-    if (before.phone === after.phone) return;
+    if (normalizePhone(before.phone) === normalizePhone(after.phone)) return;
     if (!before.phoneVerified) return;
     await db.doc(`mechanics/${event.params.mechanicId}`).update({
       phoneVerified: false,
