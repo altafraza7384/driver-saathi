@@ -161,16 +161,16 @@ function mapUser(u: FirebaseUser | null) {
 // reconnecting) — that must NOT look like a logout. Only a non-network
 // error (revoked/disabled account) is a genuine sign-out.
 const isNetworkError = (e: unknown) => {
-    const code = (e as { code?: string })?.code ?? "";
-    const msg = (e instanceof Error ? e.message : String(e ?? "")).toLowerCase();
-    return (
-          code === "auth/network-request-failed" ||
-          msg.includes("network") ||
-          msg.includes("failed to fetch") ||
-          msg.includes("load failed") ||
-          msg.includes("timed out") ||
-          msg.includes("timeout")
-        );
+  const code = (e as { code?: string })?.code ?? "";
+  const msg = (e instanceof Error ? e.message : String(e ?? "")).toLowerCase();
+  return (
+    code === "auth/network-request-failed" ||
+    msg.includes("network") ||
+    msg.includes("failed to fetch") ||
+    msg.includes("load failed") ||
+    msg.includes("timed out") ||
+    msg.includes("timeout")
+  );
 };
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -178,39 +178,39 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 // Refresh the ID token, retrying briefly on network errors (the phone's
 // radio is often not ready yet on a cold start after a long idle).
 async function getAccessToken(u: FirebaseUser): Promise<string> {
-    let lastError: unknown = null;
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-          try {
-                  return await u.getIdToken();
-          } catch (e) {
-                  lastError = e;
-                  if (!isNetworkError(e) || attempt === 2) throw e;
-                  await sleep(800 * (attempt + 1));
-          }
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await u.getIdToken();
+    } catch (e) {
+      lastError = e;
+      if (!isNetworkError(e) || attempt === 2) throw e;
+      await sleep(800 * (attempt + 1));
     }
-    throw lastError;
+  }
+  throw lastError;
 }
 
 async function buildSession(u: FirebaseUser | null) {
-    if (!u) return null;
-    let access_token = "";
-    try {
-              access_token = await getAccessToken(u);
-    } catch (e) {
-        // Network still down after retries: keep the user logged in with an
-          // empty token. API calls that need one fail until the SDK refreshes it,
-          // but the user is NOT kicked to the login screen. A non-network error
-          // means the account itself is invalid, so re-throw it.
-          if (!isNetworkError(e)) throw e;
-    }
-    return {
-          access_token,
-          refresh_token: "", // Firebase SDK manages refresh internally.
-          token_type: "bearer",
-          expires_in: 3600,
-          expires_at: Math.floor(Date.now() / 1000) + 3600,
-          user: mapUser(u),
-    };
+  if (!u) return null;
+  let access_token = "";
+  try {
+    access_token = await getAccessToken(u);
+  } catch (e) {
+    // Network still down after retries: keep the user logged in with an
+    // empty token. API calls that need one fail until the SDK refreshes it,
+    // but the user is NOT kicked to the login screen. A non-network error
+    // means the account itself is invalid, so re-throw it.
+    if (!isNetworkError(e)) throw e;
+  }
+  return {
+    access_token,
+    refresh_token: "", // Firebase SDK manages refresh internally.
+    token_type: "bearer",
+    expires_in: 3600,
+    expires_at: Math.floor(Date.now() / 1000) + 3600,
+    user: mapUser(u),
+  };
 }
 
 /**
