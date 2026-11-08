@@ -246,7 +246,7 @@ export function SubscriptionPlansCard() {
                   <p className="font-bold">{p.name}</p>
                   <div className="text-right whitespace-nowrap">
                     {mrp !== null && mrp > price && (
-                      <p className="text-xs text-muted-foreground line-through">MRP {formatINR(mrp)}</p>
+                      <p className="text-xs text-muted-foreground line-through">{t("plans.mrp", { amount: formatINR(mrp) })}</p>
                     )}
                     <p className="font-bold">
                       {price === 0 ? "₹0" : `${formatINR(price)}/${per}`}
@@ -303,7 +303,7 @@ export function SubscriptionPlansCard() {
                     <p className="text-lg font-bold">{selected.name}</p>
                     <p>
                       {mrp !== null && mrp > price && (
-                        <span className="mr-2 text-muted-foreground line-through">MRP {formatINR(mrp)}</span>
+                        <span className="mr-2 text-muted-foreground line-through">{t("plans.mrp", { amount: formatINR(mrp) })}</span>
                       )}
                       <span className="text-3xl font-extrabold">{price === 0 ? "₹0" : `${formatINR(price)}/${per}`}</span>
                     </p>
