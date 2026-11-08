@@ -2,6 +2,7 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { getMessaging } from "firebase-admin/messaging";
 import { db } from "./shared";
 import { chunkTokens, extractFcmToken } from "./announcements";
+import { toNotifLang, nudgeTitle, nudgeBody } from "./notifLang";
 
 const REGION = "asia-south1";
 const TIME_ZONE = "Asia/Kolkata";
@@ -50,7 +51,7 @@ async function hasIncomeOn(uid: string, date: string): Promise<boolean> {
   return !snap.empty;
 }
 
-async function sendEarningsNudge(targetDate: string, body: string): Promise<void> {
+async function sendEarningsNudge(targetDate: string, when: "yesterday" | "today"): Promise<void> {
   const usersSnap = await db.collection("users").get();
   for (const userDoc of usersSnap.docs) {
     if (userDoc.get("earnings_nudge_enabled") !== true) continue;
@@ -66,11 +67,16 @@ async function sendEarningsNudge(targetDate: string, body: string): Promise<void
       ),
     ];
     if (tokens.length === 0) continue;
+    // The nudge speaks the user's own language (preferred_language from
+    // their profile doc; English when it was never saved).
+    const lang = toNotifLang(userDoc.get("preferred_language"));
+    const title = nudgeTitle(lang);
+    const body = nudgeBody(lang, when);
     for (const batch of chunkTokens(tokens)) {
       await getMessaging().sendEach(
         batch.map((token) => ({
           token,
-          notification: { title: "Daily Entry Reminder", body },
+          notification: { title, body },
           data: { url: "/transactions/add" },
           android: { priority: "high", notification: { channelId: "reminders" } },
         })),
@@ -84,7 +90,7 @@ export const earningsNudgeAfternoon = onSchedule(
   async () => {
     await sendEarningsNudge(
       addDays(istDateString(new Date()), -1),
-      "Kal ki kamai ki entry karein aur tension-free rahein.",
+      "yesterday",
     );
   },
 );
@@ -94,7 +100,7 @@ export const earningsNudgeNight = onSchedule(
   async () => {
     await sendEarningsNudge(
       istDateString(new Date()),
-      "Aaj ki kamai ki entry karein aur tension-free rahein.",
+      "today",
     );
   },
 );
