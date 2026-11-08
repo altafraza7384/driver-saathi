@@ -76,7 +76,7 @@ export default function TransactionsPage() {
       income: list.filter((t) => t.type === "income").reduce((s, t) => s + toAmount(t.amount), 0),
       expense: list.filter((t) => t.type !== "income").reduce((s, t) => s + toAmount(t.amount), 0),
       
-    });
+  });
     setTotalsLoading(false);
   };
 
@@ -241,8 +241,7 @@ export default function TransactionsPage() {
                 >
                 {t("common.retry")}
               </button>
-            </div>
-      
+            </div>      
         ) : transactions.length === 0 ? (
           <Card><CardContent className="p-6 text-center text-muted-foreground">{t("home.noTransactions")}</CardContent></Card>
         ) : (
