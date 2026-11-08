@@ -87,7 +87,7 @@ const ensureOnline = () => {
 // signOut path, which wipes everything.
 const clearLocalAuthSession = async () => {
   try {
-        const { Capacitor } = await import("@capacitor/core");
+    const { Capacitor } = await import("@capacitor/core");
     if (Capacitor.isNativePlatform()) {
       const { FirebaseAuthentication } = await import("@capacitor-firebase/authentication");
       await FirebaseAuthentication.signOut();
