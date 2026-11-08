@@ -26,7 +26,6 @@ type Msg = ChatMsg;
 
 const FINANCE_CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/finance-ai`;
 
-
 // embedded = shown inside the Assistant page's Finance AI tab, which already
 // bounds the height; the standalone /finance-ai route bounds itself the same
 // way (input row pinned above the bottom nav, only the list scrolls).
