@@ -11,6 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { ArrowLeft, Wrench, Phone } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { httpsCallable } from "firebase/functions";
+import { firebaseFunctions } from "@/integrations/firebase/client";
 
 type Mechanic = {
   id: string;
@@ -43,6 +45,8 @@ export default function AdminMechanicsPage() {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<Mechanic | null>(null);
   const [limitInput, setLimitInput] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteWord, setDeleteWord] = useState("");
 
   const { data: mechanics = [], isLoading } = useQuery({
     queryKey: ["admin_mechanics"],
@@ -99,6 +103,21 @@ export default function AdminMechanicsPage() {
       }
     },
     onSuccess: () => { refresh(); toast.success("Strike limit saved"); },
+    onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const callable = httpsCallable(firebaseFunctions, "adminDeleteMechanic");
+      await callable({ uid: id, confirm: "DELETE" });
+    },
+    onSuccess: () => {
+      refresh();
+      setSelected(null);
+      setConfirmDelete(false);
+      setDeleteWord("");
+      toast.success("Mechanic deleted");
+    },
     onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
 
@@ -334,11 +353,40 @@ export default function AdminMechanicsPage() {
                   <Button variant="outline" className="col-span-2" onClick={() => resetWarnings(selected)}>
                     {"Reset warnings"}
                   </Button>
+                  <Button variant="destructive" className="col-span-2" disabled={deleteMutation.isPending} onClick={() => { setDeleteWord(""); setConfirmDelete(true); }}>
+                    {"Delete mechanic"}
+                  </Button>
                 </div>
                 <Button variant="outline" className="w-full" onClick={() => setSelected(null)}>{"Cancel"}</Button>
               </div>
             );
           })()}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{"Delete mechanic permanently?"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 text-sm">
+            <p>{"This deletes the mechanic profile only. The same account keeps its Driver profile and login, and completed-job history stays."}</p>
+            <p>{"Type DELETE to confirm."}</p>
+            <Input
+              value={deleteWord}
+              onChange={(e) => setDeleteWord(e.target.value)}
+              placeholder={"DELETE"}
+            />
+            <Button
+              variant="destructive"
+              className="w-full"
+              disabled={deleteMutation.isPending || deleteWord !== "DELETE" || !selected}
+              onClick={() => selected && deleteMutation.mutate(selected.id)}
+            >
+              {"Delete permanently"}
+            </Button>
+            <Button variant="outline" className="w-full" onClick={() => setConfirmDelete(false)}>{"Cancel"}</Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
