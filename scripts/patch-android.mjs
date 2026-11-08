@@ -95,3 +95,42 @@ if (launchTheme.includes(splashIconItem)) {
   writeFileSync(stylesPath, styles);
   console.log('patch-android: styles.xml launch theme now uses @drawable/splash_icon_empty for the system splash icon (no logo)');
 }
+
+// Keyboard: make the window resize when the soft keyboard opens.
+//
+// v30 set `interactive-widget=resizes-content` in index.html, but on the
+// phone the chat input still hid behind the keyboard (user video 2026-11-08):
+// the WebView never resized, because the generated manifest sets no
+// windowSoftInputMode and the app runs edge-to-edge, so Android does not
+// shrink the window for the keyboard. Setting adjustResize on MainActivity
+// makes the window resize when the keyboard opens, so the fixed chat input
+// (and the bottom nav) move above the keyboard. The interactive-widget line
+// stays too — the two work together. Idempotent: run any number of times.
+const manifestPath = join(android, 'app', 'src', 'main', 'AndroidManifest.xml');
+if (!existsSync(manifestPath)) fail(`${manifestPath} not found.`);
+let manifest = readFileSync(manifestPath, 'utf8');
+const activityName = 'android:name=".MainActivity"';
+const nameIndex = manifest.indexOf(activityName);
+if (nameIndex === -1) {
+  fail('could not find the MainActivity <activity> (android:name=".MainActivity") in android/app/src/main/AndroidManifest.xml.');
+}
+const tagStart = manifest.lastIndexOf('<activity', nameIndex);
+const tagEnd = manifest.indexOf('>', nameIndex);
+if (tagStart === -1 || tagEnd === -1) {
+  fail('could not find the MainActivity <activity> opening tag in android/app/src/main/AndroidManifest.xml.');
+}
+const activityTag = manifest.slice(tagStart, tagEnd + 1);
+const softInputAttr = 'android:windowSoftInputMode="adjustResize"';
+if (activityTag.includes(softInputAttr)) {
+  console.log('patch-android: MainActivity already uses windowSoftInputMode="adjustResize" (keyboard resizes the window)');
+} else if (activityTag.includes('android:windowSoftInputMode=')) {
+  const patchedTag = activityTag.replace(/android:windowSoftInputMode="[^"]*"/, softInputAttr);
+  manifest = manifest.slice(0, tagStart) + patchedTag + manifest.slice(tagEnd + 1);
+  writeFileSync(manifestPath, manifest);
+  console.log('patch-android: MainActivity windowSoftInputMode replaced with "adjustResize"');
+} else {
+  const insertAt = nameIndex + activityName.length;
+  manifest = manifest.slice(0, insertAt) + ' ' + softInputAttr + manifest.slice(insertAt);
+  writeFileSync(manifestPath, manifest);
+  console.log('patch-android: MainActivity now uses windowSoftInputMode="adjustResize" (keyboard resizes the window)');
+}
