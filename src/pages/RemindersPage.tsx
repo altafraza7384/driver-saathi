@@ -133,7 +133,7 @@ export default function RemindersPage() {
             className="mt-1 font-medium text-primary underline"
             onClick={() => refetch()}
           >
-                      {t("common.retry")}
+            {t("common.retry")}
           </button>
         </div>
       ) : (
