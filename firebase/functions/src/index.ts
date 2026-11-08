@@ -66,6 +66,29 @@ export const adminDeleteUser = onCall({ region: REGION }, async (req) => {
     return { success: true };
 });
 
+export const adminDeleteMechanic = onCall({ region: REGION }, async (req) => {
+  await requireAdmin(req);
+  const targetUid = req.data?.uid;
+  if (typeof targetUid !== "string" || !targetUid) throw new HttpsError("invalid-argument", "Mechanic id required");
+  if (req.data?.confirm !== "DELETE") throw new HttpsError("invalid-argument", "Confirmation required");
+  const doc = await db.doc(`mechanics/${targetUid}`).get();
+  if (!doc.exists) throw new HttpsError("not-found", "Mechanic not found");
+  // No self/owner block here (unlike adminDeleteUser): the admin's own
+  // mechanic profile is a test profile and may be deleted on purpose. The
+  // DELETE-word confirm is the guard against a mistaken click, and the
+  // profile is recoverable by saving it again in the Mechanic app.
+  // A mechanic with a live SOS request must not be deleted: the driver would
+  // be left assigned to a mechanic that no longer exists. Query by mechanicId
+  // only (no composite index needed) and filter the status in code.
+  const mine = await db.collection("sos_requests").where("mechanicId", "==", targetUid).get();
+  const live = mine.docs.some((d) => ["pending", "accepted", "onway", "arrived"].includes(d.get("status") ?? ""));
+  if (live) throw new HttpsError("failed-precondition", "Mechanic has a live SOS request");
+  // Only the mechanic profile is deleted. The same uid keeps its Driver
+  // account and Firebase login; completed-job history in sos_requests stays.
+  await db.doc(`mechanics/${targetUid}`).delete();
+  return { success: true };
+});
+
 type Due = { uid: string; source: string; id: string; notifyAt: string; title: string; body: string; url: string; item: string; label: string; desc: string | null; amount: number | null };
 // Notification title/body are localized per user (see notifLang.ts):
 // title = saved name + " Reminder" in the user's language (or the type
