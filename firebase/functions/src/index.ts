@@ -112,7 +112,7 @@ export const sendNotifications = onSchedule(
         const uid = d.ref.parent.parent!.id;
         const name = d.get("title") ?? d.get("name") ?? d.get("document_name") ?? d.get("check_type") ?? "";
         // The title is set below, once the user's language is known
-        // (it needs the users doc, read in the next loop).
+        // (it needs the users oc, read in the next loop).
         
         const amountRaw = d.get("emi_amount") ?? d.get("amount") ?? d.get("target_amount") ?? null;
         const amount = typeof amountRaw === "number" && Number.isFinite(amountRaw) && amountRaw > 0 ? amountRaw : null;
@@ -146,7 +146,7 @@ export const sendNotifications = onSchedule(
       // amount when the record has one, else the saved description/note,
       // else the plain due line.
       const detail = dueDetail(lang, n.label, n.item, n.amount, n.desc);
-        body = who ? `${who}, ${detail}` : detail;
+        n.body = who ? `${who}, ${detail}` : detail;
     }
     // One log line per item and per run (never the token itself), so
     // "was it sent, to how many devices, and why not" is answerable from
