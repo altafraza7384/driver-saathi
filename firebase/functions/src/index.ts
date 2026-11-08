@@ -42,7 +42,7 @@ export const adminListUsers = onCall({ region: REGION }, async (req) => {
 export const deleteAccount = onCall({ region: REGION, secrets: [RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET] }, async (req) => {
   const uid = requireUser(req);
   if (req.data?.confirm !== "DELETE") throw new HttpsError("invalid-argument", "Confirmation required");
-    await cancelSubscriptionForUser(uid);
+  await cancelSubscriptionForUser(uid);
   await deleteUserData(uid);
   await auth.deleteUser(uid);
   return { success: true };
@@ -63,8 +63,8 @@ export const adminDeleteUser = onCall({ region: REGION, secrets: [RAZORPAY_KEY_I
     }
     const role = await db.doc(`roles/${targetUid}`).get();
     if (role.get("roles")?.includes("admin"))  throw new HttpsError("permission-denied", "Admin accounts cannot be deleted");
-        await cancelSubscriptionForUser(targetUid);
-  await deleteUserData(targetUid);
+    await cancelSubscriptionForUser(targetUid);
+    await deleteUserData(targetUid);
     await auth.deleteUser(targetUid);
     return { success: true };
 });
