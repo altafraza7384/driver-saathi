@@ -26,14 +26,6 @@ type Msg = ChatMsg;
 
 const FINANCE_CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/finance-ai`;
 
-const SUGGESTED_PROMPTS = [
-  "📊 Show my financial summary",
-  "💳 How are my loans progressing?",
-  "🎯 What's my goal progress?",
-  "💡 Give me investment tips",
-  "📈 How can I save more money?",
-  "⚠️ What are my biggest expenses?",
-];
 
 // embedded = shown inside the Assistant page's Finance AI tab, which already
 // bounds the height; the standalone /finance-ai route bounds itself the same
