@@ -112,8 +112,7 @@ export const sendNotifications = onSchedule(
         const uid = d.ref.parent.parent!.id;
         const name = d.get("title") ?? d.get("name") ?? d.get("document_name") ?? d.get("check_type") ?? "";
         // The title is set below, once the user's language is known
-        // (it needs the users oc, read in the next loop).
-        
+        // (it needs the users doc, read in the next loop).
         const amountRaw = d.get("emi_amount") ?? d.get("amount") ?? d.get("target_amount") ?? null;
         const amount = typeof amountRaw === "number" && Number.isFinite(amountRaw) && amountRaw > 0 ? amountRaw : null;
         due.push({ uid, source: col, id: d.id, notifyAt: d.get("notify_at"), title: "", body: "", url, item: String(name), label, desc: ((d.get("description") ?? d.get("note")) as string | null) ?? null, amount });
