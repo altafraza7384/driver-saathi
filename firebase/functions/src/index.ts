@@ -168,7 +168,7 @@ export const sendNotifications = onSchedule(
         result.webSubs++;
         try {
           await webpush.sendNotification({ endpoint, keys: { p256dh: s.get("p256dh"), auth: s.get("auth") } },
-            JSON.stringify({ title: n.title, body: n.body, url: n.url }));
+        JSON.stringify({ title: n.title, body: n.body, url: n.url }));
           ok = true; result.webOk++;
         } catch (e: any) {
           result.errors.push(`web:${e?.statusCode ?? "error"}`);
