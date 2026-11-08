@@ -158,7 +158,7 @@ export default function AssistantPage() {
   const send = useCallback(async (text?: string) => {
     const msgText = text || input.trim();
     if (!msgText || isLoadingRef.current) return;
-    if (!session?.access_token) { toast.error(t("ai.signInAssistant")); return; }
+    if (!session?.access_token) { toast.error(session?.user ? t("ai.noConnection") : t("ai.signInAssistant")); return; }
     const userMsg: Msg = { role: "user", content: msgText, ts: Date.now() };
     if (!text) setInput("");
     const allMessages = [...messagesRef.current, userMsg];
