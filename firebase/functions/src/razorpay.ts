@@ -14,8 +14,8 @@ export const RAZORPAY_KEY_SECRET = defineSecret("RAZORPAY_KEY_SECRET");
 const TRIAL_DAYS = 7;
 
 const PLANS = {
-  monthly: { name: "Driver Saathi Monthly", amount: 9900, period: "monthly", totalCount: 120 },
-  yearly: { name: "Driver Saathi Yearly", amount: 99900, period: "yearly", totalCount: 10 },
+  monthly: { name: "Driver Saathi Monthly", period: "monthly", totalCount: 120 },
+  yearly: { name: "Driver Saathi Yearly", period: "yearly", totalCount: 10 },
 } as const;
 
 type PlanInterval = keyof typeof PLANS;
@@ -60,20 +60,24 @@ function safeEqual(a: string, b: string): boolean {
 
 // Plans are created once via the API and their ids stored in
 // config/razorpay_plans, so repeat calls never duplicate plans.
-async function ensurePlanId(interval: PlanInterval): Promise<string> {
+async function ensurePlanId(interval: PlanInterval, catalogId: string, amount: number): Promise<string> {
+  // A catalog edit or test/live key change needs a new immutable provider plan.
+  const cacheKey = toHex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(
+    JSON.stringify([RAZORPAY_KEY_ID.value(), catalogId, interval, amount, "INR"]),
+  )));
   const ref = db.doc("config/razorpay_plans");
   const snap = await ref.get();
-  const existing = asString(snap.data()?.[interval]);
+  const existing = asString(snap.data()?.[cacheKey]);
   if (existing) return existing;
   const p = PLANS[interval];
   const created = await rzp("/plans", "POST", {
     period: p.period,
     interval: 1,
-    item: { name: p.name, amount: p.amount, currency: "INR" },
+    item: { name: p.name, amount, currency: "INR" },
   });
   const id = asString(created.id);
   if (!id) throw new HttpsError("internal", "Plan creation failed");
-  await ref.set({ [interval]: id }, { merge: true });
+  await ref.set({ [cacheKey]: id }, { merge: true });
   return id;
 }
 
@@ -97,8 +101,14 @@ export const createRazorpaySubscription = onCall(
     // The client sends the plan id; verify it exists and matches the paid
     // interval, so a modified client cannot record a different plan.
     const planDoc = await db.doc(`subscription_plans/${adminPlanId}`).get();
-    if (!planDoc.exists || asString(planDoc.get("billing_interval")) !== interval) {
+    if (!planDoc.exists || planDoc.get("is_active") !== true || asString(planDoc.get("billing_interval")) !== interval) {
       throw new HttpsError("invalid-argument", "Invalid plan");
+    }
+    const price = planDoc.get("price_inr");
+    const amountPaise = Math.round(price * 100);
+    if (typeof price !== "number" || !Number.isFinite(price) || price <= 0
+      || Number(price.toFixed(2)) !== price || !Number.isSafeInteger(amountPaise)) {
+      throw new HttpsError("failed-precondition", "The plan price is invalid. Contact support.");
     }
     // Serialize checkouts across devices. Never put provider calls inside a
     // Firestore transaction: a transaction retry would repeat those calls.
@@ -136,12 +146,19 @@ export const createRazorpaySubscription = onCall(
           }
           if (currentStatus === "created" && asString(existing.planInterval) === interval
             && asString(existing.adminPlanId) === adminPlanId) {
-            return {
-              subscriptionId: existingSubscriptionId,
-              keyId: RAZORPAY_KEY_ID.value(),
-              testMode: testMode(),
-              trialDays: TRIAL_DAYS,
-            };
+            const providerPlanId = asString(current.plan_id);
+            if (!providerPlanId) throw new HttpsError("internal", "Could not verify the existing subscription price");
+            const providerPlan = await rzp("/plans/" + providerPlanId, "GET");
+            const item = providerPlan.item as { amount?: unknown; currency?: unknown } | undefined;
+            if (providerPlan.period === interval && providerPlan.interval === 1
+              && item?.amount === amountPaise && item.currency === "INR") {
+              return {
+                subscriptionId: existingSubscriptionId,
+                keyId: RAZORPAY_KEY_ID.value(),
+                testMode: testMode(),
+                trialDays: TRIAL_DAYS,
+              };
+            }
           }
           if (currentStatus === "authenticated" || currentStatus === "active") {
             throw new HttpsError("failed-precondition", "Already subscribed");
@@ -159,7 +176,7 @@ export const createRazorpaySubscription = onCall(
         }
       }
     
-      const planId = await ensurePlanId(interval);
+      const planId = await ensurePlanId(interval, adminPlanId, amountPaise);
       const startAt = Math.floor(Date.now() / 1000) + TRIAL_DAYS * 24 * 60 * 60;
       creationSubmitted = true;
       let sub: RzpJson;
@@ -193,6 +210,7 @@ export const createRazorpaySubscription = onCall(
             adminPlanId,
             planInterval: interval,
             razorpayPlanId: planId,
+            amountPaise,
             razorpaySubscriptionId: subscriptionId,
             status: "created",
             trialEndsAt: new Date(startAt * 1000),
