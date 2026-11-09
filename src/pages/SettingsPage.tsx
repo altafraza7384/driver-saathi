@@ -38,7 +38,7 @@ export default function SettingsPage() {
   // retained on a failed save (only success closes the form).
   const [phoneSubmitError, setPhoneSubmitError] = useState("");
 
-  const { data: profile, isLoading } = useQuery({
+  const { data: profile, isLoading, isError: profileError, refetch: refetchProfile } = useQuery({
     queryKey: ["profile"],
     queryFn: async () => { const { data, error } = await db.from("profiles").select("*").eq("user_id", user!.id).single(); if (error) throw error; return data; },
     enabled: !!user,
@@ -103,6 +103,20 @@ export default function SettingsPage() {
   const hasProfile = profile?.full_name || profile?.phone || profile?.vehicle_type;
 
   if (isLoading) return <div className="flex justify-center py-20"><div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>;
+
+  if (profileError) return (
+    <div className="space-y-5 p-4 pt-6">
+      <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm">
+        <p className="font-medium">{t("home.loadError")}</p>
+        <button
+          className="mt-1 font-medium text-primary underline"
+          onClick={() => refetchProfile()}
+        >
+          {t("common.retry")}
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-5 p-4 pt-6">
