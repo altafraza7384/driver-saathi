@@ -386,6 +386,13 @@ const authAdapter = {
   },
 
   async signOut(_options?: { scope?: string }) {
+    const uid = firebaseAuth.currentUser?.uid;
+    if (uid) {
+      const { unregisterPush } = await import("@/lib/native-push");
+      // Remove this device while its owner's database permissions still
+      // exist. If both cleanup paths fail, retain Auth so logout can retry.
+      await unregisterPush(uid);
+    }
     try {
       await fbSignOut(firebaseAuth);
     } catch (e) {
@@ -913,6 +920,9 @@ class QueryBuilder implements PromiseLike<Result> {
   private async runUpsert(): Promise<Result> {
     const uid = currentUid();
     const data = clean((this.payload ?? {}) as Record<string, unknown>);
+    if (this.table === "push_subscriptions" && data.user_id !== uid) {
+      throw new BackendError("Push registration belongs to a different session", "auth/session-changed");
+    }
     // push_subscriptions case (onConflict "user_id,endpoint"): one doc per
     // endpoint per user. Reuse the existing doc if the endpoint is known.
     const conflictCols = (this.upsertOpts?.onConflict ?? "")
