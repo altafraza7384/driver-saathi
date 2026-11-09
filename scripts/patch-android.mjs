@@ -134,3 +134,38 @@ if (activityTag.includes(softInputAttr)) {
   writeFileSync(manifestPath, manifest);
   console.log('patch-android: MainActivity now uses windowSoftInputMode="adjustResize" (keyboard resizes the window)');
 }
+
+// UPI: let the app resolve/open UPI apps on Android 11+.
+//
+// Android 11+ package visibility: without a <queries> entry the app
+// cannot resolve UPI intent targets, so tapping PhonePe / Google Pay /
+// PayTM in the Razorpay checkout may do nothing. The generated manifest
+// already has a <queries> block (Capacitor defaults: speech, TTS, browser,
+// Custom Tabs, calendar) — this adds the UPI packages and the upi://
+// scheme inside that existing block. Idempotent: run any number of times.
+const upiQueries = [
+  '        <package android:name="com.phonepe.app" />',
+  '        <package android:name="com.google.android.apps.nbu.paisa.user" />',
+  '        <package android:name="net.one97.paytm" />',
+  '        <intent>',
+  '            <action android:name="android.intent.action.VIEW" />',
+  '            <data android:scheme="upi" />',
+  '        </intent>',
+].join(newline);
+if (manifest.includes('com.phonepe.app')) {
+  console.log('patch-android: manifest <queries> already declares UPI apps (PhonePe/Google Pay/PayTM + upi scheme)');
+} else {
+  const queriesClose = '</queries>';
+  const queriesCloseIndex = manifest.indexOf(queriesClose);
+  if (queriesCloseIndex === -1) {
+    fail('could not find the <queries> block in android/app/src/main/AndroidManifest.xml.');
+  }
+  const queriesLineStart = manifest.lastIndexOf(newline, queriesCloseIndex) + 1;
+  manifest =
+    manifest.slice(0, queriesLineStart) +
+    upiQueries +
+    newline +
+    manifest.slice(queriesLineStart);
+  writeFileSync(manifestPath, manifest);
+  console.log('patch-android: manifest <queries> now declares UPI apps (PhonePe/Google Pay/PayTM + upi scheme)');
+}
