@@ -20,6 +20,16 @@ export function requireUser(req: CallableRequest): string {
   return req.auth.uid;
 }
 
+// Driver email/password and Google flows require verified email. Keep the
+// generic guard available for the separate phone-authenticated mechanic app.
+export function requireVerifiedDriver(req: CallableRequest): string {
+  const uid = requireUser(req);
+  if (req.auth?.token.email_verified !== true) {
+    throw new HttpsError("permission-denied", "Verify your email address before continuing.");
+  }
+  return uid;
+}
+
 /** Admin check: custom claim OR server-side roles doc (either grants).
     The old code required BOTH, while Firestore isAdmin() accepts either
     — admins granted via roles doc only were rejected here (audit
