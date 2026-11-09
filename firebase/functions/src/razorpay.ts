@@ -250,11 +250,19 @@ export const confirmRazorpaySubscription = onCall(
     const sub = await rzp("/subscriptions/" + subscriptionId, "GET");
     const status = asString(sub.status);
     if (status !== "authenticated" && status !== "active") return { verified: false, status };
-    await db.doc(`subscriptions/${uid}`).set(
-      { status, updatedAt: FieldValue.serverTimestamp() },
-      { merge: true },
-    );
-    return { verified: true, status, testMode: testMode() };
+    const recordedStatus = await db.runTransaction(async (tx) => {
+      const ref = db.doc(`subscriptions/${uid}`);
+      const current = await tx.get(ref);
+      if (asString(current.get("razorpaySubscriptionId")) !== subscriptionId) {
+        throw new HttpsError("failed-precondition", "Subscription changed. Please refresh.");
+      }
+      const saved = asString(current.get("status"));
+      // A late Checkout callback must not erase a cancellation request.
+      if (saved && ["cancelling", "cancelled", "completed", "expired"].includes(saved)) return saved;
+      tx.set(ref, { status, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      return status;
+    });
+    return { verified: ["authenticated", "active", "cancelling"].includes(recordedStatus), status: recordedStatus, testMode: testMode() };
   },
 );
 
@@ -267,18 +275,53 @@ export const cancelRazorpaySubscription = onCall(
   { region: REGION, secrets: [RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET] },
   async (req) => {
     const uid = requireUser(req);
-    const snap = await db.doc(`subscriptions/${uid}`).get();
-    const subscriptionId = asString(snap.data()?.razorpaySubscriptionId);
-    if (!subscriptionId) throw new HttpsError("failed-precondition", "No subscription found");
-    const atCycleEnd = req.data?.atCycleEnd !== false;
-    await rzp("/subscriptions/" + subscriptionId + "/cancel", "POST", {
-      cancel_at_cycle_end: atCycleEnd ? 1 : 0,
+    const ref = db.doc(`subscriptions/${uid}`);
+    const operationId = crypto.randomUUID();
+    const existing = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (snap.get("checkoutLock")) throw new HttpsError("failed-precondition", "A subscription change is already in progress. Please wait.");
+      const id = asString(snap.get("razorpaySubscriptionId"));
+      if (!id) throw new HttpsError("failed-precondition", "No subscription found");
+      tx.set(ref, { checkoutLock: operationId }, { merge: true });
+      return { id, status: asString(snap.get("status")) };
     });
-    await db.doc(`subscriptions/${uid}`).set(
-      { status: "cancelled", updatedAt: FieldValue.serverTimestamp() },
-      { merge: true },
-    );
-    return { cancelled: true };
+    try {
+      const current = await rzp("/subscriptions/" + existing.id, "GET");
+      let status = asString(current.status);
+      if (!status) throw new HttpsError("internal", "Could not verify the subscription");
+      const ended = (value: string) => ["cancelled", "completed", "expired"].includes(value);
+      // Only a running paid cycle can be cancelled at its end. A mandate
+      // awaiting its first charge must be stopped immediately.
+      const atCycleEnd = req.data?.atCycleEnd !== false && status === "active";
+      if (!ended(status) && !(atCycleEnd && existing.status === "cancelling")) {
+        const result = await rzp("/subscriptions/" + existing.id + "/cancel", "POST", {
+          cancel_at_cycle_end: atCycleEnd ? 1 : 0,
+        });
+        status = asString(result.status);
+        if (!status || (!atCycleEnd && !ended(status))) {
+          throw new HttpsError("failed-precondition", "Cancellation is not confirmed. Please try again.");
+        }
+      }
+      const nextStatus = ended(status) ? status : "cancelling";
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (snap.get("checkoutLock") !== operationId) throw new HttpsError("failed-precondition", "Subscription changed. Please retry.");
+        // A terminal webhook may arrive while the provider request is running.
+        const recorded = asString(snap.get("status"));
+        tx.set(ref, {
+          status: recorded && recorded !== existing.status && ended(recorded) && nextStatus === "cancelling" ? recorded : nextStatus,
+          updatedAt: FieldValue.serverTimestamp(),
+          checkoutLock: FieldValue.delete(),
+          checkoutLockedAt: FieldValue.delete(),
+        }, { merge: true });
+      });
+      return { cancelled: true, status: nextStatus };
+    } finally {
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (snap.get("checkoutLock") === operationId) tx.update(ref, { checkoutLock: FieldValue.delete() });
+      });
+    }
   },
 );
 
