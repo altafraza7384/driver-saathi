@@ -105,6 +105,8 @@ export const createRazorpaySubscription = onCall(
     const subscriptionRef = db.doc(`subscriptions/${uid}`);
     const operationId = crypto.randomUUID();
     const existing = await db.runTransaction(async (tx) => {
+      const deletion = await tx.get(db.doc(`subscriptions/${uid}/lifecycle/account_deletion`));
+      if (deletion.exists) throw new HttpsError("failed-precondition", "Account deletion is in progress. A new checkout is not allowed.");
       const snap = await tx.get(subscriptionRef);
       const data = snap.data();
       if (data?.checkoutLock) {
@@ -280,21 +282,52 @@ export const cancelRazorpaySubscription = onCall(
   },
 );
 
-// Cancels the user's Razorpay subscription (if any) when their account is
-// deleted, so the UPI mandate and auto-debit stop. Best-effort: a Razorpay
-// API failure is logged, not thrown, so account deletion is not blocked.
-// The subscriptions doc is deleted either way.
+// Account data may be removed only after the provider confirms termination.
+// Keep a server-only lifecycle marker: deleting a Firestore parent does not
+// delete its subcollections, so stale sessions cannot race a new checkout.
 export async function cancelSubscriptionForUser(uid: string): Promise<void> {
-  const snap = await db.doc(`subscriptions/${uid}`).get();
-  const subscriptionId = asString(snap.data()?.razorpaySubscriptionId);
-  if (subscriptionId) {
-    try {
-      await rzp("/subscriptions/" + subscriptionId + "/cancel", "POST", {
-        cancel_at_cycle_end: 0,
-      });
-    } catch (e) {
-      console.error("Account delete: Razorpay cancel failed for", uid, e);
+  const ref = db.doc(`subscriptions/${uid}`);
+  const deletionRef = db.doc(`subscriptions/${uid}/lifecycle/account_deletion`);
+  const operationId = crypto.randomUUID();
+  const subscriptionId = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (snap.get("checkoutLock")) throw new HttpsError("failed-precondition", "Wait for the current checkout to finish before deleting the account.");
+    const id = asString(snap.get("razorpaySubscriptionId"));
+    const status = asString(snap.get("status"));
+    if (!id && status && !["cancelled", "completed", "expired"].includes(status)) {
+      throw new HttpsError("failed-precondition", "Subscription needs reconciliation before account deletion.");
     }
+    tx.set(deletionRef, { requestedAt: FieldValue.serverTimestamp() }, { merge: true });
+    if (snap.exists) tx.set(ref, { checkoutLock: operationId }, { merge: true });
+    return id;
+  });
+  try {
+    if (subscriptionId) {
+      const current = await rzp("/subscriptions/" + subscriptionId, "GET");
+      const status = asString(current.status);
+      if (!status) throw new HttpsError("internal", "Could not verify the subscription before account deletion");
+      if (!["cancelled", "completed", "expired"].includes(status)) {
+        const cancelled = await rzp("/subscriptions/" + subscriptionId + "/cancel", "POST", { cancel_at_cycle_end: 0 });
+        if (!["cancelled", "completed", "expired"].includes(asString(cancelled.status) ?? "")) {
+          throw new HttpsError("failed-precondition", "Subscription cancellation is not complete. Account data has been kept.");
+        }
+      }
+    }
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (snap.exists && snap.get("checkoutLock") !== operationId) {
+        throw new HttpsError("failed-precondition", "Subscription changed during account deletion. Please retry.");
+      }
+      tx.delete(ref);
+      tx.set(deletionRef, { completedAt: FieldValue.serverTimestamp() }, { merge: true });
+    });
+  } catch (error) {
+    // Preserve the provider ID for retries. A pending deletion also blocks
+    // checkouts until cancellation is reconciled, even if this call times out.
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (snap.get("checkoutLock") === operationId) tx.update(ref, { checkoutLock: FieldValue.delete() });
+    });
+    throw error;
   }
-  await db.doc(`subscriptions/${uid}`).delete();
 }
