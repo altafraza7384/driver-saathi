@@ -1,7 +1,7 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import { z } from "zod";
-import { db, requireUser, consumeQuota, getAiLimits } from "./shared";
+import { db, requireVerifiedDriver, consumeQuota, getAiLimits } from "./shared";
 import { detectLang, languageHint, istNow, istContextLine, REMINDER_RULES, REMINDER_TOOL, resolveReminder, finalizeReply, type UserLang } from "./aiLogic";
 
 const GROQ_API_KEY = defineSecret("GROQ_API_KEY");
@@ -91,7 +91,7 @@ function doneText(lang: UserLang): string {
 }
 
 export const financeAi = onCall({ secrets: [GROQ_API_KEY], region: "asia-south1", timeoutSeconds: 300 }, async (req) => {
-  const uid = requireUser(req);
+  const uid = requireVerifiedDriver(req);
   const parsed = Msgs.safeParse(req.data?.messages);
   if (!parsed.success) throw new HttpsError("invalid-argument", "Invalid messages");
   if (!(await consumeQuota(uid, "finance-ai", (await getAiLimits(uid)).financeAi))) throw new HttpsError("resource-exhausted", "AI usage limit reached");
@@ -140,7 +140,7 @@ const TOOLS = [
 ];
 
 export const chat = onCall({ secrets: [GROQ_API_KEY], region: "asia-south1" }, async (req) => {
-  const uid = requireUser(req);
+  const uid = requireVerifiedDriver(req);
   const parsed = Msgs.safeParse(req.data?.messages);
   if (!parsed.success) throw new HttpsError("invalid-argument", "Invalid messages");
   if (!(await consumeQuota(uid, "chat", (await getAiLimits(uid)).chat))) throw new HttpsError("resource-exhausted", "AI usage limit reached");
