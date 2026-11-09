@@ -4,6 +4,6 @@
 // Used by the login redirect, the ProtectedRoutes gate, the
 // Admin Users list, and ensureProfile.
 export const ADMIN_ONLY_EMAIL = "altafraza7384@gmail.com";
-export function isAdminOnlyAccount(email: string | null | undefined): boolean {
-  return (email ?? "").trim().toLowerCase() === ADMIN_ONLY_EMAIL;
+export function isAdminOnlyAccount(email: unknown): boolean {
+  return typeof email === "string" && email.trim().toLowerCase() === ADMIN_ONLY_EMAIL;
 }
