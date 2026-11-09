@@ -5,7 +5,7 @@
 // checkout identifier, NOT the secret.
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
-import { db, requireUser, requireAdmin, FieldValue } from "./shared";
+import { db, requireVerifiedDriver, requireAdmin, FieldValue } from "./shared";
 
 const REGION = "asia-south1";
 export const RAZORPAY_KEY_ID = defineSecret("RAZORPAY_KEY_ID");
@@ -91,7 +91,7 @@ function testMode(): boolean {
 export const createRazorpaySubscription = onCall(
   { region: REGION, secrets: [RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET] },
   async (req) => {
-    const uid = requireUser(req);
+    const uid = requireVerifiedDriver(req);
     const interval = req.data?.planInterval;
     if (interval !== "monthly" && interval !== "yearly") {
       throw new HttpsError("invalid-argument", "Invalid plan");
@@ -252,7 +252,7 @@ export const createRazorpaySubscription = onCall(
 export const confirmRazorpaySubscription = onCall(
   { region: REGION, secrets: [RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET] },
   async (req) => {
-    const uid = requireUser(req);
+    const uid = requireVerifiedDriver(req);
     const subscriptionId = asString(req.data?.subscriptionId);
     if (!subscriptionId) throw new HttpsError("invalid-argument", "Invalid subscription");
     const stored = await db.doc(`subscriptions/${uid}`).get();
@@ -284,7 +284,7 @@ export const confirmRazorpaySubscription = onCall(
   },
 );
 
-export const getSubscriptionStatus = onCall({ region: REGION }, async (req) => { const uid = requireUser(req); const snap = await db.doc(`subscriptions/${uid}`).get(); const d = snap.data(); if (!d) return { status: null, planInterval: null }; return { status: asString(d.status), planInterval: asString(d.planInterval) }; });
+export const getSubscriptionStatus = onCall({ region: REGION }, async (req) => { const uid = requireVerifiedDriver(req); const snap = await db.doc(`subscriptions/${uid}`).get(); const d = snap.data(); if (!d) return { status: null, planInterval: null }; return { status: asString(d.status), planInterval: asString(d.planInterval) }; });
 
 // Clear cancel path (part of launch terms): cancels at the end of the
 // current billing cycle by default, so the user keeps paid access until
@@ -292,7 +292,7 @@ export const getSubscriptionStatus = onCall({ region: REGION }, async (req) => {
 export const cancelRazorpaySubscription = onCall(
   { region: REGION, secrets: [RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET] },
   async (req) => {
-    const uid = requireUser(req);
+    const uid = requireVerifiedDriver(req);
     const ref = db.doc(`subscriptions/${uid}`);
     const operationId = crypto.randomUUID();
     const existing = await db.runTransaction(async (tx) => {
