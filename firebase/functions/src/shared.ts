@@ -68,12 +68,13 @@ export async function consumeQuota(uid: string, feature: string, limit: number):
 export interface AiLimits { chat: number; financeAi: number; }
 
 export async function getAiLimits(uid: string): Promise<AiLimits> {
+  const snap = await db.doc(`users/${uid}`).get();
+  const data = snap.data() ?? {};
+  if (data.is_blocked === true) throw new HttpsError("permission-denied", "This account is blocked.");
   const role = await db.doc(`roles/${uid}`).get();
   if ((role.get("roles") as string[] | undefined)?.includes("admin")) {
     return { chat: 100, financeAi: 50 };
   }
-  const snap = await db.doc(`users/${uid}`).get();
-  const data = snap.data() ?? {};
   if (data.subscription_plan_id) return { chat: 100, financeAi: 50 };
   const now = new Date();
   const ends = toDate(data.trial_ends_at);
