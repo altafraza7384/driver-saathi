@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { CreditCard, Check, Tag, Flame, Timer } from "lucide-react";
+import { CreditCard, Check, Tag, Flame, Timer, Loader2 } from "lucide-react";
 import { formatINR } from "@/lib/currency";
 import { useI18n } from "@/lib/i18n";
 import { getTrialState } from "@/lib/trial";
@@ -83,6 +83,14 @@ export function SubscriptionPlansCard() {
       document.body.appendChild(s);
     });
   }
+
+    // Preload Checkout.js when the plans card mounts, so the payment modal
+  // opens without waiting for the script download on tap. loadRazorpay()
+  // is a no-op once window.Razorpay exists, and startTrial still loads it
+  // on tap as a fallback if this preload failed (offline).
+  useEffect(() => {
+    void loadRazorpay();
+  }, []);
 
   // Real Razorpay flow, with the backend holding live keys:
   // create subscription on the server, authorize the UPI mandate in
@@ -332,7 +340,7 @@ export function SubscriptionPlansCard() {
                       ) : null
                     ) : (
                       <Button disabled={paying} onClick={() => selected && startTrial(selected)} className="w-full">
-                        <Flame className="mr-2 h-4 w-4" /> {t("plans.startTrial", { days: TRIAL_DAYS })}
+                        {paying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Flame className="mr-2 h-4 w-4" />} {t("plans.startTrial", { days: TRIAL_DAYS })}
                       </Button>
                     )}
                     {payMsg === "success" && (
