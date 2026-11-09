@@ -77,7 +77,7 @@ export default function HomePage() {
     const [bellOpen, setBellOpen] = useState(false);
   const today = localToday(); // local date, not UTC (audit 2026-10-24)
 
-  const { data: profile, isLoading: profileLoading } = useQuery({
+  const { data: profile, isLoading: profileLoading, isError: profileError, refetch: refetchProfile } = useQuery({
     queryKey: ["profile"],
     queryFn: async () => {
       const { data } = await db.from("profiles").select("full_name").eq("user_id", user!.id).single();
@@ -90,7 +90,7 @@ export default function HomePage() {
   // 2026-11-01: it showed only today's, so yesterday's entry read as
   // "No transactions yet"). Key stays under ["transactions_today"] so
   // every write page's existing invalidation refreshes it.
-  const { data: todayTx = [], isLoading: txLoading } = useQuery({
+  const { data: todayTx = [], isLoading: txLoading, isError: todayTxError, refetch: refetchTodayTx } = useQuery({
     queryKey: ["transactions_today", "recent"],
     queryFn: async () => {
       const { data, error } = await db.from("transactions").select("*").order("created_at", { ascending: false }).limit(5);
@@ -142,7 +142,7 @@ export default function HomePage() {
   // summed from this month's expense transactions, same as BudgetsPage.
   const thisMonth = currentMonth();
   const { start: monthStart, end: monthEnd } = monthRange(thisMonth);
-  const { data: monthBudgets = [] } = useQuery({
+  const { data: monthBudgets = [], isError: monthBudgetsError, refetch: refetchMonthBudgets } = useQuery({
     queryKey: ["budgets_month", thisMonth],
     queryFn: async () => {
       const { data, error } = await db.from("budgets").select("*").eq("month", thisMonth);
@@ -151,7 +151,7 @@ export default function HomePage() {
     },
     enabled: !!user,
   });
-  const { data: monthTx = [] } = useQuery({
+  const { data: monthTx = [], isError: monthTxError, refetch: refetchMonthTx } = useQuery({
     queryKey: ["budgets_month_tx", thisMonth],
     queryFn: async () => {
       const { data, error } = await db.from("transactions").select("*").gte("transaction_date", monthStart).lte("transaction_date", monthEnd);
@@ -200,12 +200,12 @@ export default function HomePage() {
       <div className="space-y-5 p-4 pt-0">
         <AnnouncementBanner />
 
-        {(todayError || debtsError || goalsError) && (
+        {(todayError || debtsError || goalsError || profileError || todayTxError || monthBudgetsError || monthTxError) && (
           <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm">
             <p className="font-medium">{t("home.loadError")}</p>
             <button
               className="mt-1 font-medium text-primary underline"
-              onClick={() => { refetchToday(); refetchDebts(); refetchGoals(); }}
+              onClick={() => { refetchToday(); refetchDebts(); refetchGoals(); refetchProfile(); refetchTodayTx(); refetchMonthBudgets(); refetchMonthTx(); }}
             >
               {t("common.retry")}
             </button>
