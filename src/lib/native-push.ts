@@ -1,7 +1,7 @@
 import { Capacitor } from "@capacitor/core";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { LocalNotifications } from "@capacitor/local-notifications";
-import { db } from "@/lib/backend";
+import { db, BACKEND } from "@/lib/backend";
 
 /**
  * Native push notifications using FCM (Firebase Cloud Messaging) on Android.
@@ -29,89 +29,169 @@ export function openPushUrl(url: unknown): void {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
-// Push listeners are added exactly once per app lifetime: registerNativePush
-// is retried on transient failure (usePushNotifications), and re-adding
-// them would fire every foreground push twice (two identical local
-// notifications, two openPushUrl calls on tap).
-let listenersAdded = false;
+type PushGuard = () => boolean;
+type SessionIdentity = object | string;
+
+let generation = 0;
+let sessionIdentity: SessionIdentity | null = null;
+let sessionUserId: string | null = null;
+const stoppedSessions = new Set<SessionIdentity>();
+const pendingRegistrations = new Set<Promise<unknown>>();
+let cleanup: Promise<void> | null = null;
+let listenersReady: Promise<void> | null = null;
+let nativeSession: { userId: string; isCurrent: PushGuard } | null = null;
+let nativeEndpoint: { userId: string; endpoint: string } | null = null;
+
+async function pushIdentity(userId: string): Promise<{ identity: SessionIdentity; isCurrent: PushGuard } | null> {
+  if (BACKEND === "firebase") {
+    // Dynamic import keeps importing the pure notification helpers independent
+    // of Firebase initialization, and avoids an adapter/backend import cycle.
+    const { firebaseAuth } = await import("@/integrations/firebase/client");
+    const user = firebaseAuth.currentUser;
+    if (!user || user.uid !== userId) return null;
+    return { identity: user, isCurrent: () => firebaseAuth.currentUser === user };
+  }
+  const { data } = await db.auth.getSession();
+  const session = data.session;
+  if (session?.user.id !== userId || !session.access_token) return null;
+  return { identity: session.access_token, isCurrent: () => true };
+}
+
+/** Registration and token saves must finish before logout removes a binding. */
+export async function withPushRegistration<T>(userId: string, work: (isCurrent: PushGuard) => Promise<T>): Promise<T | undefined> {
+  // A new account waits until the previous device binding has been revoked.
+  if (cleanup) await cleanup;
+  const session = await pushIdentity(userId);
+  if (!session || cleanup || stoppedSessions.has(session.identity) || !session.isCurrent()) return;
+  if (sessionIdentity !== session.identity) {
+    sessionIdentity = session.identity;
+    sessionUserId = userId;
+    generation += 1;
+  }
+  const version = generation;
+  const isCurrent = () => version === generation && sessionIdentity === session.identity
+    && !stoppedSessions.has(session.identity) && session.isCurrent();
+  const job = Promise.resolve().then(() => isCurrent() ? work(isCurrent) : undefined);
+  pendingRegistrations.add(job);
+  try { return await job; }
+  finally { pendingRegistrations.delete(job); }
+}
+
+/** Revoke this device while its user's authenticated database access exists. */
+export function unregisterPush(userId: string): Promise<void> {
+  if (cleanup) return cleanup;
+  generation += 1;
+  if (sessionIdentity && sessionUserId === userId) stoppedSessions.add(sessionIdentity);
+  sessionIdentity = null;
+  sessionUserId = null;
+  nativeSession = null;
+  const operation = (async () => {
+    // Cover logout before this app instance has attempted push registration.
+    const session = await pushIdentity(userId);
+    if (session) stoppedSessions.add(session.identity);
+    await Promise.allSettled([...pendingRegistrations]);
+
+    let endpoint = nativeEndpoint?.userId === userId ? nativeEndpoint.endpoint : null;
+    let subscription: PushSubscription | null = null;
+    if (!Capacitor.isNativePlatform() && "serviceWorker" in navigator) {
+      const registration = await navigator.serviceWorker.getRegistration("/sw.js");
+      subscription = await registration?.pushManager?.getSubscription() ?? null;
+      endpoint = subscription?.endpoint ?? null;
+    }
+    const removeBinding = async (): Promise<boolean> => {
+      if (!endpoint || !session?.isCurrent()) return false;
+      const { error } = await db.from("push_subscriptions").delete()
+        .eq("user_id", userId).eq("endpoint", endpoint);
+      if (error) throw error;
+      return true;
+    };
+    const revokeTransport = async (): Promise<boolean> => {
+      if (Capacitor.isNativePlatform()) await PushNotifications.unregister();
+      else if (subscription && !await subscription.unsubscribe()) throw new Error("Push unsubscribe failed");
+      return true;
+    };
+    // A denied/offline database delete must not skip local token revocation.
+    const [binding, transport] = await Promise.allSettled([removeBinding(), revokeTransport()]);
+    if (binding.status === "rejected") console.warn("Removing push binding failed");
+    if (transport.status === "rejected") console.warn("Revoking push transport failed");
+    if (!(binding.status === "fulfilled" && binding.value)
+      && !(transport.status === "fulfilled" && transport.value)) {
+      throw new Error("Could not disable this device's push notifications. Please retry sign out.");
+    }
+    nativeEndpoint = null;
+  })();
+  cleanup = operation;
+  void operation.finally(() => { if (cleanup === operation) cleanup = null; }).catch(() => undefined);
+  return operation;
+}
+
+function ensureNativeListeners(): Promise<void> {
+  if (listenersReady) return listenersReady;
+  const handles: Array<{ remove: () => Promise<void> }> = [];
+  listenersReady = (async () => {
+    try {
+      handles.push(await PushNotifications.addListener("registration", (token) => {
+        const target = nativeSession;
+        if (!target?.isCurrent()) return;
+        const endpoint = `fcm://${token.value}`;
+        nativeEndpoint = { userId: target.userId, endpoint };
+        void withPushRegistration(target.userId, async (isCurrent) => {
+          if (!isCurrent() || !target.isCurrent()) return;
+          const { error } = await db.from("push_subscriptions").upsert({
+            user_id: target.userId, endpoint, p256dh: "native", auth: "native",
+          }, { onConflict: "user_id,endpoint" });
+          if (error) throw error;
+        }).catch(() => console.error("Saving FCM token failed"));
+      }));
+      handles.push(await PushNotifications.addListener("registrationError", () => {
+        console.error("FCM registration failed");
+      }));
+      handles.push(await PushNotifications.addListener("pushNotificationReceived", async (notification) => {
+        if (!nativeSession?.isCurrent()) return;
+        try {
+          await LocalNotifications.schedule({
+            notifications: [{
+              title: notification.title || "Driver Saathi", body: notification.body || "",
+              id: foregroundNotificationId(), channelId: PUSH_CHANNEL_ID, extra: notification.data,
+            }],
+          });
+        } catch {
+          console.error("Showing foreground push failed");
+        }
+      }));
+      handles.push(await PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
+        if (nativeSession?.isCurrent()) openPushUrl(action.notification.data?.url);
+      }));
+      handles.push(await LocalNotifications.addListener("localNotificationActionPerformed", (action) => {
+        if (nativeSession?.isCurrent()) openPushUrl(action.notification.extra?.url);
+      }));
+    } catch (error) {
+      await Promise.allSettled(handles.map((handle) => handle.remove()));
+      listenersReady = null;
+      throw error;
+    }
+  })();
+  return listenersReady;
+}
 
 export async function registerNativePush(userId: string): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
-
-  // Request permission
-  const permResult = await PushNotifications.requestPermissions();
-  if (permResult.receive !== "granted") {
-    console.warn("Push notification permission denied");
-    return;
-  }
-
-  try {
-    await PushNotifications.createChannel({
-      id: PUSH_CHANNEL_ID,
-      name: "Reminders",
-      description: "Reminders, EMI, bills and document expiry",
-      importance: 5,
-      visibility: 1,
-      vibration: true,
-    });
-  } catch (err) {
-    console.warn("Push channel create failed:", err);
-  }
-
-  // Listeners first, then register, so the token event is never missed.
-  // Added once only (see listenersAdded above): a retry must not add a
-  // second set, or every foreground push would show twice.
-  if (!listenersAdded) {
-    await PushNotifications.addListener("registration", async (token) => {
-      // Store FCM token in push_subscriptions (reuse the table)
-      const { error } = await db.from("push_subscriptions").upsert(
-        {
-          user_id: userId,
-          endpoint: `fcm://${token.value}`,
-          p256dh: "native",
-          auth: "native",
-        },
-        { onConflict: "user_id,endpoint" }
-      );
-      if (error) console.error("Saving FCM token failed:", error);
-    });
-
-    await PushNotifications.addListener("registrationError", (err) => {
-      console.error("FCM registration error:", err);
-    });
-
-    // Android does not show a push itself while the app is open: show it
-    // as a local notification on the same channel.
-    await PushNotifications.addListener("pushNotificationReceived", async (notification) => {
-      try {
-        await LocalNotifications.schedule({
-          notifications: [
-            {
-              title: notification.title || "Driver Saathi",
-              body: notification.body || "",
-              id: foregroundNotificationId(),
-              channelId: PUSH_CHANNEL_ID,
-              extra: notification.data,
-            },
-          ],
-        });
-      } catch (err) {
-        console.error("Showing foreground push failed:", err);
-      }
-    });
-
-    // Notification tap (closed-app push, or the foreground copy above).
-    await PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
-      openPushUrl(action.notification.data?.url);
-    });
-    await LocalNotifications.addListener("localNotificationActionPerformed", (action) => {
-      openPushUrl(action.notification.extra?.url);
-    });
-    listenersAdded = true;
-  }
-
-  // Register with FCM
-  await PushNotifications.register();
+  await withPushRegistration(userId, async (isCurrent) => {
+    const permission = await PushNotifications.requestPermissions();
+    if (!isCurrent() || permission.receive !== "granted") return;
+    try {
+      await PushNotifications.createChannel({
+        id: PUSH_CHANNEL_ID, name: "Reminders",
+        description: "Reminders, EMI, bills and document expiry",
+        importance: 5, visibility: 1, vibration: true,
+      });
+    } catch { console.warn("Push channel create failed"); }
+    if (!isCurrent()) return;
+    await ensureNativeListeners();
+    if (!isCurrent()) return;
+    nativeSession = { userId, isCurrent };
+    await PushNotifications.register();
+  });
 }
 
 export async function requestLocalNotificationPermission(): Promise<boolean> {
