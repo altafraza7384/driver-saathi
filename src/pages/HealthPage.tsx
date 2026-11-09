@@ -38,7 +38,7 @@ export default function HealthPage() {
     return [...rows].sort((a, b) => String(b.updated_at ?? "").localeCompare(String(a.updated_at ?? "")))[0];
   };
 
-  const { data: log, isLoading } = useQuery({
+  const { data: log, isLoading, isError: logError, refetch: refetchLog } = useQuery({
     queryKey: ["health_log", today],
     queryFn: async () => {
       const { data, error } = await db.from("health_logs").select("*").eq("log_date", today);
@@ -144,6 +144,16 @@ export default function HealthPage() {
           <Skeleton className="h-20 w-full rounded-xl" />
           <Skeleton className="h-16 w-full rounded-xl" />
           <Skeleton className="h-16 w-full rounded-xl" />
+        </div>
+      ) : logError ? (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm">
+          <p className="font-medium">{t("home.loadError")}</p>
+          <button
+            className="mt-1 font-medium text-primary underline"
+            onClick={() => refetchLog()}
+          >
+            {t("common.retry")}
+          </button>
         </div>
       ) : (<>
       <div className="grid grid-cols-3 gap-2">
