@@ -462,7 +462,12 @@ export async function sendVerificationEmailToCurrentUser() {
 }
 
 export async function reloadCurrentUser() {
-  await firebaseAuth.currentUser?.reload();
+  const user = firebaseAuth.currentUser;
+  if (!user) return;
+  await user.reload();
+  // Firestore and callable functions inspect the ID token's verification
+  // claim, which is not refreshed by reloading the User object alone.
+  await user.getIdToken(true);
 }
 
 /**
