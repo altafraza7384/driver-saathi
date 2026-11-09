@@ -33,7 +33,7 @@ async function rzp(path: string, method: "GET" | "POST", body?: unknown): Promis
   if (!res.ok) {
     const err = json.error as { description?: string } | undefined;
     console.error("Razorpay API failed:", path, res.status, err?.description ?? "unknown");
-    throw new HttpsError("internal", err?.description ?? "Razorpay request failed");
+    throw new HttpsError("internal", err?.description ?? "Razorpay request failed", { razorpayStatus: res.status });
   }
   return json;
 }
@@ -100,61 +100,114 @@ export const createRazorpaySubscription = onCall(
     if (!planDoc.exists || asString(planDoc.get("billing_interval")) !== interval) {
       throw new HttpsError("invalid-argument", "Invalid plan");
     }
-    // Reuse an open created subscription instead of creating a new one on every tap.
-    const existingSnap = await db.doc(`subscriptions/${uid}`).get();
-    const existing = existingSnap.data();
-    if (existing) {
+    // Serialize checkouts across devices. Never put provider calls inside a
+    // Firestore transaction: a transaction retry would repeat those calls.
+    const subscriptionRef = db.doc(`subscriptions/${uid}`);
+    const operationId = crypto.randomUUID();
+    const existing = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(subscriptionRef);
+      const data = snap.data();
+      if (data?.checkoutLock) {
+        throw new HttpsError("failed-precondition", "A checkout is already being processed. Please wait before trying again.");
+      }
+      tx.set(subscriptionRef, {
+        checkoutLock: operationId,
+        checkoutLockedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      return data;
+    });
+    let creationSubmitted = false;
+    try {
+      // Reuse an open created subscription instead of creating a new one on every tap.
+      if (existing) {
         const existingStatus = asString(existing.status);
-      const existingSubscriptionId = asString(existing.razorpaySubscriptionId);
-      if (existingStatus === "created" && existingSubscriptionId) {
+        const existingSubscriptionId = asString(existing.razorpaySubscriptionId);
+        if (existingStatus === "created" && existingSubscriptionId) {
           if (asString(existing.planInterval) === interval) {
-              return {
-                  subscriptionId: existingSubscriptionId,
-                keyId: RAZORPAY_KEY_ID.value(),
-                testMode: testMode(),
-                trialDays: TRIAL_DAYS,
-              };
+            return {
+              subscriptionId: existingSubscriptionId,
+              keyId: RAZORPAY_KEY_ID.value(),
+              testMode: testMode(),
+              trialDays: TRIAL_DAYS,
+            };
           }
-        try {
-          await rzp("/subscriptions/" + existingSubscriptionId + "/cancel", "POST", {
-            cancel_at_cycle_end: 0,
-          });
-        } catch (e) {
-          console.error("Old subscription cancel failed, proceeding with new one:", existingSubscriptionId, e);
+          try {
+            await rzp("/subscriptions/" + existingSubscriptionId + "/cancel", "POST", {
+              cancel_at_cycle_end: 0,
+            });
+          } catch (e) {
+            console.error("Old subscription cancel failed, proceeding with new one:", existingSubscriptionId, e);
+          }
+        } else if (existingStatus === "authenticated" || existingStatus === "active") {
+          throw new HttpsError("failed-precondition", "Already subscribed");
         }
-      } else if (existingStatus === "authenticated" || existingStatus === "active") {
-        throw new HttpsError("failed-precondition", "Already subscribed");
+      }
+    
+      const planId = await ensurePlanId(interval);
+      const startAt = Math.floor(Date.now() / 1000) + TRIAL_DAYS * 24 * 60 * 60;
+      creationSubmitted = true;
+      let sub: RzpJson;
+      try {
+        sub = await rzp("/subscriptions", "POST", {
+          plan_id: planId,
+          total_count: PLANS[interval as PlanInterval].totalCount,
+          start_at: startAt,
+          customer_notify: 1,
+          addons: [{ item: { name: "Mandate verification", amount: 100, currency: "INR" } }],
+          notes: { userId: uid, checkoutOperationId: operationId },
+        });
+      } catch (error) {
+        const status = (error as { details?: { razorpayStatus?: number } })?.details?.razorpayStatus;
+        // An explicit rejection did not create a subscription. A timeout,
+        // network failure or 5xx may have done so: retain its reservation.
+        if (typeof status === "number" && status >= 400 && status < 500 && status !== 408) creationSubmitted = false;
+        throw error;
+      }
+      const subscriptionId = asString(sub.id);
+      if (!subscriptionId) throw new HttpsError("internal", "Subscription creation failed");
+    
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(subscriptionRef);
+        if (snap.get("checkoutLock") !== operationId) {
+          throw new HttpsError("failed-precondition", "Checkout needs reconciliation before another attempt.");
+        }
+        tx.set(subscriptionRef,
+          {
+            userId: uid,
+            adminPlanId,
+            planInterval: interval,
+            razorpayPlanId: planId,
+            razorpaySubscriptionId: subscriptionId,
+            status: "created",
+            trialEndsAt: new Date(startAt * 1000),
+            createdAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+            checkoutLock: FieldValue.delete(),
+            checkoutLockedAt: FieldValue.delete(),
+          },
+          { merge: true },
+        );
+      });
+      return { subscriptionId, keyId: RAZORPAY_KEY_ID.value(), testMode: testMode(), trialDays: TRIAL_DAYS };
+    } catch (error) {
+      if (creationSubmitted) {
+        console.error("Checkout requires reconciliation", { uid, operationId });
+        throw new HttpsError("failed-precondition", "Checkout confirmation is pending. Contact support before trying again.");
+      }
+      throw error;
+    } finally {
+      if (!creationSubmitted) {
+        await db.runTransaction(async (tx) => {
+          const snap = await tx.get(subscriptionRef);
+          if (snap.get("checkoutLock") === operationId) {
+            tx.update(subscriptionRef, {
+              checkoutLock: FieldValue.delete(),
+              checkoutLockedAt: FieldValue.delete(),
+            });
+          }
+        });
       }
     }
-    
-    const planId = await ensurePlanId(interval);
-    const startAt = Math.floor(Date.now() / 1000) + TRIAL_DAYS * 24 * 60 * 60;
-    const sub = await rzp("/subscriptions", "POST", {
-      plan_id: planId,
-      total_count: PLANS[interval as PlanInterval].totalCount,
-      start_at: startAt,
-      customer_notify: 1,
-      addons: [{ item: { name: "Mandate verification", amount: 100, currency: "INR" } }],
-      notes: { userId: uid },
-    });
-    const subscriptionId = asString(sub.id);
-    if (!subscriptionId) throw new HttpsError("internal", "Subscription creation failed");
-    
-    await db.doc(`subscriptions/${uid}`).set(
-      {
-        userId: uid,
-        adminPlanId,
-        planInterval: interval,
-        razorpayPlanId: planId,
-        razorpaySubscriptionId: subscriptionId,
-        status: "created",
-        trialEndsAt: new Date(startAt * 1000),
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true },
-    );
-    return { subscriptionId, keyId: RAZORPAY_KEY_ID.value(), testMode: testMode(), trialDays: TRIAL_DAYS };
   },
 );
 
