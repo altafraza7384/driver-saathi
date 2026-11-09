@@ -58,6 +58,9 @@ export const razorpayWebhook = onRequest({ region: REGION, secrets: [RAZORPAY_WE
         const subscription = subscriptions.docs[0];
         const userRef = db.doc(`users/${subscription.id}`);
         const user = await tx.get(userRef);
+        const adminPlanId = subscription.get("adminPlanId");
+        const plan = typeof adminPlanId === "string" && adminPlanId
+          ? await tx.get(db.doc(`subscription_plans/${adminPlanId}`)) : null;
         const previous = subscription.get("status");
         const terminal = ["cancelled", "completed", "expired"].includes(previous);
         const active = eventName === "subscription.activated" || eventName === "subscription.charged";
@@ -71,10 +74,9 @@ export const razorpayWebhook = onRequest({ region: REGION, secrets: [RAZORPAY_WE
           if (next) {
             if (previous === "cancelling" && !["cancelled", "completed", "expired"].includes(next)) next = "cancelling";
             tx.set(subscription.ref, { status: next, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-            const adminPlanId = subscription.get("adminPlanId");
             // Late provider events must not recreate a deleted account.
             if (user.exists && active && body.payload?.subscription?.entity?.status === "active"
-              && typeof adminPlanId === "string" && adminPlanId) {
+              && typeof adminPlanId === "string" && adminPlanId && plan?.exists && plan.get("deleting") !== true) {
               tx.update(userRef, { subscription_plan_id: adminPlanId });
             } else if (user.exists && !active && eventName !== "subscription.pending"
               && user.get("subscription_plan_id") === adminPlanId) {
