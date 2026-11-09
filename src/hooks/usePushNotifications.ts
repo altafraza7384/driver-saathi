@@ -82,7 +82,7 @@ export function usePushNotifications() {
 
         if (!resp.ok) {
           console.error("Failed to get VAPID key:", resp.status);
-          return false;
+          throw new Error(`Failed to get VAPID key: ${resp.status}`);
         }
 
         const data = await resp.json();
