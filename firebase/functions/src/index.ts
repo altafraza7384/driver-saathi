@@ -11,7 +11,7 @@ import { notifyQueryBounds, isDueNow } from "./notifyTime";
 import { toNotifLang, reminderTitle, dueDetail, type NotifLang } from "./notifLang";
 
 export { chat, financeAi } from "./ai";
-export { createRazorpaySubscription, confirmRazorpaySubscription, cancelRazorpaySubscription, getSubscriptionStatus } from "./razorpay";
+export { createRazorpaySubscription, confirmRazorpaySubscription, cancelRazorpaySubscription, getSubscriptionStatus, deleteSubscriptionPlan } from "./razorpay";
 import { cancelSubscriptionForUser, RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET } from "./razorpay";
 export { razorpayWebhook } from "./webhook";
 export { dedupeInsuranceLead } from "./leads";
