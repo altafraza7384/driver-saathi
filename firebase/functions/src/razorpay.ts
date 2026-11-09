@@ -5,7 +5,7 @@
 // checkout identifier, NOT the secret.
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
-import { db, requireUser, FieldValue } from "./shared";
+import { db, requireUser, requireAdmin, FieldValue } from "./shared";
 
 const REGION = "asia-south1";
 export const RAZORPAY_KEY_ID = defineSecret("RAZORPAY_KEY_ID");
@@ -98,23 +98,22 @@ export const createRazorpaySubscription = onCall(
     }
     const adminPlanId = asString(req.data?.adminPlanId);
     if (!adminPlanId) throw new HttpsError("invalid-argument", "Invalid plan");
-    // The client sends the plan id; verify it exists and matches the paid
-    // interval, so a modified client cannot record a different plan.
-    const planDoc = await db.doc(`subscription_plans/${adminPlanId}`).get();
-    if (!planDoc.exists || planDoc.get("is_active") !== true || asString(planDoc.get("billing_interval")) !== interval) {
-      throw new HttpsError("invalid-argument", "Invalid plan");
-    }
-    const price = planDoc.get("price_inr");
-    const amountPaise = Math.round(price * 100);
-    if (typeof price !== "number" || !Number.isFinite(price) || price <= 0
-      || Number(price.toFixed(2)) !== price || !Number.isSafeInteger(amountPaise)) {
-      throw new HttpsError("failed-precondition", "The plan price is invalid. Contact support.");
-    }
     // Serialize checkouts across devices. Never put provider calls inside a
     // Firestore transaction: a transaction retry would repeat those calls.
     const subscriptionRef = db.doc(`subscriptions/${uid}`);
     const operationId = crypto.randomUUID();
-    const existing = await db.runTransaction(async (tx) => {
+    const { existing, amountPaise } = await db.runTransaction(async (tx) => {
+      const planDoc = await tx.get(db.doc(`subscription_plans/${adminPlanId}`));
+      if (!planDoc.exists || planDoc.get("deleting") === true || planDoc.get("is_active") !== true
+        || asString(planDoc.get("billing_interval")) !== interval) {
+        throw new HttpsError("invalid-argument", "Invalid plan");
+      }
+      const price = planDoc.get("price_inr");
+      const amountPaise = typeof price === "number" ? Math.round(price * 100) : NaN;
+      if (typeof price !== "number" || !Number.isFinite(price) || price <= 0
+        || Number(price.toFixed(2)) !== price || !Number.isSafeInteger(amountPaise)) {
+        throw new HttpsError("failed-precondition", "The plan price is invalid. Contact support.");
+      }
       const deletion = await tx.get(db.doc(`subscriptions/${uid}/lifecycle/account_deletion`));
       if (deletion.exists) throw new HttpsError("failed-precondition", "Account deletion is in progress. A new checkout is not allowed.");
       const snap = await tx.get(subscriptionRef);
@@ -124,9 +123,10 @@ export const createRazorpaySubscription = onCall(
       }
       tx.set(subscriptionRef, {
         checkoutLock: operationId,
+        checkoutPlanId: adminPlanId,
         checkoutLockedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
-      return data;
+      return { existing: data, amountPaise };
     });
     let creationSubmitted = false;
     try {
@@ -392,3 +392,84 @@ export async function cancelSubscriptionForUser(uid: string): Promise<void> {
     throw error;
   }
 }
+
+// Plan removal must end every associated mandate before removing access.
+// A deleting catalog entry remains for safe retries if any cancellation fails.
+export const deleteSubscriptionPlan = onCall(
+  { region: REGION, secrets: [RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET] },
+  async (req) => {
+    await requireAdmin(req);
+    const planId = asString(req.data?.planId);
+    if (!planId || planId.includes("/")) throw new HttpsError("invalid-argument", "Invalid plan");
+    const planRef = db.doc(`subscription_plans/${planId}`);
+    const exists = await db.runTransaction(async (tx) => {
+      const plan = await tx.get(planRef);
+      if (!plan.exists) return false;
+      tx.update(planRef, { deleting: true, is_active: false });
+      return true;
+    });
+    if (!exists) return { deleted: true };
+    // Read attempted checkouts first: a creation may not have saved its
+    // adminPlanId yet. The reservation and deleting flag share a transaction.
+    const attempts = await db.collection("subscriptions").where("checkoutPlanId", "==", planId).get();
+    const subscriptions = await db.collection("subscriptions").where("adminPlanId", "==", planId).get();
+    const assigned = await db.collection("users").where("subscription_plan_id", "==", planId).get();
+    const uids = new Set([...attempts.docs, ...subscriptions.docs, ...assigned.docs].map((doc) => doc.id));
+    const ended = (status: unknown) => typeof status === "string" && ["cancelled", "completed", "expired"].includes(status);
+    for (const uid of uids) {
+      const ref = db.doc(`subscriptions/${uid}`);
+      const operationId = crypto.randomUUID();
+      const subscriptionId = await db.runTransaction(async (tx) => {
+        const sub = await tx.get(ref);
+        const user = await tx.get(db.doc(`users/${uid}`));
+        if (sub.get("checkoutLock")) throw new HttpsError("failed-precondition", "A checkout is in progress. Retry plan deletion after it finishes.");
+        const id = asString(sub.get("razorpaySubscriptionId"));
+        if (sub.get("adminPlanId") !== planId) {
+          if (user.get("subscription_plan_id") === planId && id) {
+            throw new HttpsError("failed-precondition", "A user's assigned plan and billing record differ. Reconcile billing before deletion.");
+          }
+          return null;
+        }
+        if (!id) {
+          if (!ended(sub.get("status"))) throw new HttpsError("failed-precondition", "Subscription tracking is incomplete. Reconcile billing before deletion.");
+          return null;
+        }
+        tx.set(ref, { checkoutLock: operationId }, { merge: true });
+        return id;
+      });
+      if (!subscriptionId) continue;
+      try {
+        const current = await rzp("/subscriptions/" + subscriptionId, "GET");
+        let status = asString(current.status);
+        if (!status) throw new HttpsError("internal", "Could not verify a subscription before plan deletion");
+        if (!ended(status)) {
+          const result = await rzp("/subscriptions/" + subscriptionId + "/cancel", "POST", { cancel_at_cycle_end: 0 });
+          status = asString(result.status);
+          if (!ended(status)) throw new HttpsError("failed-precondition", "Cancellation is not confirmed. The plan and access have been kept; retry deletion.");
+        }
+        await db.runTransaction(async (tx) => {
+          const sub = await tx.get(ref);
+          if (sub.get("checkoutLock") !== operationId) throw new HttpsError("failed-precondition", "Subscription changed. Retry plan deletion.");
+          tx.update(ref, { status, updatedAt: FieldValue.serverTimestamp(), checkoutLock: FieldValue.delete() });
+        });
+      } finally {
+        await db.runTransaction(async (tx) => {
+          const sub = await tx.get(ref);
+          if (sub.get("checkoutLock") === operationId) tx.update(ref, { checkoutLock: FieldValue.delete() });
+        });
+      }
+    }
+    // Cleanup begins only after every provider mandate is confirmed ended.
+    const users = await db.collection("users").where("subscription_plan_id", "==", planId).get();
+    for (const user of users.docs) {
+      await db.runTransaction(async (tx) => {
+        const current = await tx.get(user.ref);
+        if (current.get("subscription_plan_id") === planId) tx.update(user.ref, { subscription_plan_id: null });
+      });
+    }
+    const offers = await db.collection("offers").where("plan_id", "==", planId).get();
+    for (const offer of offers.docs) await offer.ref.delete();
+    await planRef.delete();
+    return { deleted: true };
+  },
+);
