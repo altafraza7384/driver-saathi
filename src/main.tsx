@@ -5,6 +5,7 @@ import App from "./App.tsx";
 import { AppErrorBoundary, reloadOnceForChunkError } from "./components/AppErrorBoundary";
 import { hideNativeSplash } from "./lib/splash";
 import { initStatusBar } from "./lib/status-bar";
+import { initKeyboardHeight } from "./lib/keyboardHeight";
 import "./index.css";
 
 // Register service worker for offline support & push notifications.
@@ -47,3 +48,7 @@ requestAnimationFrame(() => requestAnimationFrame(hideNativeSplash));
 // AppLayout): light bar + dark icons, WebView below the bar. See
 // src/lib/status-bar.ts for why CSS alone cannot do this on Android.
 initStatusBar();
+
+// Keyboard height for the chat input (Assistant/Finance AI): moves the fixed
+// chat box above the keyboard. See src/lib/keyboardHeight.ts.
+initKeyboardHeight();
