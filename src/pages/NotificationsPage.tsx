@@ -45,7 +45,7 @@ export default function NotificationsPage() {
   });
   const now = new Date();
   const twoDaysLater = addDays(now, 2);
-  const { data: reminders = [] } = useQuery({
+  const { data: reminders = [], isError: remindersError, refetch: refetchReminders } = useQuery({
     queryKey: ["notifications_reminders"],
     queryFn: async () => {
       const { data } = await db.from("reminders").select("*");
@@ -53,7 +53,7 @@ export default function NotificationsPage() {
     },
     enabled: !!user,
   });
-  const { data: debts = [] } = useQuery({
+  const { data: debts = [], isError: debtsError, refetch: refetchDebts } = useQuery({
     queryKey: ["debts_active"],
     queryFn: async () => {
       const { data } = await db.from("debts").select("*");
@@ -61,7 +61,7 @@ export default function NotificationsPage() {
     },
     enabled: !!user,
   });
-  const { data: carChecks = [] } = useQuery({
+  const { data: carChecks = [], isError: carChecksError, refetch: refetchCarChecks } = useQuery({
     queryKey: ["notifications_car_checks"],
     queryFn: async () => {
       const { data } = await db.from("car_checks").select("*");
@@ -69,7 +69,7 @@ export default function NotificationsPage() {
     },
     enabled: !!user,
   });
-  const { data: carDocuments = [] } = useQuery({
+  const { data: carDocuments = [], isError: carDocumentsError, refetch: refetchCarDocuments } = useQuery({
     queryKey: ["notifications_car_documents"],
     queryFn: async () => {
       const { data } = await db.from("car_documents").select("*");
@@ -77,7 +77,7 @@ export default function NotificationsPage() {
     },
     enabled: !!user,
   });
-  const { data: goals = [] } = useQuery({
+  const { data: goals = [], isError: goalsError, refetch: refetchGoals } = useQuery({
     queryKey: ["goals_active"],
     queryFn: async () => {
       const { data } = await db.from("goals").select("*").eq("is_completed", false);
@@ -86,7 +86,7 @@ export default function NotificationsPage() {
     enabled: !!user,
   });
   const todayStr = format(now, "yyyy-MM-dd");
-  const { data: healthLog } = useQuery({
+  const { data: healthLog, isError: healthError, refetch: refetchHealth } = useQuery({
     queryKey: ["notifications_health", todayStr],
     queryFn: async () => {
       const { data } = await db.from("health_logs").select("*").eq("log_date", todayStr);
@@ -95,6 +95,15 @@ export default function NotificationsPage() {
     },
     enabled: !!user,
   });
+  const loadError = remindersError || debtsError || carChecksError || carDocumentsError || goalsError || healthError;
+  const retryAll = () => {
+    refetchReminders();
+    refetchDebts();
+    refetchCarChecks();
+    refetchCarDocuments();
+    refetchGoals();
+    refetchHealth();
+  };
   const notifications: Notification[] = [];
   const formatDueLabel = (d: Date) =>
     isToday(d) ? t("notif.dueToday") : isTomorrow(d) ? t("notif.dueTomorrow") : t("notif.dueOn", { date: format(d, "MMM dd") });
@@ -280,7 +289,17 @@ export default function NotificationsPage() {
           </Button>
         )}
       </div>
-      {visibleNotifications.length === 0 ? (
+      {loadError && visibleNotifications.length === 0 ? (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm">
+          <p className="font-medium">{t("home.loadError")}</p>
+          <button
+            className="mt-1 font-medium text-primary underline"
+            onClick={retryAll}
+          >
+            {t("common.retry")}
+          </button>
+        </div>
+      ) : visibleNotifications.length === 0 ? (
         <div className="p-4 text-center text-sm text-muted-foreground">{t("notif.none")}</div>
       ) : (
         <div>
