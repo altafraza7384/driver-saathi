@@ -359,15 +359,14 @@ export default function CarChecksPage() {
                 {t("common.retry")}
               </button>
             </div>
-              
           ) : documents.length === 0 ? (
             <Card><CardContent className="p-6 text-center text-muted-foreground">{t("car.noDocuments")}</CardContent></Card>
           ) : (
             <div className="space-y-2">
               {(documents as any[]).map((doc) => {
                 const status = getExpiryStatus(doc.expiry_date);
-                const expiry = doc.expiry_date ? parseISO(doc.expiry_date) : null;
-                                const expiryValid = !!expiry && !Number.isNaN(expiry.getTime());
+            const expiry = doc.expiry_date ? parseISO(doc.expiry_date) : null;
+const expiryValid = !!expiry && !Number.isNaN(expiry.getTime());
                 return (
                   <Card key={doc.id}>
                     <CardContent className="flex items-center justify-between p-3">
@@ -424,6 +423,7 @@ export default function CarChecksPage() {
                 <div className="min-w-0"><p className="font-bold text-sm">{t("insurance.cardTitle")}</p><p className="text-xs text-muted-foreground">{t("insurance.cardDesc")}</p></div>
               </div>
             </CardContent>
+
           </Card>
          {/* Category pills */}
           <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
