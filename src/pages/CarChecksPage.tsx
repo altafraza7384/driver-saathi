@@ -48,7 +48,7 @@ export default function CarChecksPage() {
   const [checkErrors, setCheckErrors] = useState<{ type?: string; date?: string; odometer?: string; cost?: string }>({});
 
   // Car checks query
-  const { data: checks = [], isLoading } = useQuery({
+  const { data: checks = [], isLoading, isError: checksError, refetch: refetchChecks } = useQuery({
     queryKey: ["car_checks"],
     queryFn: async () => {
       const { data, error } = await db.from("car_checks").select("*").order("check_date", { ascending: false });
@@ -59,7 +59,7 @@ export default function CarChecksPage() {
   });
 
   // Car documents query
-  const { data: documents = [], isLoading: docsLoading } = useQuery({
+  const { data: documents = [], isLoading: docsLoading, isError: docsError, refetch: refetchDocs } = useQuery({
     queryKey: ["car_documents"],
     queryFn: async () => {
       const { data, error } = await db.from("car_documents").select("*").order("expiry_date", { ascending: true });
@@ -292,6 +292,16 @@ export default function CarChecksPage() {
 
           {isLoading ? (
             <div className="flex justify-center py-10"><div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>
+          ) : checksError ? (
+            <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm">
+              <p className="font-medium">{t("home.loadError")}</p>
+              <button
+                className="mt-1 font-medium text-primary underline"
+                onClick={() => refetchChecks()}
+              >
+                {t("common.retry")}
+              </button>
+            </div>
           ) : checks.length === 0 ? (
             <Card><CardContent className="p-6 text-center text-muted-foreground">{t("car.noChecks")}</CardContent></Card>
           ) : (
@@ -339,6 +349,17 @@ export default function CarChecksPage() {
 
           {docsLoading ? (
             <div className="flex justify-center py-10"><div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>
+          ) : docsError ? (
+            <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm">
+              <p className="font-medium">{t("home.loadError")}</p>
+              <button
+                className="mt-1 font-medium text-primary underline"
+                onClick={() => refetchDocs()}
+              >
+                {t("common.retry")}
+              </button>
+            </div>
+              
           ) : documents.length === 0 ? (
             <Card><CardContent className="p-6 text-center text-muted-foreground">{t("car.noDocuments")}</CardContent></Card>
           ) : (
@@ -346,7 +367,7 @@ export default function CarChecksPage() {
               {(documents as any[]).map((doc) => {
                 const status = getExpiryStatus(doc.expiry_date);
                 const expiry = doc.expiry_date ? parseISO(doc.expiry_date) : null;
-                const expiryValid = !!expiry && !Number.isNaN(expiry.getTime());
+                                const expiryValid = !!expiry && !Number.isNaN(expiry.getTime());
                 return (
                   <Card key={doc.id}>
                     <CardContent className="flex items-center justify-between p-3">
@@ -404,8 +425,7 @@ export default function CarChecksPage() {
               </div>
             </CardContent>
           </Card>
-
-          {/* Category pills */}
+         {/* Category pills */}
           <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
             <button onClick={() => setSelectedCategory(null)} className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-medium transition-all ${!selectedCategory ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>{t("common.all")}</button>
             {(categories as any[]).map((cat) => (
