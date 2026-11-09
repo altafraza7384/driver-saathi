@@ -122,6 +122,9 @@ export function SubscriptionPlansCard() {
           handler: (resp: { razorpay_payment_id?: string; razorpay_subscription_id?: string; razorpay_signature?: string }) => { checkoutResp = resp; resolve(); },
           modal: { ondismiss: () => reject(new Error("dismissed")) },
           theme: { color: "#142F57" },
+          // UPI Intent in the native app WebView needs this flag, or
+          // Razorpay hides the UPI mandate options there (browser shows them).
+          webview_intent: true,
         });
         rz.open();
       });
