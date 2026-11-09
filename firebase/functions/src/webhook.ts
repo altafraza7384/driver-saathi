@@ -37,39 +37,59 @@ export const razorpayWebhook = onRequest({ region: REGION, secrets: [RAZORPAY_WE
   const eventId = req.header("x-razorpay-event-id") ?? `body-${await hmacHex(RAZORPAY_WEBHOOK_SECRET.value(), raw)}`;
   const body = (req.body ?? {}) as { event?: unknown; payload?: { subscription?: { entity?: { id?: unknown; status?: unknown } }; payment?: { entity?: { subscription_id?: unknown } } } };
 
-  
   const eventName = typeof body.event === "string" ? body.event : "";
-  if (eventId) {
-    try { await db.doc(`webhook_events/${eventId}`).create({ event: eventName, receivedAt: FieldValue.serverTimestamp() }); }
-    catch { res.status(200).send("duplicate"); return; }
-  }
   const subId = body.payload?.subscription?.entity?.id;
   const paySubId = body.payload?.payment?.entity?.subscription_id;
   const razorpaySubId = typeof subId === "string" ? subId : typeof paySubId === "string" ? paySubId : null;
-  if (razorpaySubId) {
-    const snap = await db.collection("subscriptions").where("razorpaySubscriptionId", "==", razorpaySubId).limit(1).get();
-    if (!snap.empty) {
-      const doc = snap.docs[0];
-      const uid = doc.id;
-      const adminPlanId = doc.get("adminPlanId");
-      if (eventName === "subscription.activated" || eventName === "subscription.charged") {
-        const entityStatus = body.payload?.subscription?.entity?.status;
-        if (entityStatus === "active") {
-            await doc.ref.set({ status: "active", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-        if (typeof adminPlanId === "string" && adminPlanId) {
-          await db.doc(`users/${uid}`).set({ subscription_plan_id: adminPlanId }, { merge: true });
+  const handled = ["subscription.activated", "subscription.charged", "subscription.cancelled",
+    "subscription.completed", "subscription.halted", "subscription.pending"].includes(eventName);
+  try {
+    const duplicate = await db.runTransaction(async (tx) => {
+      const eventRef = db.doc(`webhook_events/${eventId}`);
+      const event = await tx.get(eventRef);
+      if (event.exists) return true;
+      if (handled) {
+        if (!razorpaySubId) throw new Error("Missing subscription ID");
+        const subscriptions = await tx.get(db.collection("subscriptions")
+          .where("razorpaySubscriptionId", "==", razorpaySubId).limit(1));
+        // Delivery can beat checkout persistence. Do not mark it complete:
+        // a retry must still be able to apply the paid entitlement.
+        if (subscriptions.empty) throw new Error("Subscription tracking is not available yet");
+        const subscription = subscriptions.docs[0];
+        const userRef = db.doc(`users/${subscription.id}`);
+        const user = await tx.get(userRef);
+        const previous = subscription.get("status");
+        const terminal = ["cancelled", "completed", "expired"].includes(previous);
+        const active = eventName === "subscription.activated" || eventName === "subscription.charged";
+        if (!terminal || eventName === "subscription.cancelled" || eventName === "subscription.completed") {
+          let next: string | null = null;
+          if (active) {
+            const entityStatus = body.payload?.subscription?.entity?.status;
+            if (typeof entityStatus === "string" && entityStatus) next = entityStatus;
+          } else if (eventName === "subscription.pending") next = "pending";
+          else next = eventName === "subscription.completed" ? "completed" : eventName === "subscription.halted" ? "halted" : "cancelled";
+          if (next) {
+            if (previous === "cancelling" && !["cancelled", "completed", "expired"].includes(next)) next = "cancelling";
+            tx.set(subscription.ref, { status: next, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+            const adminPlanId = subscription.get("adminPlanId");
+            // Late provider events must not recreate a deleted account.
+            if (user.exists && active && body.payload?.subscription?.entity?.status === "active"
+              && typeof adminPlanId === "string" && adminPlanId) {
+              tx.update(userRef, { subscription_plan_id: adminPlanId });
+            } else if (user.exists && !active && eventName !== "subscription.pending"
+              && user.get("subscription_plan_id") === adminPlanId) {
+              tx.update(userRef, { subscription_plan_id: null });
+            }
+          }
         }
-        } else if (typeof entityStatus === "string" && entityStatus) {
-          await doc.ref.set({ status: entityStatus, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-        }
-      } else if (eventName === "subscription.cancelled" || eventName === "subscription.completed" || eventName === "subscription.halted") {
-        const next = eventName === "subscription.completed" ? "completed" : eventName === "subscription.halted" ? "halted" : "cancelled";
-        await doc.ref.set({ status: next, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-        await db.doc(`users/${uid}`).set({ subscription_plan_id: null }, { merge: true });
-      } else if (eventName === "subscription.pending") {
-        await doc.ref.set({ status: "pending", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
       }
-    }
+      // Processing and its completion marker commit together or not at all.
+      tx.create(eventRef, { event: eventName, receivedAt: FieldValue.serverTimestamp() });
+      return false;
+    });
+    res.status(200).send(duplicate ? "duplicate" : "ok");
+  } catch (error) {
+    console.error("Razorpay webhook processing failed", error);
+    res.status(500).send("Please retry");
   }
-  res.status(200).send("ok");
 });
