@@ -101,13 +101,18 @@ service cloud.firestore {
       // read active plans only.
       allow read: if signedIn() && notBlocked() && isAdmin();
       allow read: if signedIn() && notBlocked() && resource.data.is_active == true;
-      // Create/update keep the price checks; delete is separate because a
-      // delete has no request.resource, so the price checks would deny it.
-      allow create, update: if isAdmin()
-        && request.resource.data.price_inr is number
-        && ((request.resource.data.billing_interval == 'free' && request.resource.data.price_inr == 0)
-          || (request.resource.data.billing_interval in ['monthly','yearly'] && request.resource.data.price_inr > 0));
-      allow delete: if isAdmin();
+      function validPlanPrice() {
+        return request.resource.data.price_inr is number
+          && ((request.resource.data.billing_interval == 'free' && request.resource.data.price_inr == 0)
+            || (request.resource.data.billing_interval in ['monthly','yearly'] && request.resource.data.price_inr > 0));
+      }
+      allow create: if isAdmin() && validPlanPrice()
+        && !request.resource.data.keys().hasAny(['deleting']);
+      allow update: if isAdmin() && validPlanPrice()
+        && resource.data.get('deleting', false) != true
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['deleting']);
+      // Only the cancellation-first Admin SDK callable may remove plans.
+      allow delete: if false;
     }
 
     // Admin-managed discount offers shown on the plans card.
