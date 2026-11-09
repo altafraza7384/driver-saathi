@@ -365,8 +365,8 @@ export default function CarChecksPage() {
             <div className="space-y-2">
               {(documents as any[]).map((doc) => {
                 const status = getExpiryStatus(doc.expiry_date);
-            const expiry = doc.expiry_date ? parseISO(doc.expiry_date) : null;
-const expiryValid = !!expiry && !Number.isNaN(expiry.getTime());
+                const expiry = doc.expiry_date ? parseISO(doc.expiry_date) : null;
+                const expiryValid = !!expiry && !Number.isNaN(expiry.getTime());
                 return (
                   <Card key={doc.id}>
                     <CardContent className="flex items-center justify-between p-3">
@@ -423,9 +423,9 @@ const expiryValid = !!expiry && !Number.isNaN(expiry.getTime());
                 <div className="min-w-0"><p className="font-bold text-sm">{t("insurance.cardTitle")}</p><p className="text-xs text-muted-foreground">{t("insurance.cardDesc")}</p></div>
               </div>
             </CardContent>
-
           </Card>
-         {/* Category pills */}
+
+          {/* Category pills */}
           <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
             <button onClick={() => setSelectedCategory(null)} className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-medium transition-all ${!selectedCategory ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>{t("common.all")}</button>
             {(categories as any[]).map((cat) => (
