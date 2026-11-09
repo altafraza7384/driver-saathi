@@ -122,8 +122,18 @@ export const createRazorpaySubscription = onCall(
       if (existing) {
         const existingStatus = asString(existing.status);
         const existingSubscriptionId = asString(existing.razorpaySubscriptionId);
-        if (existingStatus === "created" && existingSubscriptionId) {
-          if (asString(existing.planInterval) === interval) {
+        if (existingSubscriptionId) {
+          // Stored state may lag a webhook or an earlier cancellation. Never
+          // abandon an ID until Razorpay confirms that its mandate has ended.
+          const current = await rzp("/subscriptions/" + existingSubscriptionId, "GET");
+          const currentStatus = asString(current.status);
+          if (!currentStatus) throw new HttpsError("internal", "Could not verify the existing subscription");
+          const ended = ["cancelled", "completed", "expired"].includes(currentStatus);
+          if (!ended && existingStatus === "cancelling") {
+            throw new HttpsError("failed-precondition", "Cancellation is scheduled. Wait for the current subscription to end.");
+          }
+          if (currentStatus === "created" && asString(existing.planInterval) === interval
+            && asString(existing.adminPlanId) === adminPlanId) {
             return {
               subscriptionId: existingSubscriptionId,
               keyId: RAZORPAY_KEY_ID.value(),
@@ -131,15 +141,19 @@ export const createRazorpaySubscription = onCall(
               trialDays: TRIAL_DAYS,
             };
           }
-          try {
-            await rzp("/subscriptions/" + existingSubscriptionId + "/cancel", "POST", {
+          if (currentStatus === "authenticated" || currentStatus === "active") {
+            throw new HttpsError("failed-precondition", "Already subscribed");
+          }
+          if (!ended) {
+            const cancelled = await rzp("/subscriptions/" + existingSubscriptionId + "/cancel", "POST", {
               cancel_at_cycle_end: 0,
             });
-          } catch (e) {
-            console.error("Old subscription cancel failed, proceeding with new one:", existingSubscriptionId, e);
+            if (!["cancelled", "completed", "expired"].includes(asString(cancelled.status) ?? "")) {
+              throw new HttpsError("failed-precondition", "The previous subscription has not ended. Please try again later.");
+            }
           }
-        } else if (existingStatus === "authenticated" || existingStatus === "active") {
-          throw new HttpsError("failed-precondition", "Already subscribed");
+        } else if (existingStatus && !["cancelled", "completed", "expired"].includes(existingStatus)) {
+          throw new HttpsError("failed-precondition", "The previous subscription needs reconciliation before another checkout.");
         }
       }
     
