@@ -78,6 +78,10 @@ export default function NativeAdSlot({ height = 300, hidden = false }: NativeAdS
     // native view stays at its old rect and floats over the content.
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", update);
+    // The keyboard does not resize the window (edge-to-edge), so the slot
+    // moves up with the chat box (--kb) without a resize event: re-measure
+    // when the keyboard opens/closes (dispatched by src/lib/keyboardHeight).
+    window.addEventListener("ds-keyboard", update);
     const interval = window.setInterval(() => {
       if (!offscreen) update();
     }, 1000);
@@ -90,6 +94,7 @@ export default function NativeAdSlot({ height = 300, hidden = false }: NativeAdS
       scroller?.removeEventListener("scroll", onScroll);
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", update);
+      window.removeEventListener("ds-keyboard", update);
       void hideNativeAd();
     };
   }, [hidden]);
