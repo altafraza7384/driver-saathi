@@ -6,6 +6,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { toast } from "sonner";
 import { CreditCard, Check, Tag, Flame, Timer, Loader2 } from "lucide-react";
 import { formatINR } from "@/lib/currency";
 import { useI18n } from "@/lib/i18n";
@@ -68,6 +70,8 @@ export function SubscriptionPlansCard() {
   const countdown = useCountdownToMidnight();
   const [paying, setPaying] = useState(false);
   const [payMsg, setPayMsg] = useState<"success" | "error" | null>(null);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   // Loads Razorpay Checkout.js on demand (no new dependency).
   function loadRazorpay(): Promise<boolean> {
@@ -194,6 +198,25 @@ export function SubscriptionPlansCard() {
   const trialState = getTrialState(myProfile);
   const subStatus = subStatusData?.status ?? null;
   const subInterval = subStatusData?.planInterval ?? null;
+  const canCancel = subStatus !== null && ["created", "authenticated", "active", "pending", "halted"].includes(subStatus);
+  const cancelSubscription = async () => {
+    if (!canCancel || cancelling || paying) return;
+    setCancelling(true);
+    try {
+      const cancel = httpsCallable(firebaseFunctions, "cancelRazorpaySubscription");
+      const result = await cancel({ atCycleEnd: subStatus === "active" });
+      if (!(result.data as { cancelled?: boolean })?.cancelled) throw new Error("cancellation-unconfirmed");
+      await queryClient.invalidateQueries({ queryKey: ["plans_sub_status"] });
+      await queryClient.invalidateQueries({ queryKey: ["plans_my_plan"] });
+      await queryClient.invalidateQueries({ queryKey: ["profile"] });
+      setCancelOpen(false);
+      toast.success(t("plans.cancelRequested"));
+    } catch {
+      toast.error(t("plans.cancelFailed"));
+    } finally {
+      setCancelling(false);
+    }
+  };
   const paidInterval = myPlan ? (plans.find((p) => p.id === myPlan)?.billing_interval ?? (subStatus === "active" ? subInterval : null)) : (subStatus === "active" ? subInterval : null);
   const isSubTrial = subStatus === "authenticated";
   const isTrial = trialState.kind === "trial" || isSubTrial;
@@ -226,6 +249,28 @@ export function SubscriptionPlansCard() {
         )}
         {trialState.kind === "expired" && (
           <p className="text-sm font-semibold text-amber-700">⚠️ {t("trial.limitedMode")}</p>
+        )}
+        {subStatus === "cancelling" && (
+          <p className="text-sm text-muted-foreground" role="status">{t("plans.cancellationScheduled")}</p>
+        )}
+        {canCancel && (
+          <AlertDialog open={cancelOpen} onOpenChange={(open) => { if (!cancelling) setCancelOpen(open); }}>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" className="w-full" disabled={paying || cancelling}>{t("plans.cancelSubscription")}</Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t("plans.cancelSubscription")}</AlertDialogTitle>
+                <AlertDialogDescription>{t("plans.cancelDescription")}</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={cancelling}>{t("common.back")}</AlertDialogCancel>
+                <AlertDialogAction disabled={cancelling} onClick={(event) => { event.preventDefault(); void cancelSubscription(); }}>
+                  {cancelling ? t("plans.cancelling") : t("plans.cancelConfirm")}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         )}
         {liveOffers.length > 0 && (
           <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-1">
