@@ -45,3 +45,28 @@ describe("admin & plans", () => {
     await assertSucceeds(setDoc(doc(env.authenticatedContext("adm", { admin: true }).firestore(), "subscription_plans/p"), { billing_interval: "free", price_inr: 0, is_active: true }));
   });
 });
+
+describe("malformed-data hardening", () => {
+  it("owner cannot create a profile with an object-valued full_name", async () => {
+    await assertFails(setDoc(doc(env.authenticatedContext("alice").firestore(), "users/alice"), { full_name: { bad: true } }));
+  });
+  it("owner can create a normal profile", async () => {
+    await assertSucceeds(setDoc(doc(env.authenticatedContext("alice").firestore(), "users/alice"), { full_name: "Test Driver", phone: "+919999999999" }));
+  });
+  it("owner cannot update full_name to an object", async () => {
+    const db = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(setDoc(doc(db, "users/alice"), { full_name: "A" }));
+    await assertFails(updateDoc(doc(db, "users/alice"), { full_name: { bad: true } }));
+  });
+  it("owner can still update a normal profile field", async () => {
+    const db = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(setDoc(doc(db, "users/alice"), { full_name: "A" }));
+    await assertSucceeds(updateDoc(doc(db, "users/alice"), { full_name: "B", vehicle_number: "MH12AB1234" }));
+  });
+  it("lead with an object-valued name is rejected", async () => {
+    await assertFails(setDoc(doc(env.authenticatedContext("alice").firestore(), "insurance_leads/l1"), { user_id: "alice", consent: true, status: "new", name: { bad: true } }));
+  });
+  it("normal lead is accepted", async () => {
+    await assertSucceeds(setDoc(doc(env.authenticatedContext("alice").firestore(), "insurance_leads/l1"), { user_id: "alice", consent: true, status: "new", name: "Driver", phone: "+919999999999" }));
+  });
+});
