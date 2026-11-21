@@ -360,7 +360,7 @@ export default function AdminUsersPage() {
           {selected && (
             <div className="space-y-4 text-sm">
               <p className="text-muted-foreground">
-                {"This removes the login, profile and all saved data for "}{selected.email || selected.full_name || selected.id}{". This cannot be undone."}
+                {"This removes the login, profile and all saved data for "}{text(selected.email) || text(selected.full_name) || selected.id}{". This cannot be undone."}
               </p>
               <p>{"Type DELETE to confirm."}</p>
               <Input
