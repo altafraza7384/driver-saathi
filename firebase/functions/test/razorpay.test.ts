@@ -135,34 +135,38 @@ describe("createRazorpaySubscription lock lifecycle (mocked provider)", () => {
     expect(doc.checkoutLock).toBeUndefined();
   });
 
-  it("stale lock + wrong-price orphan: orphan cancelled, fresh subscription created", async () => {
+  it("stale lock + wrong-price orphan: NEVER cancelled at provider, recorded for review, checkout refused", async () => {
+    // Razorpay's cancel API has no status condition and is irreversible; a
+    // 'created' orphan may be mid-authentication by the customer. Check-then-
+    // cancel is a TOCTOU race, so reconciliation must not call cancel at all.
     store.set(`subscriptions/${UID}`, { checkoutLock: "old-op", checkoutLockedAt: lockAgeMs(10 * 60_000) });
     steps = [
       ["GET", "/subscriptions?from=", [200, { items: [{ id: "sub_bad", status: "created", plan_id: "plan_other", notes: { userId: UID } }] }]],
       ["GET", "/plans/plan_other", [200, { period: "yearly", interval: 1, item: { amount: 99900, currency: "INR" } }]],
-      ["POST", "/subscriptions/sub_bad/cancel", [200, { status: "cancelled" }]],
-      ["POST", "/plans", [200, { id: "plan_m_99" }]],
-      ["POST", "/subscriptions", [200, { id: "sub_new" }]],
     ];
-    const res = await createSub();
-    expect(res.subscriptionId).toBe("sub_new");
-    expect(calls.some((c) => c.path === "/subscriptions/sub_bad/cancel")).toBe(true);
+    await expect(createSub()).rejects.toMatchObject({ code: "failed-precondition" });
+    expect(calls.some((c) => /\/cancel$/.test(c.path))).toBe(false);
+    expect(calls.some((c) => c.method === "POST" && c.path === "/subscriptions")).toBe(false);
+    const doc = store.get(`subscriptions/${UID}`)!;
+    expect(doc.orphanedSubscriptionIds).toEqual(["sub_bad"]);
+    expect(doc.reconciliationNeeded).toBe(true);
+    expect(doc.checkoutLock).toBeUndefined();
+    expect(doc.razorpaySubscriptionId).toBeUndefined();
   });
 
-  it("partial orphan-cancel failure does not block the fresh checkout", async () => {
+  it("ambiguous live orphan state (halted): recorded and refused, no provider cancel", async () => {
     store.set(`subscriptions/${UID}`, { checkoutLock: "old-op", checkoutLockedAt: lockAgeMs(10 * 60_000) });
     steps = [
-      ["GET", "/subscriptions?from=", [200, { items: [{ id: "sub_bad", status: "created", plan_id: "plan_other", notes: { userId: UID } }] }]],
-      ["GET", "/plans/plan_other", [200, { period: "yearly", interval: 1, item: { amount: 99900, currency: "INR" } }]],
-      ["POST", "/subscriptions/sub_bad/cancel", [500, { error: { description: "server error" } }]],
-      ["POST", "/plans", [200, { id: "plan_m_99" }]],
-      ["POST", "/subscriptions", [200, { id: "sub_new" }]],
+      ["GET", "/subscriptions?from=", [200, { items: [{ id: "sub_halted", status: "halted", plan_id: "plan_m_99", notes: { userId: UID } }] }]],
     ];
-    const res = await createSub();
-    expect(res.subscriptionId).toBe("sub_new");
+    await expect(createSub()).rejects.toMatchObject({ code: "failed-precondition" });
+    expect(calls.some((c) => /\/cancel$/.test(c.path))).toBe(false);
+    const doc = store.get(`subscriptions/${UID}`)!;
+    expect(doc.orphanedSubscriptionIds).toEqual(["sub_halted"]);
+    expect(doc.reconciliationNeeded).toBe(true);
   });
 
-  it("two unauthorized orphans: newest-plan match adopted, the other cancelled", async () => {
+  it("two unauthorized orphans: ambiguous, so neither adopted nor cancelled - both recorded, checkout refused", async () => {
     store.set(`subscriptions/${UID}`, { checkoutLock: "old-op", checkoutLockedAt: lockAgeMs(10 * 60_000) });
     steps = [
       ["GET", "/subscriptions?from=", [200, { items: [
@@ -171,11 +175,13 @@ describe("createRazorpaySubscription lock lifecycle (mocked provider)", () => {
       ] }]],
       ["GET", "/plans/plan_m_99", [200, GOOD_PLAN]],
       ["GET", "/plans/plan_m_99", [200, GOOD_PLAN]],
-      ["POST", "/subscriptions/sub_b/cancel", [200, { status: "cancelled" }]],
     ];
-    const res = await createSub();
-    expect(res.subscriptionId).toBe("sub_a");
-    expect(calls.some((c) => c.path === "/subscriptions/sub_b/cancel")).toBe(true);
+    await expect(createSub()).rejects.toMatchObject({ code: "failed-precondition" });
+    expect(calls.some((c) => /\/cancel$/.test(c.path))).toBe(false);
+    const doc = store.get(`subscriptions/${UID}`)!;
+    expect(doc.orphanedSubscriptionIds).toEqual(["sub_b"]);
+    expect(doc.reconciliationNeeded).toBe(true);
+    expect(doc.razorpaySubscriptionId).toBeUndefined();
   });
 
   it("reconciliation finds an ALREADY-AUTHENTICATED provider subscription: it is recorded (not stranded) and the new checkout is refused", async () => {
