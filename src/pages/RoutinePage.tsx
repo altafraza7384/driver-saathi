@@ -26,6 +26,7 @@ import {
   buildDailyNotifications,
   routineNotificationId,
   schedulePreset,
+  retimeForMode,
   SCHEDULE_KEYS,
 } from "@/lib/routine";
 
@@ -69,8 +70,8 @@ export default function RoutinePage() {
    *  Times stay fully editable and nothing saves until सहेजें/Save. The
    *  toggle changes reminder timings only - never accounting or dates. */
   const applyShiftMode = (mode: ShiftMode) => {
+    setSchedule((current) => retimeForMode(current, shiftMode, mode));
     setShiftMode(mode);
-    setSchedule(schedulePreset(mode).map((item) => ({ ...item })));
   };
 
   /** Cancel every routine reminder we know, then schedule the enabled set.
@@ -85,7 +86,7 @@ export default function RoutinePage() {
       await LocalNotifications.cancel({
         notifications: SCHEDULE_KEYS.map((key) => ({ id: routineNotificationId(key) })),
       });
-      const notifications = buildDailyNotifications(items, titleFor);
+      const notifications = buildDailyNotifications(items, titleFor, milestones);
       if (notifications.length > 0) await LocalNotifications.schedule({ notifications });
       setNotifStatus(t("routine.notifScheduled", { count: notifications.length }));
     } catch (e) {
