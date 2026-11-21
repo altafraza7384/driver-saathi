@@ -31,11 +31,38 @@ export const DEFAULT_SCHEDULE: ScheduleItem[] = [
   { key: "wake", time: "07:00", enabled: true, message: "Utho, naya din nayi shuruaat. Ek slot miss ho jaye toh agle slot se dobara shuru." },
   { key: "depart", time: "07:30", enabled: true, message: "Gaadi nikalne ka time. Aaj ke checkpoints line se follow karo." },
   { key: "cp1", time: "10:30", enabled: true, message: "Checkpoint 1: ab tak ki app kamai ka hisaab lagao." },
-  { key: "cp2", time: "13:30", enabled: true, message: "Checkpoint 2: hisaab lagao, phir khane ka break lo." },
+  { key: "cp2", time: "13:30", enabled: true, message: "Checkpoint 2: hisaab lagao, phir khane ka break lo. Ab tak ki kamai ki entry bhi kar lo." },
   { key: "cp3", time: "17:00", enabled: true, message: "Checkpoint 3: dopahar ka hisaab. Shaam ka slot shuru." },
   { key: "cp4", time: "21:00", enabled: true, message: "Checkpoint 4: aakhri ghanta. Ab thakaan ke saath chase mat karo." },
-  { key: "day_end", time: "22:00", enabled: true, message: "Raat 10 baje, gaadi khadi. Thakaan ke saath target chase mat karo, kal phir se." },
+  { key: "day_end", time: "22:00", enabled: true, message: "Din khatam, gaadi khadi. Aaj ki poori kamai-kharch ki entry kar lo. Thakaan ke saath target chase mat karo, kal phir se." },
 ];
+
+/**
+ * Day/Night shift toggle (product decision, 2026-11-21, owner direction):
+ * the toggle changes REMINDER TIMINGS ONLY. It does not touch accounting,
+ * date boundaries, habits days, reports or historical data - entries stay
+ * manual, dated by the driver's chosen date. The night preset below is a
+ * generic editable starting point (no owner-personal times); drivers adjust
+ * every time themselves. Entry nudges are folded into the existing cp2 /
+ * day_end beats so no extra notifications are scheduled.
+ */
+export type ShiftMode = "day" | "night";
+
+export const NIGHT_SCHEDULE: ScheduleItem[] = [
+  { key: "wake", time: "17:00", enabled: true, message: "Utho, nayi shift nayi shuruaat. Ek slot miss ho jaye toh agle slot se dobara shuru." },
+  { key: "depart", time: "17:30", enabled: true, message: "Gaadi nikalne ka time. Aaj ke checkpoints line se follow karo." },
+  { key: "cp1", time: "20:00", enabled: true, message: "Checkpoint 1: ab tak ki app kamai ka hisaab lagao." },
+  { key: "cp2", time: "23:00", enabled: true, message: "Checkpoint 2: hisaab lagao, phir khane ka break lo. Ab tak ki kamai ki entry bhi kar lo." },
+  { key: "cp3", time: "02:00", enabled: true, message: "Checkpoint 3: aadhi raat ka hisaab. Slot abhi baaki hai." },
+  { key: "cp4", time: "05:00", enabled: true, message: "Checkpoint 4: aakhri ghanta. Ab thakaan ke saath chase mat karo." },
+  { key: "day_end", time: "06:00", enabled: true, message: "Shift khatam, gaadi khadi. Raat ki poori kamai-kharch ki entry kar lo. Thakaan ke saath chase mat karo." },
+];
+
+/** The reminder-time preset for a shift mode. Day mode is the existing
+ *  default schedule, unchanged. */
+export function schedulePreset(mode: ShiftMode): ScheduleItem[] {
+  return mode === "night" ? NIGHT_SCHEDULE : DEFAULT_SCHEDULE;
+}
 
 /** Planning targets start UNSET (0–0) on purpose: the repo is public, so
  *  no personal earning numbers are hardcoded. Each driver enters their own
