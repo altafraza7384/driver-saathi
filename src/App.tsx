@@ -29,6 +29,9 @@ const MorePage = lazyWithRetry(() => import("./pages/MorePage"));
 const CarChecksPage = lazyWithRetry(() => import("./pages/CarChecksPage"));
 const RemindersPage = lazyWithRetry(() => import("./pages/RemindersPage"));
 const NotesPage = lazyWithRetry(() => import("./pages/NotesPage"));
+const RoutinePage = lazyWithRetry(() => import("./pages/RoutinePage"));
+const HabitsPage = lazyWithRetry(() => import("./pages/HabitsPage"));
+const DailyReportPage = lazyWithRetry(() => import("./pages/DailyReportPage"));
 const SOSPage = lazyWithRetry(() => import("./pages/SOSPage"));
 const CarSosPage = lazyWithRetry(() => import("./pages/CarSosPage"));
 const SettingsPage = lazyWithRetry(() => import("./pages/SettingsPage"));
@@ -273,6 +276,9 @@ const App = () => (
                     <Route path="/car-checks" element={<CarChecksPage />} />
                     <Route path="/reminders" element={<RemindersPage />} />
                     <Route path="/notes" element={<NotesPage />} />
+                    <Route path="/routine" element={<RoutinePage />} />
+                    <Route path="/habits" element={<HabitsPage />} />
+                    <Route path="/daily-report" element={<DailyReportPage />} />
                     <Route path="/sos" element={<SOSPage />} />
                     <Route path="/car-sos" element={<CarSosPage />} />
                     <Route path="/insurance" element={<InsuranceLeadPage />} />

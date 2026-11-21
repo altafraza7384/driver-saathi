@@ -15,6 +15,16 @@ import { toast } from "sonner";
 import { isValidPhone } from "@/lib/carSos";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "next-themes";
+import { LocalNotifications } from "@capacitor/local-notifications";
+import {
+  ShiftMode,
+  mergeSchedule,
+  mergeMilestones,
+  buildDailyNotifications,
+  retimeForMode,
+  routineNotificationId,
+  SCHEDULE_KEYS,
+} from "@/lib/routine";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -37,6 +47,72 @@ export default function SettingsPage() {
   // in a reserved slot in addition to the toast, and form values are
   // retained on a failed save (only success closes the form).
   const [phoneSubmitError, setPhoneSubmitError] = useState("");
+  const [shiftSaving, setShiftSaving] = useState(false);
+
+  const { data: routineRows = [] } = useQuery({
+    queryKey: ["routine_settings"],
+    queryFn: async () => {
+      const { data, error } = await db.from("routine_settings").select("*");
+      if (error) throw error;
+      return (data ?? []) as any[];
+    },
+    enabled: !!user,
+  });
+  const nightShiftOn = routineRows.some((r) => r.kind === "shift" && r.key === "mode" && r.message === "night");
+
+  /** Night shift ON/OFF (owner decision 2026-11-21): reminder TIMINGS only.
+   *  Only times still on the old preset's defaults are remapped; custom
+   *  times survive toggling back and forth. Accounting, dates, habits and
+   *  history never change. Reminders are cancelled and rescheduled from the
+   *  same stable ids, so day+night duplicates cannot pile up; if the OS
+   *  notification permission is not already granted we do not ask for it
+   *  here — the setting still saves. */
+  const toggleNightShift = async (checked: boolean) => {
+    if (!user || shiftSaving) return;
+    setShiftSaving(true);
+    try {
+      const mode: ShiftMode = checked ? "night" : "day";
+      const modeRow = routineRows.find((r) => r.kind === "shift" && r.key === "mode");
+      const modePayload = { kind: "shift", key: "mode", message: mode };
+      if (modeRow) {
+        const { error } = await db.from("routine_settings").update(modePayload).eq("id", modeRow.id);
+        if (error) throw error;
+      } else {
+        const { error } = await db.from("routine_settings").insert({ ...modePayload, user_id: user.id });
+        if (error) throw error;
+      }
+      const current = mergeSchedule(routineRows.filter((r) => r.kind === "schedule"));
+      const next = retimeForMode(current, checked ? "day" : "night", mode);
+      for (const item of next) {
+        const cur = current.find((c) => c.key === item.key);
+        if (cur && cur.time === item.time) continue; // unchanged (custom or same)
+        const existing = routineRows.find((r) => r.kind === "schedule" && r.key === item.key);
+        const payload = { kind: "schedule", key: item.key, time: item.time, enabled: item.enabled, message: item.message };
+        if (existing) {
+          const { error } = await db.from("routine_settings").update(payload).eq("id", existing.id);
+          if (error) throw error;
+        } else {
+          const { error } = await db.from("routine_settings").insert({ ...payload, user_id: user.id });
+          if (error) throw error;
+        }
+      }
+      const milestones = mergeMilestones(
+        routineRows.filter((r) => r.kind === "milestone").map((r) => ({ key: r.key, min: Number(r.min_amount) || 0, max: Number(r.max_amount) || 0 })),
+      );
+      const perm = await LocalNotifications.checkPermissions();
+      if (perm.display === "granted") {
+        await LocalNotifications.cancel({ notifications: SCHEDULE_KEYS.map((key) => ({ id: routineNotificationId(key) })) });
+        const notifications = buildDailyNotifications(next, (key) => t(`routine.item.${key}`), milestones);
+        if (notifications.length > 0) await LocalNotifications.schedule({ notifications });
+      }
+      queryClient.invalidateQueries({ queryKey: ["routine_settings"] });
+      toast.success(t("settings.nightShiftSaved"));
+    } catch (e) {
+      toast.error(friendlyErrorMessage(e));
+    } finally {
+      setShiftSaving(false);
+    }
+  };
 
   const { data: profile, isLoading, isError: profileError, refetch: refetchProfile } = useQuery({
     queryKey: ["profile"],
@@ -187,7 +263,8 @@ export default function SettingsPage() {
   <div className="text-sm font-medium">{t("settings.appearance")}</div>
   <div className="flex items-center justify-between"><div className="flex items-center gap-3">{isDark ? <Moon className="h-5 w-5 text-muted-foreground" /> : <Sun className="h-5 w-5 text-muted-foreground" />}<span className="text-sm font-medium">{t("more.darkMode")}</span></div>
   <Switch checked={isDark} onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")} /></div></CardContent></Card>
-      <Card><CardContent className="p-4"><div className="flex items-center justify-between gap-3"><div><p className="font-medium">{t("settings.earningsNudge")}</p><p className="text-sm text-muted-foreground">{t("settings.earningsNudgeDesc")}</p></div><Switch checked={profile?.earnings_nudge_enabled ?? false} disabled={!user} onCheckedChange={(checked) => { if (!user) return; void db.from("profiles").update({ earnings_nudge_enabled: checked }).eq("user_id", user.id).then(({ error }) => { if (!error) queryClient.invalidateQueries({ queryKey: ["profile"] }); }); }} /></div></CardContent></Card><Button variant="destructive" className="w-full gap-2" onClick={handleLogout}><LogOut className="h-4 w-4" /> {t("auth.logout")}</Button>
+      <Card><CardContent className="p-4"><div className="flex items-center justify-between gap-3"><div><p className="font-medium">{t("settings.earningsNudge")}</p><p className="text-sm text-muted-foreground">{t("settings.earningsNudgeDesc")}</p></div><Switch checked={profile?.earnings_nudge_enabled ?? false} disabled={!user} onCheckedChange={(checked) => { if (!user) return; void db.from("profiles").update({ earnings_nudge_enabled: checked }).eq("user_id", user.id).then(({ error }) => { if (!error) queryClient.invalidateQueries({ queryKey: ["profile"] }); }); }} /></div></CardContent></Card><Card><CardContent className="p-4"><div className="flex items-center justify-between gap-3"><div><p className="font-medium">{t("settings.nightShift")}</p><p className="text-sm text-muted-foreground">{t("settings.nightShiftDesc")}</p></div><Switch checked={nightShiftOn} disabled={!user || shiftSaving} onCheckedChange={(checked) => { void toggleNightShift(checked); }} /></div></CardContent></Card>
+<Button variant="destructive" className="w-full gap-2" onClick={handleLogout}><LogOut className="h-4 w-4" /> {t("auth.logout")}</Button>
 
       {/* Delete Account Section */}
       <Card className="border-destructive/30">
