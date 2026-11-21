@@ -92,6 +92,15 @@ export const createRazorpaySubscription = onCall(
   { region: REGION, secrets: [RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET] },
   async (req) => {
     const uid = requireVerifiedDriver(req);
+    // A blocked account must never start a NEW paid checkout (owner decision
+    // 2026-11-21). Status reads and cancellation stay open: confirm/status/
+    // cancel deliberately do NOT get this check, so a user blocked after
+    // authorizing a mandate is never stranded without reconciliation or a
+    // way to cancel.
+    const profile = await db.doc(`users/${uid}`).get();
+    if (profile.get("is_blocked") === true) {
+      throw new HttpsError("permission-denied", "This account is blocked.");
+    }
     const interval = req.data?.planInterval;
     if (interval !== "monthly" && interval !== "yearly") {
       throw new HttpsError("invalid-argument", "Invalid plan");
