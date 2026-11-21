@@ -145,8 +145,28 @@ export async function createSosRequestForUser(
       }
       // Stale marker: the request is already closed (cleanup trigger
       // lagging) — fall through and overwrite it.
+    } else {
+      // Pre-rollout compatibility: requests created before markers existed
+      // have no sos_active doc. Equality+equality queries need no composite
+      // index; this runs at most until the driver's first post-rollout
+      // create writes the marker. Two simultaneous first-creates still
+      // serialise on the marker write below.
+      for (const st of ACTIVE_SOS_STATUSES) {
+        const legacy = await tx.get(
+          db.collection("sos_requests")
+            .where("driverId", "==", uid)
+            .where("status", "==", st)
+            .limit(1),
+        );
+        if (!legacy.empty) {
+          throw new HttpsError("failed-precondition", "sos-active-exists");
+        }
+      }
     }
     const today = istDayIso(new Date());
+    // Rollout boundary (documented in the PR): the daily counter only
+    // counts requests created through this callable; requests made before
+    // the rollout do not retroactively consume today's quota.
     const count =
       quotaSnap.get("day") === today ? ((quotaSnap.get("count") as number | undefined) ?? 0) : 0;
     if (count >= MAX_SOS_PER_DAY) {
