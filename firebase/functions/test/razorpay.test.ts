@@ -62,9 +62,12 @@ const PLAN_DOC = { is_active: true, billing_interval: "monthly", price_inr: 99 }
 const REQ = () => ({ auth: { uid: UID, token: { email_verified: true } }, data: { planInterval: "monthly", adminPlanId: "planAdmin1" } });
 
 // fetch script: each entry matches method+path-prefix, returns [status, body] or "hang".
-type Step = [string, string, [number, any] | "hang"];
+type Step = [string, string, [number, any] | "hang" | "defer"];
 let steps: Step[] = [];
 let calls: Array<{ method: string; path: string }> = [];
+// "defer" steps park the provider call until the test resolves/rejects it,
+// which lets two operations overlap deterministically (stale vs new lock).
+let deferredCalls: Array<{ method: string; path: string; resolve: (v: any) => void; reject: (e: any) => void }> = [];
 const fetchMock = vi.fn(async (url: any, opts: any) => {
   const path = String(url).replace("https://api.razorpay.com/v1", "");
   const method = opts?.method ?? "GET";
@@ -77,6 +80,11 @@ const fetchMock = vi.fn(async (url: any, opts: any) => {
     err.name = "AbortError";
     throw err; // what fetch throws when AbortSignal fires
   }
+  if (out === "defer") {
+    return await new Promise((resolve, reject) => {
+      deferredCalls.push({ method, path, resolve, reject });
+    });
+  }
   const [status, body] = out;
   steps.splice(i, 1); // each scripted response consumed once unless re-added
   return { ok: status < 300, status, json: async () => body } as any;
@@ -87,6 +95,7 @@ beforeEach(() => {
   store.clear();
   calls = [];
   steps = [];
+  deferredCalls = [];
   store.set("subscription_plans/planAdmin1", PLAN_DOC);
   store.set(`users/${UID}`, { full_name: "Test" });
 });
@@ -220,5 +229,79 @@ describe("createRazorpaySubscription lock lifecycle (mocked provider)", () => {
     await expect(createSub()).rejects.toMatchObject({ code: "failed-precondition" });
     const doc = store.get(`subscriptions/${UID}`)!;
     expect(doc.checkoutLock).toBeTruthy(); // retained so the next attempt reconciles instead of duplicating
+  });
+
+  it("LATE SUCCESS after reclaim: stale handler's fenced record write cannot overwrite the reclaimed operation's adopted state", async () => {
+    // op1 starts checkout and parks inside the provider create call.
+    steps = [
+      ["POST", "/plans", [200, { id: "plan_m_99" }]],
+      ["POST", "/subscriptions", "defer"],
+    ];
+    const p1 = createSub().then((r) => ({ ok: r as any }), (e) => ({ err: e as any }));
+    while (!deferredCalls.some((d) => d.method === "POST" && d.path === "/subscriptions")) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    // Time passes while op1's request is in flight: its lock goes stale.
+    store.get(`subscriptions/${UID}`)!.checkoutLockedAt = lockAgeMs(10 * 60_000);
+    // op2 reclaims the stale lock, finds op1's provider-side subscription
+    // already created (still unauthorized), and adopts it.
+    steps = [
+      ["GET", "/subscriptions?from=", [200, { items: [{ id: "sub_late", status: "created", plan_id: "plan_m_99", notes: { userId: UID }, start_at: 2000000000 }] }]],
+      ["GET", "/plans/plan_m_99", [200, GOOD_PLAN]],
+    ];
+    const r2 = await createSub();
+    expect(r2.subscriptionId).toBe("sub_late");
+    expect(store.get(`subscriptions/${UID}`)!.trialEndsAt.getTime()).toBe(2000000000 * 1000);
+    // NOW op1's hung request returns a late success. Its fenced record
+    // write must refuse instead of overwriting op2's adopted state.
+    deferredCalls.find((d) => d.path === "/subscriptions")!.resolve({ ok: true, status: 200, json: async () => ({ id: "sub_late" }) });
+    const r1 = await p1;
+    expect((r1 as any).err).toMatchObject({ code: "failed-precondition" });
+    const doc = store.get(`subscriptions/${UID}`)!;
+    expect(doc.razorpaySubscriptionId).toBe("sub_late");
+    expect(doc.trialEndsAt.getTime()).toBe(2000000000 * 1000); // op2's adoption, not op1's overwrite
+    expect(doc.checkoutLock).toBeUndefined();
+  });
+
+  it("stale handler's fenced RELEASE cannot delete a newer operation's fresh lock", async () => {
+    // op1 parks inside the plan call (before any subscription is submitted).
+    steps = [["POST", "/plans", "defer"]];
+    const p1 = createSub().then((r) => ({ ok: r as any }), (e) => ({ err: e as any }));
+    while (!deferredCalls.some((d) => d.method === "POST" && d.path === "/plans")) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    store.get(`subscriptions/${UID}`)!.checkoutLockedAt = lockAgeMs(10 * 60_000);
+    // op2 reclaims and completes a normal checkout, releasing its own lock.
+    steps = [
+      ["GET", "/subscriptions?from=", [200, { items: [] }]],
+      ["POST", "/plans", [200, { id: "plan_m_99" }]],
+      ["POST", "/subscriptions", [200, { id: "sub_op2" }]],
+    ];
+    const r2 = await createSub();
+    expect(r2.subscriptionId).toBe("sub_op2");
+    // op3 starts, acquires a fresh lock, then parks verifying the existing
+    // 'created' subscription op2 recorded (the reuse path).
+    steps = [["GET", "/subscriptions/sub_op2", "defer"]];
+    const p3 = createSub().then((r) => ({ ok: r as any }), (e) => ({ err: e as any }));
+    while (!deferredCalls.some((d) => d.method === "GET" && d.path === "/subscriptions/sub_op2")) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    const freshLock = store.get(`subscriptions/${UID}`)!.checkoutLock;
+    expect(freshLock).toBeDefined();
+    // op1's parked request finally aborts. Its fenced release must NOT
+    // delete op3's newer lock.
+    const d1 = deferredCalls.find((d) => d.method === "POST" && d.path === "/plans")!;
+    const err = new Error("The operation was aborted") as any; err.name = "AbortError";
+    d1.reject(err);
+    const r1 = await p1;
+    expect((r1 as any).err).toBeDefined();
+    expect(store.get(`subscriptions/${UID}`)!.checkoutLock).toBe(freshLock);
+    // cleanup: op3 finishes the reuse path and releases its own lock.
+    deferredCalls.find((d) => d.method === "GET" && d.path === "/subscriptions/sub_op2")!
+      .resolve({ ok: true, status: 200, json: async () => ({ id: "sub_op2", status: "created", plan_id: "plan_m_99" }) });
+    steps = [["GET", "/plans/plan_m_99", [200, GOOD_PLAN]]];
+    const r3 = await p3;
+    expect((r3 as any).ok.subscriptionId).toBe("sub_op2");
+    expect(store.get(`subscriptions/${UID}`)!.checkoutLock).toBeUndefined();
   });
 });
