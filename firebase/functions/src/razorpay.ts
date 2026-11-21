@@ -192,8 +192,10 @@ export const createRazorpaySubscription = onCall(
             throw new HttpsError("failed-precondition", "Already subscribed");
           }
         }
+        const endedState = (s: string) => ["cancelled", "completed", "expired"].includes(s);
         const created = mine.filter((m) => asString(m.status) === "created");
         let adopted: RzpJson | null = null;
+        const orphans: string[] = [];
         for (const m of created) {
           const mPlan = asString(m.plan_id);
           const mPlanDoc = mPlan ? await rzp("/plans/" + mPlan, "GET") : null;
@@ -202,11 +204,37 @@ export const createRazorpaySubscription = onCall(
             && mItem?.amount === amountPaise && mItem.currency === "INR") {
             adopted = m;
           } else {
-            // Not adoptable (wrong price/plan or a duplicate): cancel the
-            // still-unauthorized mandate so it can never be charged later.
-            await rzp("/subscriptions/" + asString(m.id) + "/cancel", "POST", { cancel_at_cycle_end: 0 })
-              .catch(() => console.error("orphan cancel failed", { uid, sub: asString(m.id) }));
+            orphans.push(asString(m.id)!);
           }
+        }
+        // Any other live state (pending/halted/paused) is ambiguous here too.
+        for (const m of mine) {
+          const st = asString(m.status);
+          if (st && st !== "created" && st !== "authenticated" && st !== "active" && !endedState(st)) {
+            orphans.push(asString(m.id)!);
+          }
+        }
+        if (orphans.length > 0) {
+          // Razorpay's cancel API takes no status condition and is
+          // irreversible (docs /api/payments/subscriptions/cancel-subscription),
+          // and a 'created' subscription turns 'authenticated' the moment the
+          // customer finishes the abandoned checkout's auth transaction
+          // (docs /payments/subscriptions/states). Auto-cancelling an orphan
+          // could therefore kill a legitimately authorized subscription
+          // (check-then-cancel TOCTOU). Reconciliation NEVER cancels at the
+          // provider: record the orphans (fenced) for manual review and
+          // refuse this checkout.
+          await db.runTransaction(async (tx) => {
+            const snap = await tx.get(subscriptionRef);
+            if (snap.get("checkoutLock") !== operationId) return;
+            tx.set(subscriptionRef, {
+              orphanedSubscriptionIds: orphans,
+              reconciliationNeeded: true,
+              updatedAt: FieldValue.serverTimestamp(),
+              checkoutLock: FieldValue.delete(), checkoutLockedAt: FieldValue.delete(),
+            }, { merge: true });
+          });
+          throw new HttpsError("failed-precondition", "A previous checkout attempt needs review. Please contact support before trying again.");
         }
         if (adopted) {
           const adoptedId = asString(adopted.id)!;
