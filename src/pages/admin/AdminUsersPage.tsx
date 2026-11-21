@@ -33,6 +33,12 @@ type AdminUser = {
 
 type Plan = { id: string; name: string };
 
+// Malformed-record defense (audit follow-up, 2026-11-21): a non-string field
+// in a damaged user doc must never crash the admin list or detail view.
+// Coerce to a plain string; anything not a string renders as empty/fallback.
+const text = (v: unknown): string => (typeof v === "string" ? v : "");
+
+
 // Per-user subcollections under users/{uid}. Counted on demand when the
 // detail dialog opens: the adapter's per-user queries always scope to the
 // signed-in user, so they cannot count another user's data — plain
@@ -154,7 +160,7 @@ export default function AdminUsersPage() {
 
   const openUser = (u: AdminUser) => {
     setSelected(u);
-    setPlanChoice(u.subscription_plan_id ?? "none");
+    setPlanChoice(text(u.subscription_plan_id) || "none");
   };
 
   // Admin-only account is not a driver user: never listed or counted here.
@@ -162,10 +168,10 @@ export default function AdminUsersPage() {
   const filtered = visibleUsers.filter((u) => {
     const q = search.toLowerCase();
     return (
-      (u.email ?? "").toLowerCase().includes(q) ||
-      (u.full_name ?? "").toLowerCase().includes(q) ||
-      (u.phone ?? "").toLowerCase().includes(q) ||
-      (u.vehicle_number ?? "").toLowerCase().includes(q)
+      text(u.email).toLowerCase().includes(q) ||
+      text(u.full_name).toLowerCase().includes(q) ||
+      text(u.phone).toLowerCase().includes(q) ||
+      text(u.vehicle_number).toLowerCase().includes(q)
     );
   });
 
@@ -219,15 +225,15 @@ export default function AdminUsersPage() {
             <CardContent className="p-3">
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold truncate">{u.full_name || "—"}</p>
-                  {u.email && (
+                  <p className="text-sm font-bold truncate">{text(u.full_name) || "—"}</p>
+                  {text(u.email) && (
                     <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
-                      <Mail className="h-3 w-3" /> {u.email}
+                      <Mail className="h-3 w-3" /> {text(u.email)}
                     </p>
                   )}
-                  {u.phone && (
+                  {text(u.phone) && (
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Phone className="h-3 w-3" /> {u.phone}
+                      <Phone className="h-3 w-3" /> {text(u.phone)}
                     </p>
                   )}
                 </div>
@@ -245,7 +251,7 @@ export default function AdminUsersPage() {
       <Dialog open={!!selected} onOpenChange={(o) => { if (!o) { setSelected(null); setConfirmDelete(false); } }}>
         <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{selected?.full_name || "User Details"}</DialogTitle>
+            <DialogTitle>{text(selected?.full_name) || "User Details"}</DialogTitle>
           </DialogHeader>
           {selected && (
             <div className="space-y-4 text-sm">
@@ -255,20 +261,20 @@ export default function AdminUsersPage() {
                     <ShieldAlert className="h-4 w-4" /> {"Blocked"}
                   </p>
                 )}
-                {selected.email && <p className="flex items-center gap-2"><Mail className="h-4 w-4 text-muted-foreground" /> {selected.email}</p>}
-                {selected.phone && <p className="flex items-center gap-2"><Phone className="h-4 w-4 text-muted-foreground" /> {selected.phone}</p>}
-                {selected.vehicle_number && (
+                {text(selected.email) && <p className="flex items-center gap-2"><Mail className="h-4 w-4 text-muted-foreground" /> {text(selected.email)}</p>}
+                {text(selected.phone) && <p className="flex items-center gap-2"><Phone className="h-4 w-4 text-muted-foreground" /> {text(selected.phone)}</p>}
+                {text(selected.vehicle_number) && (
                   <p className="flex items-center gap-2">
                     <Car className="h-4 w-4 text-muted-foreground" />
-                    {selected.vehicle_type || "—"} — {selected.vehicle_number}
+                    {text(selected.vehicle_type) || "—"} — {text(selected.vehicle_number)}
                   </p>
                 )}
-                {selected.license_number && (
-                  <p className="text-xs text-muted-foreground">{selected.license_number}</p>
+                {text(selected.license_number) && (
+                  <p className="text-xs text-muted-foreground">{text(selected.license_number)}</p>
                 )}
-                {selected.created_at && (
+                {text(selected.created_at) && !isNaN(new Date(text(selected.created_at)).getTime()) && (
                   <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Calendar className="h-3 w-3" /> {new Date(selected.created_at).toLocaleDateString()}
+                    <Calendar className="h-3 w-3" /> {new Date(text(selected.created_at)).toLocaleDateString()}
                   </p>
                 )}
                 <p className="text-[10px] text-muted-foreground break-all">ID: {selected.id}</p>
