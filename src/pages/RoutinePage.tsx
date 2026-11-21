@@ -20,10 +20,12 @@ import { foregroundNotificationId, requestLocalNotificationPermission } from "@/
 import {
   ScheduleItem,
   Milestone,
+  ShiftMode,
   mergeSchedule,
   mergeMilestones,
   buildDailyNotifications,
   routineNotificationId,
+  schedulePreset,
   SCHEDULE_KEYS,
 } from "@/lib/routine";
 
@@ -34,6 +36,7 @@ export default function RoutinePage() {
   const queryClient = useQueryClient();
 
   const [schedule, setSchedule] = useState<ScheduleItem[]>(() => mergeSchedule([]));
+  const [shiftMode, setShiftMode] = useState<ShiftMode>("day");
   const [milestones, setMilestones] = useState<Milestone[]>(() => mergeMilestones([]));
   const [notifStatus, setNotifStatus] = useState<string>("");
 
@@ -49,6 +52,8 @@ export default function RoutinePage() {
 
   useEffect(() => {
     setSchedule(mergeSchedule((settings as any[]).filter((r) => r.kind === "schedule")));
+    const modeRow = (settings as any[]).find((r) => r.kind === "shift" && r.key === "mode");
+    if (modeRow?.message === "night") setShiftMode("night");
     setMilestones(
       mergeMilestones(
         (settings as any[])
@@ -59,6 +64,14 @@ export default function RoutinePage() {
   }, [settings]);
 
   const titleFor = (key: string) => t(`routine.item.${key}`);
+
+  /** Switching Day/Night loads that preset into the editable fields only.
+   *  Times stay fully editable and nothing saves until सहेजें/Save. The
+   *  toggle changes reminder timings only - never accounting or dates. */
+  const applyShiftMode = (mode: ShiftMode) => {
+    setShiftMode(mode);
+    setSchedule(schedulePreset(mode).map((item) => ({ ...item })));
+  };
 
   /** Cancel every routine reminder we know, then schedule the enabled set.
    *  Ids are stable per key, so rescheduling never leaves duplicates. */
@@ -108,6 +121,15 @@ export default function RoutinePage() {
           if (error) throw error;
         }
       }
+      const modeRow = (settings as any[]).find((r) => r.kind === "shift" && r.key === "mode");
+      const modePayload = { kind: "shift", key: "mode", message: shiftMode };
+      if (modeRow) {
+        const { error } = await db.from("routine_settings").update(modePayload).eq("id", modeRow.id);
+        if (error) throw error;
+      } else {
+        const { error } = await db.from("routine_settings").insert({ ...modePayload, user_id: user!.id });
+        if (error) throw error;
+      }
       await reschedule(schedule);
     },
     onSuccess: () => {
@@ -155,6 +177,19 @@ export default function RoutinePage() {
           <Save className="h-4 w-4" /> {saveMutation.isPending ? t("common.saving") : t("common.save")}
         </Button>
       </div>
+
+      <Card className="border-0 shadow-sm">
+        <CardContent className="p-3 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-sm font-semibold">{t("routine.shiftMode")}</Label>
+            <div className="flex items-center gap-1">
+              <Button size="sm" variant={shiftMode === "day" ? "default" : "outline"} onClick={() => applyShiftMode("day")}>{t("routine.shiftDay")}</Button>
+              <Button size="sm" variant={shiftMode === "night" ? "default" : "outline"} onClick={() => applyShiftMode("night")}>{t("routine.shiftNight")}</Button>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">{t("routine.shiftNote")}</p>
+        </CardContent>
+      </Card>
 
       <Card className="border-warning/40 bg-warning/10">
         <CardContent className="p-3 text-sm">{t("routine.alarmNote")}</CardContent>
