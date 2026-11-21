@@ -194,6 +194,44 @@ describe("createSosRequestForUser", () => {
   });
 });
 
+describe("pre-rollout migration (no marker exists yet)", () => {
+  const legacyPayload = (u: string, status: string) => ({
+    id: rid(), driverId: u, category: "car", description: null,
+    approxLat: 18.5, approxLng: 73.8, geohash: "tejvx", areaText: "Pune",
+    status, mechanicId: null, mechanicName: null, mechanicPhone: null,
+    chargesAgreed: null, rating: null,
+    created_at: "2026-11-21T01:00:00.000Z", updated_at: "2026-11-21T01:00:00.000Z",
+  });
+
+  it("a driver with a pre-rollout ACTIVE request (no marker) cannot create another", async () => {
+    const u = uid();
+    await db.collection("sos_requests").add(legacyPayload(u, "pending"));
+    await expectHttps(createSosRequestForUser(u, validInput()), "failed-precondition", "sos-active-exists");
+    const u2 = uid();
+    await db.collection("sos_requests").add(legacyPayload(u2, "onway"));
+    await expectHttps(createSosRequestForUser(u2, validInput()), "failed-precondition", "sos-active-exists");
+  });
+
+  it("a driver whose pre-rollout request is CLOSED can create (and gets a marker)", async () => {
+    const u = uid();
+    await db.collection("sos_requests").add(legacyPayload(u, "completed"));
+    await db.collection("sos_requests").add(legacyPayload(u, "cancelled"));
+    const res = await createSosRequestForUser(u, validInput());
+    expect(res.deduped).toBe(false);
+    expect((await db.doc(`sos_active/${u}`).get()).exists).toBe(true);
+  });
+
+  it("pre-rollout same-day requests do NOT consume the daily quota (documented rollout boundary)", async () => {
+    const u = uid();
+    for (let i = 0; i < MAX_SOS_PER_DAY; i++) {
+      await db.collection("sos_requests").add(legacyPayload(u, "cancelled"));
+    }
+    const res = await createSosRequestForUser(u, validInput());
+    expect(res.deduped).toBe(false);
+    expect((await db.doc(`sos_quota/${u}`).get()).get("count")).toBe(1);
+  });
+});
+
 describe("clearActiveMarker", () => {
   it("deletes the marker only when it points at the closing request", async () => {
     const u = uid();
