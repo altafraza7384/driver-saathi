@@ -87,9 +87,12 @@ export default function DailyReportPage() {
   const now = new Date();
   const nowMin = now.getHours() * 60 + now.getMinutes();
 
-  // A checkpoint is judged by income actually earned BY its time (each
+  // A checkpoint is judged by income entries LOGGED by its time (each
   // entry's created_at), never by the day's eventual total - otherwise an
   // evening fare would retrospectively "complete" the morning checkpoint.
+  // Verdicts are evidence-framed: "covered" when entries logged by the
+  // cutoff reach the target, otherwise "not confirmed" (never "missed" -
+  // the driver may have earned it without logging in time).
   const checkpoints: (ReportCheckpoint & { noData: boolean })[] = milestones.map((m) => {
     if (minutesOf(timeForKey(m.key)) > nowMin) return { label: `${timeForKey(m.key)} (${formatINR(m.min)}–${formatINR(m.max)})`, met: null, noData: false };
     const earned = incomeEarnedBy(todayTx as any[], today, timeForKey(m.key));
@@ -146,6 +149,7 @@ export default function DailyReportPage() {
             <CardContent className="p-4 space-y-1">
               <p className="text-sm font-semibold">{t("report.checkpoints")}</p>
               <p className="text-xs text-muted-foreground">{t("checkpoint.trial")}</p>
+              <p className="text-xs text-muted-foreground">{t("report.timeNote")}</p>
               {milestones.length === 0 ? (
                 <button className="text-sm text-primary underline" onClick={() => navigate("/routine")}>{t("report.setTargets")}</button>
               ) : (
@@ -153,8 +157,8 @@ export default function DailyReportPage() {
                   {checkpoints.map((c) => (
                     <div key={c.label} className="flex justify-between text-sm">
                       <span>{c.label}</span>
-                      <span className={c.met === null || c.noData ? "text-muted-foreground" : c.met ? "text-success" : "text-destructive"}>
-                        {c.met === null ? t("report.pending") : c.noData ? t("report.noData") : c.met ? t("report.met") : t("report.missed")}
+                      <span className={c.met !== null && !c.noData && c.met ? "text-success" : "text-muted-foreground"}>
+                        {c.met === null ? t("report.pending") : c.noData ? t("report.noData") : c.met ? t("report.covered") : t("report.unconfirmed")}
                       </span>
                     </div>
                   ))}
