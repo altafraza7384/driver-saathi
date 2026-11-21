@@ -188,7 +188,9 @@ describe("createRazorpaySubscription lock lifecycle (mocked provider)", () => {
     await expect(createSub()).rejects.toMatchObject({ code: "failed-precondition" });
     expect(calls.some((c) => /\/cancel$/.test(c.path))).toBe(false);
     const doc = store.get(`subscriptions/${UID}`)!;
-    expect(doc.orphanedSubscriptionIds).toEqual(["sub_b"]);
+    // NEITHER is adopted, so support must see BOTH provider-side ids: the
+    // orphan and the discarded adopted candidate (Muse review Gap 2).
+    expect(doc.orphanedSubscriptionIds).toEqual(["sub_b", "sub_a"]);
     expect(doc.reconciliationNeeded).toBe(true);
     expect(doc.razorpaySubscriptionId).toBeUndefined();
   });
@@ -303,5 +305,49 @@ describe("createRazorpaySubscription lock lifecycle (mocked provider)", () => {
     const r3 = await p3;
     expect((r3 as any).ok.subscriptionId).toBe("sub_op2");
     expect(store.get(`subscriptions/${UID}`)!.checkoutLock).toBeUndefined();
+  });
+});
+
+describe("stale-lock cancel + reconciliation scoping (Muse review 2026-11-22)", () => {
+  it("CANCEL is not blocked by a stale checkout lock (Gap 1: user can cancel after a killed checkout)", async () => {
+    store.set(`subscriptions/${UID}`, { checkoutLock: "dead-op", checkoutLockedAt: lockAgeMs(10 * 60_000), razorpaySubscriptionId: "sub_live", status: "active" });
+    steps = [
+      ["GET", "/subscriptions/sub_live", [200, { id: "sub_live", status: "active" }]],
+      ["POST", "/subscriptions/sub_live/cancel", [200, { id: "sub_live", status: "active" }]],
+    ];
+    const { cancelRazorpaySubscription } = await import("../src/razorpay");
+    const res = await (cancelRazorpaySubscription as any).run({ auth: { uid: UID, token: { email_verified: true } } });
+    expect(res.cancelled).toBe(true);
+    expect(calls.some((c) => c.method === "POST" && /\/cancel$/.test(c.path))).toBe(true);
+    expect(store.get(`subscriptions/${UID}`)!.checkoutLock).toBeUndefined();
+    expect(store.get(`subscriptions/${UID}`)!.status).toBe("cancelling");
+  });
+
+  it("cancel still refuses a FRESH checkout lock (guard unchanged)", async () => {
+    store.set(`subscriptions/${UID}`, { checkoutLock: "live-op", checkoutLockedAt: lockAgeMs(30_000), razorpaySubscriptionId: "sub_live", status: "active" });
+    const { cancelRazorpaySubscription } = await import("../src/razorpay");
+    await expect((cancelRazorpaySubscription as any).run({ auth: { uid: UID, token: { email_verified: true } } }))
+      .rejects.toMatchObject({ code: "failed-precondition" });
+    expect(calls.length).toBe(0);
+    expect(store.get(`subscriptions/${UID}`)!.checkoutLock).toBe("live-op");
+  });
+
+  it("plan-change retry: an earlier attempt's 'created' sub is NOT this attempt's orphan (Gap 2)", async () => {
+    const lockedAtSec = Math.floor((Date.now() - 10 * 60_000) / 1000);
+    store.set(`subscriptions/${UID}`, { checkoutLock: "old-op", checkoutLockedAt: lockAgeMs(10 * 60_000) });
+    steps = [
+      ["GET", "/subscriptions?from=", [200, { items: [
+        { id: "sub_yearly_old", status: "created", plan_id: "plan_year", notes: { userId: UID, checkoutOperationId: "previous-op" }, created_at: lockedAtSec - 600 },
+      ] }]],
+      ["POST", "/plans", [200, { id: "plan_m_99" }]],
+      ["POST", "/subscriptions", [200, { id: "sub_new" }]],
+    ];
+    const res = await createSub();
+    expect(res.subscriptionId).toBe("sub_new");
+    // The old yearly sub was never fetched as a reconciliation candidate.
+    expect(calls.some((c) => c.path === "/plans/plan_year")).toBe(false);
+    const doc = store.get(`subscriptions/${UID}`)!;
+    expect(doc.reconciliationNeeded).toBeUndefined();
+    expect(doc.razorpaySubscriptionId).toBe("sub_new");
   });
 });
