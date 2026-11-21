@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {SCHEDULE_KEYS, schedulePreset, 
+import {retimeForMode, SCHEDULE_KEYS, schedulePreset, 
   DEFAULT_MILESTONES,
   DEFAULT_SCHEDULE,
   buildDailyNotifications,
@@ -227,5 +227,48 @@ describe("schedulePreset (Day/Night reminder timings only)", () => {
     expect(night.find((i) => i.key === "day_end")?.message).toContain("entry");
     // no schedule item fires twice: keys stay unique
     expect(new Set(night.map((i) => i.key)).size).toBe(night.length);
+  });
+});
+
+describe("buildDailyNotifications target suffix", () => {
+  const items = [
+    { key: "cp1", time: "10:30", enabled: true, message: "Checkpoint 1: hisaab lagao." },
+    { key: "wake", time: "07:00", enabled: true, message: "Utho." },
+    { key: "cp2", time: "13:30", enabled: true, message: "Checkpoint 2." },
+  ];
+  const titleFor = (k: string) => `title:${k}`;
+
+  it("appends the saved trial target for checkpoints with a set milestone", () => {
+    const n = buildDailyNotifications(items, titleFor, [{ key: "cp1", min: 500, max: 700 }]);
+    const cp1 = n.find((x) => x.title === "title:cp1")!;
+    expect(cp1.body).toContain("₹500–₹700");
+    expect(cp1.body).toContain("guarantee nahi");
+    expect(cp1.body).toContain("hisaab lagao.");
+  });
+
+  it("omits the suffix for unset milestones and non-checkpoint keys", () => {
+    const n = buildDailyNotifications(items, titleFor, [{ key: "cp2", min: 0, max: 0 }]);
+    expect(n.find((x) => x.title === "title:cp2")!.body).toBe("Checkpoint 2.");
+    expect(n.find((x) => x.title === "title:wake")!.body).toBe("Utho.");
+  });
+});
+
+describe("retimeForMode", () => {
+  it("remaps only default times; custom times, enabled flags and messages survive a round trip", () => {
+    const custom = schedulePreset("day").map((i) =>
+      i.key === "cp1" ? { ...i, time: "11:15", message: "mera custom msg" } : i.key === "cp2" ? { ...i, enabled: false } : i,
+    );
+    const night = retimeForMode(custom, "day", "night");
+    // default times moved to the night preset
+    expect(night.find((i) => i.key === "wake")?.time).toBe("17:00");
+    // custom time kept
+    expect(night.find((i) => i.key === "cp1")?.time).toBe("11:15");
+    expect(night.find((i) => i.key === "cp1")?.message).toBe("mera custom msg");
+    // enabled flag kept
+    expect(night.find((i) => i.key === "cp2")?.enabled).toBe(false);
+    // toggling back restores defaults for untouched fields, keeps customs
+    const backToDay = retimeForMode(night, "night", "day");
+    expect(backToDay.find((i) => i.key === "wake")?.time).toBe("07:00");
+    expect(backToDay.find((i) => i.key === "cp1")?.time).toBe("11:15");
   });
 });
