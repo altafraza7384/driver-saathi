@@ -114,6 +114,24 @@ describe("SOS quota rules (audit item 5) — legacy transition window", () => {
       if (snap.data()?.counted !== true) throw new Error("counted flag was modified");
     });
   });
+  it("REGRESSION: a legacy create carrying a phone number or exact coords is denied (2026-10-24 privacy hardening kept)", async () => {
+    const id = fresh();
+    await assertFails(setDoc(doc(env.authenticatedContext("alice").firestore(), `sos_requests/${id}a`), sosPayload(`${id}a`, { driverPhone: "9876543210" })));
+    await assertFails(setDoc(doc(env.authenticatedContext("alice").firestore(), `sos_requests/${id}b`), sosPayload(`${id}b`, { phone: "9876543210" })));
+    await assertFails(setDoc(doc(env.authenticatedContext("alice").firestore(), `sos_requests/${id}c`), sosPayload(`${id}c`, { exactLat: 18.5204, exactLng: 73.8567 })));
+  });
+  it("REGRESSION: a legacy create with a bad category or invalid approx coords is denied", async () => {
+    const id = fresh();
+    await assertFails(setDoc(doc(env.authenticatedContext("alice").firestore(), `sos_requests/${id}a`), sosPayload(`${id}a`, { category: "boat" })));
+    await assertFails(setDoc(doc(env.authenticatedContext("alice").firestore(), `sos_requests/${id}b`), sosPayload(`${id}b`, { approxLat: 999 })));
+    await assertFails(setDoc(doc(env.authenticatedContext("alice").firestore(), `sos_requests/${id}c`), sosPayload(`${id}c`, { approxLng: "east" })));
+  });
+  it("REGRESSION: details create is denied when the requestId field does not match the doc id", async () => {
+    const id = fresh();
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), `sos_requests/${id}`), sosPayload(id)));
+    await assertFails(setDoc(doc(env.authenticatedContext("alice").firestore(), `sos_request_details/${id}`),
+      { id, requestId: "other", driverId: "alice", driverPhone: "9876543210" }));
+  });
   it("old app versions CAN create sos_request_details for their own existing request", async () => {
     const id = fresh();
     await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), `sos_requests/${id}`), sosPayload(id)));
