@@ -184,15 +184,12 @@ service cloud.firestore {
     // live in sos_request_details, readable only by the driver and the
     // assigned mechanic. Admins may read every request for oversight.
     match /sos_requests/{requestId} {
-      allow create: if signedIn() && notBlocked()
-        && request.resource.data.driverId == request.auth.uid
-        && request.resource.data.status == 'pending'
-        // The public doc must never carry phone/exact coords (audit
-        // 2026-10-24 hardening; the app never writes them here).
-        && !request.resource.data.keys().hasAny(['driverPhone', 'phone', 'exactLat', 'exactLng'])
-        && request.resource.data.category in ['car', 'battery', 'towing', 'other', 'custom']
-        && isValidApproxLat(request.resource.data.get('approxLat', null))
-        && isValidApproxLng(request.resource.data.get('approxLng', null));
+      // Create is server-only (audit item 5, owner decision 2026-11-21):
+      // the createSosRequest callable enforces the quota — 1 active SOS
+      // per driver + max 5 new SOS per driver per IST day — atomically,
+      // and the Admin SDK bypasses rules. Client direct creates are
+      // denied so the quota cannot be bypassed.
+      allow create: if false;
       allow read: if signedIn()
         && ((notBlocked()
           && (resource.data.driverId == request.auth.uid
@@ -247,9 +244,9 @@ service cloud.firestore {
     }
 
     match /sos_request_details/{requestId} {
-      allow create: if signedIn() && notBlocked()
-        && request.resource.data.driverId == request.auth.uid
-        && request.resource.data.requestId == requestId;
+      // Server-only like sos_requests: created inside the same atomic
+      // createSosRequest transaction (audit item 5, 2026-11-21).
+      allow create: if false;
       // Driver reads own details; a mechanic reads them only after being
       // assigned (the mechanic app claims the doc right after accepting).
       // Admins read them for SOS oversight/disputes (audit 2026-10-24).
@@ -285,6 +282,12 @@ service cloud.firestore {
     // Server-only push log (sendSosRequestPush): mechanics' FCM tokens.
     // No client may read or write it; the Admin SDK bypasses rules.
     match /sos_push_log/{requestId} { allow read, write: if false; }
+    // Server-only quota state (createSosRequest): the active-SOS marker
+    // and the per-IST-day submission counter. Server-only for the same
+    // reason as sos_push_log — a client-writable counter would be a
+    // client-writable quota bypass.
+    match /sos_active/{uid} { allow read, write: if false; }
+    match /sos_quota/{uid} { allow read, write: if false; }
     match /{document=**} { allow read, write: if false; }
   }
 }
