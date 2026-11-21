@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
+import {SCHEDULE_KEYS, schedulePreset, 
   DEFAULT_MILESTONES,
   DEFAULT_SCHEDULE,
   buildDailyNotifications,
@@ -199,5 +199,33 @@ describe("incomeEarnedBy", () => {
 
   it("zero count means nothing logged by then, not zero earned", () => {
     expect(incomeEarnedBy(txs, day, "08:00")).toEqual({ total: 0, count: 0 });
+  });
+});
+
+
+describe("schedulePreset (Day/Night reminder timings only)", () => {
+  it("day preset is the existing default schedule", () => {
+    expect(schedulePreset("day")).toBe(DEFAULT_SCHEDULE);
+  });
+
+  it("night preset covers every schedule key with valid times and messages", () => {
+    const night = schedulePreset("night");
+    expect(night.map((i) => i.key).sort()).toEqual([...SCHEDULE_KEYS].sort());
+    for (const item of night) {
+      expect(parseTime(item.time)).not.toBeNull();
+      expect(item.message.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("entry nudges are folded into existing beats, not extra notifications", () => {
+    // day preset: cp2 (lunch) and day_end carry the entry reminders
+    expect(DEFAULT_SCHEDULE.find((i) => i.key === "cp2")?.message).toContain("entry");
+    expect(DEFAULT_SCHEDULE.find((i) => i.key === "day_end")?.message).toContain("entry");
+    // night preset: same two beats carry them
+    const night = schedulePreset("night");
+    expect(night.find((i) => i.key === "cp2")?.message).toContain("entry");
+    expect(night.find((i) => i.key === "day_end")?.message).toContain("entry");
+    // no schedule item fires twice: keys stay unique
+    expect(new Set(night.map((i) => i.key)).size).toBe(night.length);
   });
 });
