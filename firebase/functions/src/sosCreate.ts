@@ -254,17 +254,32 @@ export const createSosRequest = onCall({ region: REGION }, async (req) => {
  * request is never clobbered: concurrent legacy creates keep today's
  * pre-quota behaviour rather than hiding one of them.
  */
-export async function countSosCreateIfUnclaimed(requestId: string): Promise<boolean> {
+/**
+ * Inner claim with an EXPLICIT creation time — the unit under test for
+ * the cross-day races (the emulator always stamps createTime as "now",
+ * so yesterday-docs are simulated by calling this directly). The
+ * counted-flag check and all writes stay inside ONE transaction, so
+ * concurrent claims for mixed days serialise.
+ *
+ * Cross-day rule: the single per-user counter only ever moves FORWARD.
+ * A doc whose day is OLDER than the counter's current day is stamped
+ * counted WITHOUT touching the counter — yesterday's quota is irrelevant
+ * to today's enforcement, and overwriting today's count would reset it
+ * (a trigger retry across midnight must never hand the driver 5 fresh
+ * requests). A doc whose day is NEWER starts the new day's counter.
+ */
+export async function claimSosCreateDoc(
+  requestId: string,
+  driverId: string,
+  status: string | undefined,
+  created: Date,
+): Promise<boolean> {
   const reqRef = db.doc(`sos_requests/${requestId}`);
   return db.runTransaction(async (tx) => {
     const snap = await tx.get(reqRef);
     if (!snap.exists) return false;
     if (snap.get("counted") === true) return false;
-    const driverId = snap.get("driverId");
-    if (typeof driverId !== "string" || !driverId) return false;
-    const created = snap.createTime ? snap.createTime.toDate() : null;
-    if (!created || Number.isNaN(created.getTime())) return false;
-    const status = snap.get("status") as string | undefined;
+    if (snap.get("driverId") !== driverId) return false;
     const markerRef = db.doc(`sos_active/${driverId}`);
     const quotaRef = db.doc(`sos_quota/${driverId}`);
     const [markerSnap, quotaSnap] = await Promise.all([tx.get(markerRef), tx.get(quotaRef)]);
@@ -277,14 +292,28 @@ export async function countSosCreateIfUnclaimed(requestId: string): Promise<bool
       }
     }
     const day = istDayIso(created);
-    const count = quotaSnap.get("day") === day ? ((quotaSnap.get("count") as number | undefined) ?? 0) : 0;
+    const counterDay = quotaSnap.get("day") as string | undefined;
     tx.update(reqRef, { counted: true });
-    tx.set(quotaRef, { day, count: count + 1, dayEnd: Timestamp.fromMillis(istDayEndMs(created)) });
+    // ISO day strings compare correctly lexicographically.
+    if (counterDay === undefined || counterDay <= day) {
+      const count = counterDay === day ? ((quotaSnap.get("count") as number | undefined) ?? 0) : 0;
+      tx.set(quotaRef, { day, count: count + 1, dayEnd: Timestamp.fromMillis(istDayEndMs(created)) });
+    }
     if (!markerBlockedBy && status && (ACTIVE_SOS_STATUSES as readonly string[]).includes(status)) {
       tx.set(markerRef, { requestId, created_at: created.toISOString() });
     }
     return true;
   });
+}
+
+export async function countSosCreateIfUnclaimed(requestId: string): Promise<boolean> {
+  const snap = await db.doc(`sos_requests/${requestId}`).get();
+  if (!snap.exists) return false;
+  const driverId = snap.get("driverId");
+  if (typeof driverId !== "string" || !driverId) return false;
+  const created = snap.createTime ? snap.createTime.toDate() : null;
+  if (!created || Number.isNaN(created.getTime())) return false;
+  return claimSosCreateDoc(requestId, driverId, snap.get("status") as string | undefined, created);
 }
 
 /**
