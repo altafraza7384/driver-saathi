@@ -228,6 +228,18 @@ describe("pre-rollout migration (no marker exists yet)", () => {
     expect((await db.doc(`sos_active/${u}`).get()).exists).toBe(true);
   });
 
+  it("REGRESSION: a stale marker must not skip the probe — pre-rollout active request still denies the create", async () => {
+    // Muse review defect 3: legacy path creates request A while pre-rollout
+    // request B is active (rules cannot see B); the claim trigger marks A;
+    // A closes; cleanup lags (stale marker at A); the next callable create
+    // must still probe and find B — not overwrite the stale marker blindly.
+    const u = uid();
+    await db.collection("sos_requests").add(legacyPayload(u, "accepted")); // pre-rollout B, no marker
+    const staleA = await db.collection("sos_requests").add(legacyPayload(u, "completed"));
+    await db.doc(`sos_active/${u}`).set({ requestId: staleA.id }); // stale marker
+    await expectHttps(createSosRequestForUser(u, validInput()), "failed-precondition", "sos-active-exists");
+  });
+
   it("pre-rollout same-day requests do NOT consume the daily quota (documented rollout boundary)", async () => {
     const u = uid();
     for (let i = 0; i < MAX_SOS_PER_DAY; i++) {
