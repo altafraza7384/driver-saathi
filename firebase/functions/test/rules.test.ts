@@ -95,6 +95,25 @@ describe("SOS quota rules (audit item 5) — legacy transition window", () => {
       { day: "2000-01-01", count: 5, dayEnd: new Date(Date.now() - 1_000) }));
     await assertSucceeds(setDoc(doc(env.authenticatedContext("alice").firestore(), `sos_requests/${id}`), sosPayload(id)));
   });
+  it("ADVERSARIAL: a direct create carrying a forged counted:true accounting field is denied", async () => {
+    const id = fresh();
+    await assertFails(setDoc(doc(env.authenticatedContext("alice").firestore(), `sos_requests/${id}`), sosPayload(id, { counted: true })));
+  });
+  it("ADVERSARIAL: the driver update path cannot edit or remove the counted flag", async () => {
+    const id = fresh();
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), `sos_requests/${id}`), { ...sosPayload(id), counted: true }));
+    await assertFails(updateDoc(doc(env.authenticatedContext("alice").firestore(), `sos_requests/${id}`),
+      { status: "cancelled", counted: false, updated_at: "2026-11-21T00:00:00.000Z" }));
+    await assertFails(updateDoc(doc(env.authenticatedContext("alice").firestore(), `sos_requests/${id}`),
+      { status: "cancelled", counted: null, updated_at: "2026-11-21T00:00:00.000Z" }));
+    // And the allowed cancel leaves the flag untouched.
+    await assertSucceeds(updateDoc(doc(env.authenticatedContext("alice").firestore(), `sos_requests/${id}`),
+      { status: "cancelled", updated_at: "2026-11-21T00:00:00.000Z" }));
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const snap = await getDoc(doc(ctx.firestore(), `sos_requests/${id}`));
+      if (snap.data()?.counted !== true) throw new Error("counted flag was modified");
+    });
+  });
   it("old app versions CAN create sos_request_details for their own existing request", async () => {
     const id = fresh();
     await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), `sos_requests/${id}`), sosPayload(id)));
