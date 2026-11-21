@@ -18,7 +18,10 @@ import { ConfirmDelete } from "@/components/ConfirmDelete";
 
 /** Seeded on first open (user's stated routine, 2026-11-21). Stored as
  *  ordinary habit rows, so he can rename or remove them like any other. */
-const DEFAULT_HABITS = ["Namaz ke breaks liye", "Khana ka break liya", "Gaadi raat 10 baje khadi ki"];
+// Generic starter habits only - the app is for every driver, so defaults
+// carry no religious, personal or schedule-specific content. Drivers edit
+// or replace these freely; nothing here is prescriptive.
+const DEFAULT_HABITS = ["Khana time par khaya", "Kaafi paani piya", "Gaadi saaf aur check ki"];
 
 export default function HabitsPage() {
   const { user } = useAuth();
