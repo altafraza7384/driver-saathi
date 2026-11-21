@@ -31,7 +31,7 @@ export const DEFAULT_SCHEDULE: ScheduleItem[] = [
   { key: "wake", time: "07:00", enabled: true, message: "Utho, naya din nayi shuruaat. Ek slot miss ho jaye toh agle slot se dobara shuru." },
   { key: "depart", time: "07:30", enabled: true, message: "Gaadi nikalne ka time. Aaj ke checkpoints line se follow karo." },
   { key: "cp1", time: "10:30", enabled: true, message: "Checkpoint 1: ab tak ki app kamai ka hisaab lagao." },
-  { key: "cp2", time: "13:30", enabled: true, message: "Checkpoint 2: hisaab lagao, phir khana aur namaz ka break." },
+  { key: "cp2", time: "13:30", enabled: true, message: "Checkpoint 2: hisaab lagao, phir khane ka break lo." },
   { key: "cp3", time: "17:00", enabled: true, message: "Checkpoint 3: dopahar ka hisaab. Shaam ka slot shuru." },
   { key: "cp4", time: "21:00", enabled: true, message: "Checkpoint 4: aakhri ghanta. Ab thakaan ke saath chase mat karo." },
   { key: "day_end", time: "22:00", enabled: true, message: "Raat 10 baje, gaadi khadi. Thakaan ke saath target chase mat karo, kal phir se." },
@@ -173,7 +173,13 @@ export function computeStreak(doneDates: string[], today: string): number {
 
 export interface ReportCheckpoint {
   label: string;
-  met: boolean | null; // null = its time has not come yet
+  // true = target covered by income entries LOGGED by the checkpoint time
+  // (entry logging time, not actual earning time). false = not confirmed
+  // from recorded entries - never read as "actually missed": entries may be
+  // incomplete or logged late. null = its time has not come yet.
+  met: boolean | null;
+  // true = nothing was logged by the checkpoint time at all.
+  noData?: boolean;
 }
 
 /** Plain-text WhatsApp summary, Romanized Hinglish, no auto-send. */
@@ -193,10 +199,19 @@ export function buildDailyReportText(input: {
     `Net: ${formatINR(net)}`,
     `Habits: ${input.habitsDone}/${input.habitsTotal} complete`,
   ];
-  const done = input.checkpoints.filter((c) => c.met !== null);
-  if (done.length > 0) {
-    const met = done.filter((c) => c.met).length;
-    lines.push(`Checkpoints: ${met}/${done.length} target tak pahunche`);
+  // Evidence-framed: a checkpoint can be "covered" by entries logged
+  // before its time, but never "missed" - low recorded income may just mean
+  // late or incomplete logging. Unconfirmed and no-entry checkpoints are
+  // reported separately and never folded into a success or failure count.
+  const judged = input.checkpoints.filter((c) => c.met !== null);
+  if (judged.length > 0) {
+    const covered = judged.filter((c) => c.met).length;
+    const noEntry = judged.filter((c) => c.noData).length;
+    const notConfirmed = judged.length - covered - noEntry;
+    const parts = [`${covered} covered`];
+    if (notConfirmed > 0) parts.push(`${notConfirmed} not confirmed`);
+    if (noEntry > 0) parts.push(`${noEntry} no entry`);
+    lines.push(`Checkpoints: ${parts.join(", ")} (entry log time, actual earning time nahi)`);
   }
   lines.push("- Driver Saathi se share kiya");
   return lines.join("\n");
