@@ -1,5 +1,6 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { onDocumentUpdated } from "firebase-functions/v2/firestore";
+import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
+import { Timestamp } from "firebase-admin/firestore";
 import { db, requireVerifiedDriver } from "./shared";
 
 const REGION = "asia-south1";
@@ -22,6 +23,14 @@ export function istDayIso(d: Date): string {
     month: "2-digit",
     day: "2-digit",
   }).format(d);
+}
+
+// End of the IST calendar day containing d, in epoch millis. IST is fixed
+// UTC+05:30 (no DST), so this is exact. Stored on the quota doc so
+// firestore.rules can compare numerically — rules cannot format an IST
+// calendar day from request.time.
+export function istDayEndMs(d: Date): number {
+  return new Date(`${istDayIso(d)}T00:00:00+05:30`).getTime() + 86_400_000;
 }
 
 const CATEGORIES = new Set(["car", "battery", "towing", "other", "custom"]);
@@ -178,6 +187,11 @@ export async function createSosRequestForUser(
     tx.set(reqRef, {
       id: input.requestId,
       driverId: uid,
+      // Quota-claim flag: this doc is born counted because the counter is
+      // incremented in THIS transaction. The legacy-counting trigger and
+      // the rollout backfill skip any doc carrying counted:true, so no
+      // path can double-count a request.
+      counted: true,
       category: input.category,
       description: input.description,
       approxLat: input.approxLat,
@@ -204,7 +218,7 @@ export async function createSosRequestForUser(
       mechanicId: null,
     });
     tx.set(markerRef, { requestId: input.requestId, created_at: now });
-    tx.set(quotaRef, { day: today, count: count + 1 });
+    tx.set(quotaRef, { day: today, count: count + 1, dayEnd: Timestamp.fromMillis(istDayEndMs(new Date())) });
     return { requestId: input.requestId, deduped: false };
   });
 }
@@ -214,6 +228,80 @@ export const createSosRequest = onCall({ region: REGION }, async (req) => {
   const input = validateSosInput(req.data);
   return createSosRequestForUser(uid, input);
 });
+
+/**
+ * Claims ONE sos_requests doc for quota counting — the single counting
+ * path shared by the legacy-create trigger and the rollout backfill
+ * (both exported callers below).
+ *
+ * Idempotency protocol: a doc is counted iff its `counted` flag flips
+ * false→true inside the same transaction that increments the counter.
+ * Callable-created docs are BORN with counted:true (the callable already
+ * incremented in its own transaction), so all three writers — callable,
+ * trigger, backfill — are mutually exclusive without ordering
+ * guarantees: trigger retries, backfill re-runs and backfill/trigger
+ * races all converge on count==1 per doc.
+ *
+ * The increment lands on the counter for the doc's OWN IST day (from its
+ * created_at), not "today" — a backfill that runs after midnight must
+ * not charge yesterday's requests against the driver's new day.
+ *
+ * Marker convergence: when the claimed doc is itself active and no
+ * marker points at a genuinely active request, the marker is set to this
+ * doc — so a legacy client's second create (checked in rules or by the
+ * callable) sees the active state. A marker pointing at an active
+ * request is never clobbered: concurrent legacy creates keep today's
+ * pre-quota behaviour rather than hiding one of them.
+ */
+export async function countSosCreateIfUnclaimed(requestId: string): Promise<boolean> {
+  const reqRef = db.doc(`sos_requests/${requestId}`);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(reqRef);
+    if (!snap.exists) return false;
+    if (snap.get("counted") === true) return false;
+    const driverId = snap.get("driverId");
+    const createdAt = snap.get("created_at");
+    if (typeof driverId !== "string" || !driverId) return false;
+    if (typeof createdAt !== "string") return false;
+    const created = new Date(createdAt);
+    if (Number.isNaN(created.getTime())) return false;
+    const status = snap.get("status") as string | undefined;
+    const markerRef = db.doc(`sos_active/${driverId}`);
+    const quotaRef = db.doc(`sos_quota/${driverId}`);
+    const [markerSnap, quotaSnap] = await Promise.all([tx.get(markerRef), tx.get(quotaRef)]);
+    let markerBlockedBy: string | null = null;
+    if (markerSnap.exists) {
+      const activeId = markerSnap.get("requestId") as string;
+      const activeSnap = await tx.get(db.doc(`sos_requests/${activeId}`));
+      if (activeSnap.exists && (ACTIVE_SOS_STATUSES as readonly string[]).includes(activeSnap.get("status") ?? "")) {
+        markerBlockedBy = activeId;
+      }
+    }
+    const day = istDayIso(created);
+    const count = quotaSnap.get("day") === day ? ((quotaSnap.get("count") as number | undefined) ?? 0) : 0;
+    tx.update(reqRef, { counted: true });
+    tx.set(quotaRef, { day, count: count + 1, dayEnd: Timestamp.fromMillis(istDayEndMs(created)) });
+    if (!markerBlockedBy && status && (ACTIVE_SOS_STATUSES as readonly string[]).includes(status)) {
+      tx.set(markerRef, { requestId, created_at: createdAt });
+    }
+    return true;
+  });
+}
+
+/**
+ * Legacy-create counter: sos_requests docs written directly by OLD app
+ * versions (allowed by rules until the owner-chosen cutoff) carry no
+ * counted flag, so this trigger runs the shared claim transaction for
+ * them. Trigger wiring itself cannot fire under the firestore-only
+ * emulator; countSosCreateIfUnclaimed is unit-tested directly.
+ */
+export const sosLegacyCreateCounter = onDocumentCreated(
+  { document: "sos_requests/{requestId}", region: REGION },
+  async (event) => {
+    if (!event.data) return;
+    await countSosCreateIfUnclaimed(event.params.requestId);
+  },
+);
 
 /**
  * Clears the active marker when a request leaves an active status —
