@@ -1,0 +1,218 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// In-memory Firestore stand-in with the transaction semantics
+// createRazorpaySubscription relies on: fenced writes re-check the lock
+// value, merge applies FieldValue.delete() removal. No live provider calls:
+// global fetch is stubbed per test to script Razorpay's responses.
+type Data = Record<string, any>;
+const store = new Map<string, Data>();
+const TS = { serverTimestamp: () => ({ __ts: true }), delete: () => ({ __del: true }) };
+
+function apply(path: string, data: Data, merge: boolean) {
+  const cur = merge ? { ...(store.get(path) ?? {}) } : {};
+  for (const [k, v] of Object.entries(data)) {
+    if (v && (v as any).__del) delete cur[k];
+    else if (v && (v as any).__ts) cur[k] = { toMillis: () => Date.now(), toDate: () => new Date() };
+    else cur[k] = v;
+  }
+  store.set(path, cur);
+}
+function snapOf(path: string) {
+  const data = store.get(path);
+  return { exists: !!data, get: (k: string) => data?.[k], data: () => data };
+}
+function refOf(path: string): any {
+  return {
+    id: path.split("/").pop()!, path,
+    get: async () => snapOf(path),
+    set: async (data: Data, opts?: any) => apply(path, data, !!opts?.merge),
+    update: async (data: Data) => apply(path, data, true),
+    delete: async () => store.delete(path),
+  };
+}
+const fakeDb = {
+  doc: (path: string) => refOf(path),
+  collection: (path: string) => ({
+    where: () => ({ get: async () => ({ docs: [] }) }),
+  }),
+  runTransaction: async (fn: (tx: any) => any) => {
+    const tx = {
+      get: async (ref: any) => snapOf(ref.path),
+      set: (ref: any, data: Data, opts?: any) => apply(ref.path, data, !!opts?.merge),
+      update: (ref: any, data: Data) => apply(ref.path, data, true),
+      delete: (ref: any) => store.delete(ref.path),
+    };
+    return fn(tx);
+  },
+};
+
+vi.mock("../src/shared", () => ({
+  db: fakeDb,
+  auth: {},
+  FieldValue: TS,
+  requireVerifiedDriver: (req: any) => req.auth.uid,
+  requireAdmin: vi.fn(),
+}));
+
+process.env.RAZORPAY_KEY_ID = "rzp_test_fake";
+process.env.RAZORPAY_KEY_SECRET = "fake_secret";
+
+const UID = "u1";
+const PLAN_DOC = { is_active: true, billing_interval: "monthly", price_inr: 99 };
+const REQ = () => ({ auth: { uid: UID, token: { email_verified: true } }, data: { planInterval: "monthly", adminPlanId: "planAdmin1" } });
+
+// fetch script: each entry matches method+path-prefix, returns [status, body] or "hang".
+type Step = [string, string, [number, any] | "hang"];
+let steps: Step[] = [];
+let calls: Array<{ method: string; path: string }> = [];
+const fetchMock = vi.fn(async (url: any, opts: any) => {
+  const path = String(url).replace("https://api.razorpay.com/v1", "");
+  const method = opts?.method ?? "GET";
+  calls.push({ method, path });
+  const i = steps.findIndex(([m, p]) => m === method && path.startsWith(p));
+  if (i === -1) throw new Error("unscripted fetch: " + method + " " + path);
+  const [, , out] = steps[i];
+  if (out === "hang") {
+    const err = new Error("The operation was aborted") as any;
+    err.name = "AbortError";
+    throw err; // what fetch throws when AbortSignal fires
+  }
+  const [status, body] = out;
+  steps.splice(i, 1); // each scripted response consumed once unless re-added
+  return { ok: status < 300, status, json: async () => body } as any;
+});
+vi.stubGlobal("fetch", fetchMock);
+
+beforeEach(() => {
+  store.clear();
+  calls = [];
+  steps = [];
+  store.set("subscription_plans/planAdmin1", PLAN_DOC);
+  store.set(`users/${UID}`, { full_name: "Test" });
+});
+
+async function createSub() {
+  const { createRazorpaySubscription } = await import("../src/razorpay");
+  return (createRazorpaySubscription as any).run(REQ());
+}
+function lockAgeMs(ms: number) {
+  return { toMillis: () => Date.now() - ms, toDate: () => new Date(Date.now() - ms) };
+}
+const GOOD_PLAN = { period: "monthly", interval: 1, item: { amount: 9900, currency: "INR" } };
+
+describe("createRazorpaySubscription lock lifecycle (mocked provider)", () => {
+  it("baseline: fresh checkout creates and records one subscription, releases lock", async () => {
+    steps = [
+      ["POST", "/plans", [200, { id: "plan_m_99" }]],
+      ["POST", "/subscriptions", [200, { id: "sub_new" }]],
+    ];
+    const res = await createSub();
+    expect(res.subscriptionId).toBe("sub_new");
+    const doc = store.get(`subscriptions/${UID}`)!;
+    expect(doc.status).toBe("created");
+    expect(doc.razorpaySubscriptionId).toBe("sub_new");
+    expect(doc.checkoutLock).toBeUndefined();
+  });
+
+  it("fresh overlapping lock is rejected without any provider call", async () => {
+    store.set(`subscriptions/${UID}`, { checkoutLock: "other-op", checkoutLockedAt: lockAgeMs(60_000) });
+    await expect(createSub()).rejects.toMatchObject({ code: "failed-precondition" });
+    expect(calls.length).toBe(0);
+    expect(store.get(`subscriptions/${UID}`)!.checkoutLock).toBe("other-op");
+  });
+
+  it("stale lock is reclaimed and the interrupted attempt's still-unauthorized subscription is ADOPTED, not duplicated", async () => {
+    store.set(`subscriptions/${UID}`, { checkoutLock: "old-op", checkoutLockedAt: lockAgeMs(10 * 60_000) });
+    steps = [
+      ["GET", "/subscriptions?from=", [200, { items: [{ id: "sub_orphan", status: "created", plan_id: "plan_m_99", notes: { userId: UID }, start_at: 2000000000 }] }]],
+      ["GET", "/plans/plan_m_99", [200, GOOD_PLAN]],
+    ];
+    const res = await createSub();
+    expect(res.subscriptionId).toBe("sub_orphan");
+    expect(calls.some((c) => c.method === "POST" && c.path === "/subscriptions")).toBe(false);
+    const doc = store.get(`subscriptions/${UID}`)!;
+    expect(doc.razorpaySubscriptionId).toBe("sub_orphan");
+    expect(doc.checkoutLock).toBeUndefined();
+  });
+
+  it("stale lock + wrong-price orphan: orphan cancelled, fresh subscription created", async () => {
+    store.set(`subscriptions/${UID}`, { checkoutLock: "old-op", checkoutLockedAt: lockAgeMs(10 * 60_000) });
+    steps = [
+      ["GET", "/subscriptions?from=", [200, { items: [{ id: "sub_bad", status: "created", plan_id: "plan_other", notes: { userId: UID } }] }]],
+      ["GET", "/plans/plan_other", [200, { period: "yearly", interval: 1, item: { amount: 99900, currency: "INR" } }]],
+      ["POST", "/subscriptions/sub_bad/cancel", [200, { status: "cancelled" }]],
+      ["POST", "/plans", [200, { id: "plan_m_99" }]],
+      ["POST", "/subscriptions", [200, { id: "sub_new" }]],
+    ];
+    const res = await createSub();
+    expect(res.subscriptionId).toBe("sub_new");
+    expect(calls.some((c) => c.path === "/subscriptions/sub_bad/cancel")).toBe(true);
+  });
+
+  it("partial orphan-cancel failure does not block the fresh checkout", async () => {
+    store.set(`subscriptions/${UID}`, { checkoutLock: "old-op", checkoutLockedAt: lockAgeMs(10 * 60_000) });
+    steps = [
+      ["GET", "/subscriptions?from=", [200, { items: [{ id: "sub_bad", status: "created", plan_id: "plan_other", notes: { userId: UID } }] }]],
+      ["GET", "/plans/plan_other", [200, { period: "yearly", interval: 1, item: { amount: 99900, currency: "INR" } }]],
+      ["POST", "/subscriptions/sub_bad/cancel", [500, { error: { description: "server error" } }]],
+      ["POST", "/plans", [200, { id: "plan_m_99" }]],
+      ["POST", "/subscriptions", [200, { id: "sub_new" }]],
+    ];
+    const res = await createSub();
+    expect(res.subscriptionId).toBe("sub_new");
+  });
+
+  it("two unauthorized orphans: newest-plan match adopted, the other cancelled", async () => {
+    store.set(`subscriptions/${UID}`, { checkoutLock: "old-op", checkoutLockedAt: lockAgeMs(10 * 60_000) });
+    steps = [
+      ["GET", "/subscriptions?from=", [200, { items: [
+        { id: "sub_a", status: "created", plan_id: "plan_m_99", notes: { userId: UID }, start_at: 2000000000 },
+        { id: "sub_b", status: "created", plan_id: "plan_m_99", notes: { userId: UID }, start_at: 2000000001 },
+      ] }]],
+      ["GET", "/plans/plan_m_99", [200, GOOD_PLAN]],
+      ["GET", "/plans/plan_m_99", [200, GOOD_PLAN]],
+      ["POST", "/subscriptions/sub_b/cancel", [200, { status: "cancelled" }]],
+    ];
+    const res = await createSub();
+    expect(res.subscriptionId).toBe("sub_a");
+    expect(calls.some((c) => c.path === "/subscriptions/sub_b/cancel")).toBe(true);
+  });
+
+  it("reconciliation finds an ALREADY-AUTHENTICATED provider subscription: it is recorded (not stranded) and the new checkout is refused", async () => {
+    store.set(`subscriptions/${UID}`, { checkoutLock: "old-op", checkoutLockedAt: lockAgeMs(10 * 60_000) });
+    steps = [
+      ["GET", "/subscriptions?from=", [200, { items: [{ id: "sub_late", status: "authenticated", plan_id: "plan_m_99", notes: { userId: UID } }] }]],
+    ];
+    await expect(createSub()).rejects.toMatchObject({ code: "failed-precondition" });
+    const doc = store.get(`subscriptions/${UID}`)!;
+    expect(doc.razorpaySubscriptionId).toBe("sub_late");
+    expect(doc.status).toBe("authenticated");
+    expect(doc.checkoutLock).toBeUndefined();
+  });
+
+  it("provider list failure during reconciliation: error surfaces, OUR lock is released for retry, nothing created", async () => {
+    store.set(`subscriptions/${UID}`, { checkoutLock: "old-op", checkoutLockedAt: lockAgeMs(10 * 60_000) });
+    steps = [["GET", "/subscriptions?from=", [500, { error: { description: "server error" } }]]];
+    await expect(createSub()).rejects.toBeTruthy();
+    expect(calls.some((c) => c.method === "POST" && c.path === "/subscriptions")).toBe(false);
+    expect(store.get(`subscriptions/${UID}`)!.checkoutLock).toBeUndefined();
+  });
+
+  it("full provider page is treated as ambiguous: refuse instead of risking a duplicate", async () => {
+    store.set(`subscriptions/${UID}`, { checkoutLock: "old-op", checkoutLockedAt: lockAgeMs(10 * 60_000) });
+    const items = Array.from({ length: 100 }, (_, i) => ({ id: "sub_" + i, status: "created", notes: { userId: "someone_else" } }));
+    steps = [["GET", "/subscriptions?from=", [200, { items }]]];
+    await expect(createSub()).rejects.toMatchObject({ code: "failed-precondition" });
+    expect(calls.some((c) => c.method === "POST" && c.path === "/subscriptions")).toBe(false);
+  });
+
+  it("provider create call times out / unreachable: lock is KEPT, user told confirmation is pending", async () => {
+    steps = [
+      ["POST", "/plans", [200, { id: "plan_m_99" }]],
+      ["POST", "/subscriptions", "hang"],
+    ];
+    await expect(createSub()).rejects.toMatchObject({ code: "failed-precondition" });
+    const doc = store.get(`subscriptions/${UID}`)!;
+    expect(doc.checkoutLock).toBeTruthy(); // retained so the next attempt reconciles instead of duplicating
+  });
+});
