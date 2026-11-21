@@ -137,16 +137,39 @@ describe("buildDailyReportText", () => {
       habitsTotal: 3,
       checkpoints: [
         { label: "10:30", met: true },
-        { label: "13:30", met: false },
-        { label: "17:00", met: null },
+        { label: "13:30", met: false }, // logged but below target: not confirmed
+        { label: "15:00", met: false, noData: true }, // nothing logged: no entry
+        { label: "17:00", met: null }, // upcoming: excluded entirely
       ],
     });
     expect(text).toContain("21 Nov 2026");
     expect(text).toContain("₹2,500");
     expect(text).toContain("₹1,800"); // net
     expect(text).toContain("2/3");
-    expect(text).toContain("1/2"); // 1 of 2 due checkpoints met; upcoming excluded
+    expect(text).toContain("1 covered");
+    expect(text).toContain("1 not confirmed"); // never asserted as missed
+    expect(text).toContain("1 no entry");
+    expect(text).toContain("entry log time");
     expect(text).not.toContain("17:00");
+    expect(text).not.toContain("missed");
+  });
+
+  it("omits not-confirmed and no-entry segments when everything due is covered", () => {
+    const text = buildDailyReportText({
+      dateLabel: "21 Nov 2026",
+      income: 2500,
+      expense: 700,
+      habitsDone: 3,
+      habitsTotal: 3,
+      checkpoints: [
+        { label: "10:30", met: true },
+        { label: "13:30", met: true },
+        { label: "17:00", met: null },
+      ],
+    });
+    expect(text).toContain("2 covered");
+    expect(text).not.toContain("not confirmed");
+    expect(text).not.toContain("no entry");
   });
 });
 
