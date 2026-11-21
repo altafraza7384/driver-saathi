@@ -9,6 +9,57 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
+    // Malformed-data hardening (audit follow-up 2026-11-21): when a known
+    // text field is present (create) or changed (update), it must be a real
+    // string within a sane size. One object-valued field used to crash the
+    // admin pages' string operations.
+    function textFieldOk(data, field, maxLen) {
+      return !data.keys().hasAny([field])
+        || data.get(field, null) == null
+        || (data.get(field, null) is string && data.get(field, null).size() <= maxLen);
+    }
+    function profileTextOk(data) {
+      return textFieldOk(data, 'full_name', 100)
+        && textFieldOk(data, 'email', 320)
+        && textFieldOk(data, 'phone', 20)
+        && textFieldOk(data, 'vehicle_type', 50)
+        && textFieldOk(data, 'vehicle_number', 20)
+        && textFieldOk(data, 'license_number', 50)
+        && textFieldOk(data, 'preferred_language', 20);
+    }
+    function changedTextOk(field, maxLen) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([field])
+        || request.resource.data.get(field, null) == null
+        || (request.resource.data.get(field, null) is string && request.resource.data.get(field, null).size() <= maxLen);
+    }
+    function profileTextUpdateOk() {
+      return changedTextOk('full_name', 100)
+        && changedTextOk('email', 320)
+        && changedTextOk('phone', 20)
+        && changedTextOk('vehicle_type', 50)
+        && changedTextOk('vehicle_number', 20)
+        && changedTextOk('license_number', 50)
+        && changedTextOk('preferred_language', 20);
+    }
+    function leadTextOk(data) {
+      return textFieldOk(data, 'name', 100)
+        && textFieldOk(data, 'phone', 20)
+        && textFieldOk(data, 'vehicle_number', 20)
+        && textFieldOk(data, 'vehicle_model', 100)
+        && textFieldOk(data, 'vehicle_year', 10)
+        && textFieldOk(data, 'city', 100)
+        && textFieldOk(data, 'policy_expiry', 30);
+    }
+    function leadTextUpdateOk() {
+      return changedTextOk('name', 100)
+        && changedTextOk('phone', 20)
+        && changedTextOk('vehicle_number', 20)
+        && changedTextOk('vehicle_model', 100)
+        && changedTextOk('vehicle_year', 10)
+        && changedTextOk('city', 100)
+        && changedTextOk('policy_expiry', 30);
+    }
+
     function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
     function isAdmin() {
       return signedIn() && (request.auth.token.get('admin', false) == true
@@ -64,14 +115,16 @@ service cloud.firestore {
       // trial_started_at/trial_ends_at are server-only (set by functions on
       // first AI use) — a client must never be able to grant itself a trial.
       allow create: if (isOwner(uid) && notBlocked()
-        && !request.resource.data.keys().hasAny(['role', 'roles', 'admin', 'is_blocked', 'subscription_plan_id', 'trial_started_at', 'trial_ends_at']))
+        && !request.resource.data.keys().hasAny(['role', 'roles', 'admin', 'is_blocked', 'subscription_plan_id', 'trial_started_at', 'trial_ends_at'])
+        && profileTextOk(request.resource.data))
         || isAdmin();
       // update: only the CHANGED fields are checked (diff().affectedKeys()),
       // because the merged post-update document always contains fields the
       // admin assigned earlier (e.g. subscription_plan_id) — checking the
       // whole document locked plan-holding users out of their own profile.
       allow update: if (isOwner(uid) && notBlocked()
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'roles', 'admin', 'is_blocked', 'subscription_plan_id', 'trial_started_at', 'trial_ends_at']))
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'roles', 'admin', 'is_blocked', 'subscription_plan_id', 'trial_started_at', 'trial_ends_at'])
+        && profileTextUpdateOk())
         || isAdmin();
       allow delete: if false; // deletion only via deleteAccount function
 
@@ -158,7 +211,8 @@ service cloud.firestore {
         && request.resource.data.user_id == request.auth.uid
         && request.resource.data.consent == true
         && request.resource.data.status == 'new'
-        && !request.resource.data.keys().hasAny(['commission_amount', 'commission_note']);
+        && !request.resource.data.keys().hasAny(['commission_amount', 'commission_note'])
+        && leadTextOk(request.resource.data);
       allow read: if signedIn()
         && ((resource.data.user_id == request.auth.uid && notBlocked()) || isAdmin());
       // update: only CHANGED fields are checked (diff().affectedKeys()) —
@@ -166,7 +220,8 @@ service cloud.firestore {
       // old whole-document check denied EVERY admin update (status and
       // commission could never be saved).
       allow update: if isAdmin()
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['user_id', 'phone', 'consent']);
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['user_id', 'phone', 'consent'])
+        && leadTextUpdateOk();
       allow delete: if isAdmin();
     }
 
