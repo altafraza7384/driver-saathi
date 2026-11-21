@@ -27,6 +27,22 @@ type PlanInterval = keyof typeof PLANS;
 // can never delete or overwrite the newer lock.
 const CHECKOUT_LOCK_TTL_MS = 5 * 60 * 1000;
 
+// A lock older than the TTL is stale: the invocation that took it is dead
+// (kill/timeout). Cancel / account-deletion / plan-deletion must not block
+// on a stale lock forever — a user who wants to CANCEL instead of retrying
+// a killed checkout would otherwise be stranded (and a pending first
+// charge could still hit). They ignore the stale lock; the next checkout
+// attempt still reconciles it provider-side before creating anything.
+// A lock with no readable timestamp cannot be aged, so refusing stays
+// conservative (treated as live).
+const isLiveCheckoutLock = (data: { checkoutLock?: unknown; checkoutLockedAt?: unknown } | undefined): boolean => {
+  if (!data?.checkoutLock) return false;
+  const lockedAt = data.checkoutLockedAt as { toMillis?: () => number } | undefined;
+  const lockedAtMs = lockedAt && typeof lockedAt.toMillis === "function" ? lockedAt.toMillis() : 0;
+  if (!lockedAtMs) return true;
+  return Date.now() - lockedAtMs < CHECKOUT_LOCK_TTL_MS;
+};
+
 type RzpJson = Record<string, unknown>;
 
 async function rzp(path: string, method: "GET" | "POST", body?: unknown): Promise<RzpJson> {
@@ -169,7 +185,23 @@ export const createRazorpaySubscription = onCall(
           // anyway could duplicate. Fail safe instead of guessing.
           throw new HttpsError("failed-precondition", "Checkout needs reconciliation before another attempt.");
         }
-        const mine = items.filter((it) => (it?.notes as RzpJson | undefined)?.userId === uid);
+        // Scope candidates to THE interrupted attempt. A 'created' sub from
+        // an EARLIER, different checkout (different checkoutOperationId,
+        // created before the reclaimed lock) is not this attempt's orphan:
+        // the reuse path below cancels such stale subs and completes the
+        // new checkout, so counting it here would falsely refuse a
+        // legitimate plan-change retry.
+        const mine = items.filter((it) => {
+          const notes = it?.notes as RzpJson | undefined;
+          if (notes?.userId !== uid) return false;
+          const op = notes?.checkoutOperationId;
+          // A stamped operation id is definitive: this attempt's create
+          // always stamps its own id, so any other id is another attempt.
+          if (op) return op === reclaimedFrom.operationId;
+          // Unstamped: fall back to creation time; include when unknown.
+          const createdAt = typeof it?.created_at === "number" ? it.created_at : null;
+          return createdAt === null || createdAt >= reclaimedFrom.lockedAtSec;
+        });
         for (const m of mine) {
           const st = asString(m.status);
           if (st === "authenticated" || st === "active") {
@@ -227,8 +259,11 @@ export const createRazorpaySubscription = onCall(
           await db.runTransaction(async (tx) => {
             const snap = await tx.get(subscriptionRef);
             if (snap.get("checkoutLock") !== operationId) return;
+            // Record the discarded adopted candidate too: when two matching
+            // 'created' subs exist the checkout is refused and NEITHER is
+            // adopted, so support must see both provider-side IDs.
             tx.set(subscriptionRef, {
-              orphanedSubscriptionIds: orphans,
+              orphanedSubscriptionIds: adopted ? [...orphans, asString(adopted.id)!] : orphans,
               reconciliationNeeded: true,
               updatedAt: FieldValue.serverTimestamp(),
               checkoutLock: FieldValue.delete(), checkoutLockedAt: FieldValue.delete(),
@@ -432,10 +467,10 @@ export const cancelRazorpaySubscription = onCall(
     const operationId = crypto.randomUUID();
     const existing = await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
-      if (snap.get("checkoutLock")) throw new HttpsError("failed-precondition", "A subscription change is already in progress. Please wait.");
+      if (isLiveCheckoutLock(snap.data())) throw new HttpsError("failed-precondition", "A subscription change is already in progress. Please wait.");
       const id = asString(snap.get("razorpaySubscriptionId"));
       if (!id) throw new HttpsError("failed-precondition", "No subscription found");
-      tx.set(ref, { checkoutLock: operationId }, { merge: true });
+      tx.set(ref, { checkoutLock: operationId, checkoutLockedAt: FieldValue.serverTimestamp() }, { merge: true });
       return { id, status: asString(snap.get("status")) };
     });
     try {
@@ -472,7 +507,7 @@ export const cancelRazorpaySubscription = onCall(
     } finally {
       await db.runTransaction(async (tx) => {
         const snap = await tx.get(ref);
-        if (snap.get("checkoutLock") === operationId) tx.update(ref, { checkoutLock: FieldValue.delete() });
+        if (snap.get("checkoutLock") === operationId) tx.update(ref, { checkoutLock: FieldValue.delete(), checkoutLockedAt: FieldValue.delete() });
       });
     }
   },
@@ -487,14 +522,14 @@ export async function cancelSubscriptionForUser(uid: string): Promise<void> {
   const operationId = crypto.randomUUID();
   const subscriptionId = await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
-    if (snap.get("checkoutLock")) throw new HttpsError("failed-precondition", "Wait for the current checkout to finish before deleting the account.");
+    if (isLiveCheckoutLock(snap.data())) throw new HttpsError("failed-precondition", "Wait for the current checkout to finish before deleting the account.");
     const id = asString(snap.get("razorpaySubscriptionId"));
     const status = asString(snap.get("status"));
     if (!id && status && !["cancelled", "completed", "expired"].includes(status)) {
       throw new HttpsError("failed-precondition", "Subscription needs reconciliation before account deletion.");
     }
     tx.set(deletionRef, { requestedAt: FieldValue.serverTimestamp() }, { merge: true });
-    if (snap.exists) tx.set(ref, { checkoutLock: operationId }, { merge: true });
+    if (snap.exists) tx.set(ref, { checkoutLock: operationId, checkoutLockedAt: FieldValue.serverTimestamp() }, { merge: true });
     return id;
   });
   try {
@@ -522,7 +557,7 @@ export async function cancelSubscriptionForUser(uid: string): Promise<void> {
     // checkouts until cancellation is reconciled, even if this call times out.
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
-      if (snap.get("checkoutLock") === operationId) tx.update(ref, { checkoutLock: FieldValue.delete() });
+      if (snap.get("checkoutLock") === operationId) tx.update(ref, { checkoutLock: FieldValue.delete(), checkoutLockedAt: FieldValue.delete() });
     });
     throw error;
   }
@@ -557,7 +592,7 @@ export const deleteSubscriptionPlan = onCall(
       const subscriptionId = await db.runTransaction(async (tx) => {
         const sub = await tx.get(ref);
         const user = await tx.get(db.doc(`users/${uid}`));
-        if (sub.get("checkoutLock")) throw new HttpsError("failed-precondition", "A checkout is in progress. Retry plan deletion after it finishes.");
+        if (isLiveCheckoutLock(sub.data())) throw new HttpsError("failed-precondition", "A checkout is in progress. Retry plan deletion after it finishes.");
         const id = asString(sub.get("razorpaySubscriptionId"));
         if (sub.get("adminPlanId") !== planId) {
           if (user.get("subscription_plan_id") === planId && id) {
@@ -569,7 +604,7 @@ export const deleteSubscriptionPlan = onCall(
           if (!ended(sub.get("status"))) throw new HttpsError("failed-precondition", "Subscription tracking is incomplete. Reconcile billing before deletion.");
           return null;
         }
-        tx.set(ref, { checkoutLock: operationId }, { merge: true });
+        tx.set(ref, { checkoutLock: operationId, checkoutLockedAt: FieldValue.serverTimestamp() }, { merge: true });
         return id;
       });
       if (!subscriptionId) continue;
@@ -585,12 +620,12 @@ export const deleteSubscriptionPlan = onCall(
         await db.runTransaction(async (tx) => {
           const sub = await tx.get(ref);
           if (sub.get("checkoutLock") !== operationId) throw new HttpsError("failed-precondition", "Subscription changed. Retry plan deletion.");
-          tx.update(ref, { status, updatedAt: FieldValue.serverTimestamp(), checkoutLock: FieldValue.delete() });
+          tx.update(ref, { status, updatedAt: FieldValue.serverTimestamp(), checkoutLock: FieldValue.delete(), checkoutLockedAt: FieldValue.delete() });
         });
       } finally {
         await db.runTransaction(async (tx) => {
           const sub = await tx.get(ref);
-          if (sub.get("checkoutLock") === operationId) tx.update(ref, { checkoutLock: FieldValue.delete() });
+          if (sub.get("checkoutLock") === operationId) tx.update(ref, { checkoutLock: FieldValue.delete(), checkoutLockedAt: FieldValue.delete() });
         });
       }
     }
