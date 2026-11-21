@@ -50,6 +50,15 @@ service cloud.firestore {
         && textFieldOk(data, 'city', 100)
         && textFieldOk(data, 'policy_expiry', 30);
     }
+    function leadTextUpdateOk() {
+      return changedTextOk('name', 100)
+        && changedTextOk('phone', 20)
+        && changedTextOk('vehicle_number', 20)
+        && changedTextOk('vehicle_model', 100)
+        && changedTextOk('vehicle_year', 10)
+        && changedTextOk('city', 100)
+        && changedTextOk('policy_expiry', 30);
+    }
 
     function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
     function isAdmin() {
@@ -211,7 +220,8 @@ service cloud.firestore {
       // old whole-document check denied EVERY admin update (status and
       // commission could never be saved).
       allow update: if isAdmin()
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['user_id', 'phone', 'consent']);
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['user_id', 'phone', 'consent'])
+        && leadTextUpdateOk();
       allow delete: if isAdmin();
     }
 
