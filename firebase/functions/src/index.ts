@@ -16,6 +16,7 @@ import { cancelSubscriptionForUser, RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET } from 
 export { razorpayWebhook } from "./webhook";
 export { dedupeInsuranceLead } from "./leads";
 export { sendSosRequestPush, sendSosCancelPush } from "./sosPush";
+export { createSosRequest, sosActiveCleanup } from "./sosCreate";
 export { clearPhoneVerifiedOnChange } from "./mechanicPhone";
 
 const REGION = "asia-south1";
