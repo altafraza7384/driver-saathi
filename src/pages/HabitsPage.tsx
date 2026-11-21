@@ -180,4 +180,4 @@ export default function HabitsPage() {
       )}
     </div>
   );
-                    }
+}
