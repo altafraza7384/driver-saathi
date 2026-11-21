@@ -13,6 +13,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { db } from "@/lib/backend";
 import { NotificationBell } from "@/components/NotificationBell";
+import RoutineCheckpointCard from "@/components/RoutineCheckpointCard";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { currentMonth, monthRange, budgetStatus, Budget, localToday } from "@/lib/budgets";
 
@@ -235,6 +236,8 @@ export default function HomePage() {
         </Card>
       </div>
 
+      <RoutineCheckpointCard todayIncome={todayIncome} />
+
       <section className="animate-in fade-in slide-in-from-bottom-2 duration-300">
         <h2 className="mb-3 text-base font-bold">{t("home.quickActions")}</h2>
         <div className="grid grid-cols-5 gap-3 w-full">
@@ -398,4 +401,4 @@ export default function HomePage() {
       </div>
     </div>
   );
-}
+         }
