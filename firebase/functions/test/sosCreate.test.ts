@@ -12,8 +12,10 @@ import {
   createSosRequest,
   createSosRequestForUser,
   clearActiveMarker,
+  countSosCreateIfUnclaimed,
   validateSosInput,
   istDayIso,
+  istDayEndMs,
   MAX_SOS_PER_DAY,
 } from "../src/sosCreate";
 
@@ -84,6 +86,9 @@ describe("createSosRequestForUser", () => {
     // Public doc must never carry phone/exact coords (audit 2026-10-24).
     expect(req.get("driverPhone")).toBeUndefined();
     expect(req.get("exactLat")).toBeUndefined();
+    // Callable-created docs are born claimed, so the legacy counter
+    // trigger / backfill can never double-count them.
+    expect(req.get("counted")).toBe(true);
     const det = await db.doc(`sos_request_details/${input.requestId}`).get();
     expect(det.get("driverPhone")).toBe("9876543210");
     expect(det.get("exactLat")).toBe(18.5204);
@@ -92,6 +97,7 @@ describe("createSosRequestForUser", () => {
     const quota = await db.doc(`sos_quota/${u}`).get();
     expect(quota.get("day")).toBe(istDayIso(new Date()));
     expect(quota.get("count")).toBe(1);
+    expect(quota.get("dayEnd").toMillis()).toBe(istDayEndMs(new Date()));
   });
 
   it("denies a second SOS while one is active (any active status)", async () => {
@@ -254,5 +260,94 @@ describe("createSosRequest callable auth guard", () => {
   });
   it("unverified email: rejected (matches requireVerifiedDriver)", async () => {
     await expectHttps(run({ uid: uid(), token: { email_verified: false } }), "permission-denied");
+  });
+});
+
+describe("countSosCreateIfUnclaimed (legacy claim protocol)", () => {
+  const legacyDoc = (u: string, overrides: Record<string, unknown> = {}) => ({
+    id: rid(),
+    driverId: u,
+    category: "car",
+    description: null,
+    approxLat: 18.5,
+    approxLng: 73.8,
+    geohash: "tejvx",
+    areaText: "Pune",
+    status: "pending",
+    mechanicId: null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    ...overrides,
+  });
+
+  it("claims an unclaimed legacy doc: counter increments on the doc's own IST day, marker set when active", async () => {
+    const u = uid();
+    const doc = legacyDoc(u);
+    await db.doc(`sos_requests/${doc.id}`).set(doc);
+    expect(await countSosCreateIfUnclaimed(doc.id)).toBe(true);
+    const quota = await db.doc(`sos_quota/${u}`).get();
+    expect(quota.get("count")).toBe(1);
+    expect(quota.get("day")).toBe(istDayIso(new Date()));
+    expect(quota.get("dayEnd").toMillis()).toBe(istDayEndMs(new Date()));
+    expect((await db.doc(`sos_requests/${doc.id}`).get()).get("counted")).toBe(true);
+    expect((await db.doc(`sos_active/${u}`).get()).get("requestId")).toBe(doc.id);
+  });
+
+  it("is idempotent: a second claim (trigger retry / backfill re-run) does not count twice", async () => {
+    const u = uid();
+    const doc = legacyDoc(u);
+    await db.doc(`sos_requests/${doc.id}`).set(doc);
+    expect(await countSosCreateIfUnclaimed(doc.id)).toBe(true);
+    expect(await countSosCreateIfUnclaimed(doc.id)).toBe(false);
+    expect((await db.doc(`sos_quota/${u}`).get()).get("count")).toBe(1);
+  });
+
+  it("skips callable-created docs (born counted:true) — no double count with the callable path", async () => {
+    const u = uid();
+    const input = validInput();
+    await createSosRequestForUser(u, input);
+    expect(await countSosCreateIfUnclaimed(input.requestId)).toBe(false);
+    expect((await db.doc(`sos_quota/${u}`).get()).get("count")).toBe(1);
+  });
+
+  it("counts a closed legacy doc but sets NO marker (closure stays closed)", async () => {
+    const u = uid();
+    const doc = legacyDoc(u, { status: "cancelled" });
+    await db.doc(`sos_requests/${doc.id}`).set(doc);
+    expect(await countSosCreateIfUnclaimed(doc.id)).toBe(true);
+    expect((await db.doc(`sos_quota/${u}`).get()).get("count")).toBe(1);
+    expect((await db.doc(`sos_active/${u}`).get()).exists).toBe(false);
+  });
+
+  it("never clobbers a marker pointing at a genuinely active request", async () => {
+    const u = uid();
+    const first = legacyDoc(u);
+    const second = legacyDoc(u);
+    await db.doc(`sos_requests/${first.id}`).set(first);
+    await db.doc(`sos_requests/${second.id}`).set(second);
+    await db.doc(`sos_active/${u}`).set({ requestId: first.id, created_at: first.created_at });
+    expect(await countSosCreateIfUnclaimed(second.id)).toBe(true);
+    expect((await db.doc(`sos_active/${u}`).get()).get("requestId")).toBe(first.id);
+    expect((await db.doc(`sos_quota/${u}`).get()).get("count")).toBe(1);
+  });
+
+  it("counts a doc created on a PREVIOUS IST day into that day's counter, not today's", async () => {
+    const u = uid();
+    const yesterday = new Date(Date.now() - 36 * 3600_000);
+    const doc = legacyDoc(u, { created_at: yesterday.toISOString() });
+    await db.doc(`sos_requests/${doc.id}`).set(doc);
+    expect(await countSosCreateIfUnclaimed(doc.id)).toBe(true);
+    const quota = await db.doc(`sos_quota/${u}`).get();
+    expect(quota.get("day")).toBe(istDayIso(yesterday));
+    expect(quota.get("dayEnd").toMillis()).toBe(istDayEndMs(yesterday));
+    expect(quota.get("count")).toBe(1);
+  });
+
+  it("returns false for a missing doc and for a doc without driverId/created_at", async () => {
+    expect(await countSosCreateIfUnclaimed(rid())).toBe(false);
+    const bad = rid();
+    await db.doc(`sos_requests/${bad}`).set({ status: "pending" });
+    expect(await countSosCreateIfUnclaimed(bad)).toBe(false);
+    expect((await db.doc(`sos_requests/${bad}`).get()).get("counted")).toBeUndefined();
   });
 });
