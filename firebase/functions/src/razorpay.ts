@@ -20,15 +20,33 @@ const PLANS = {
 
 type PlanInterval = keyof typeof PLANS;
 
+// Checkout locks live only for one function execution (success and failure
+// both release them), so a lock older than a few minutes belongs to a killed
+// invocation and may be reclaimed. Reclaim is fenced: every release/result
+// write re-checks checkoutLock === its own operationId, so a stale handler
+// can never delete or overwrite the newer lock.
+const CHECKOUT_LOCK_TTL_MS = 5 * 60 * 1000;
+
 type RzpJson = Record<string, unknown>;
 
 async function rzp(path: string, method: "GET" | "POST", body?: unknown): Promise<RzpJson> {
   const auth = "Basic " + btoa(RAZORPAY_KEY_ID.value() + ":" + RAZORPAY_KEY_SECRET.value());
-  const res = await fetch("https://api.razorpay.com/v1" + path, {
-    method,
-    headers: { "Content-Type": "application/json", Authorization: auth },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  // Bounded wait (audit follow-up 2026-11-21): without a timeout a hung
+  // Razorpay call outlived the function kill and leaked the checkout lock.
+  // A POST that times out may still have succeeded provider-side; callers
+  // treat that as possibly-created, never as definitely-failed.
+  let res: Response;
+  try {
+    res = await fetch("https://api.razorpay.com/v1" + path, {
+      method,
+      headers: { "Content-Type": "application/json", Authorization: auth },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(25000),
+    });
+  } catch (e) {
+    console.error("Razorpay API unreachable:", path, e instanceof Error ? e.name : "error");
+    throw new HttpsError("unavailable", "Razorpay request timed out or failed. Please try again.");
+  }
   const json = (await res.json().catch(() => ({}))) as RzpJson;
   if (!res.ok) {
     const err = json.error as { description?: string } | undefined;
@@ -89,7 +107,7 @@ function testMode(): boolean {
 // authorized in Checkout (UPI); the first charge happens after the 7-day
 // free trial (start_at), it is never charged immediately.
 export const createRazorpaySubscription = onCall(
-  { region: REGION, secrets: [RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET] },
+  { region: REGION, secrets: [RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET], timeoutSeconds: 120 },
   async (req) => {
     const uid = requireVerifiedDriver(req);
     const interval = req.data?.planInterval;
@@ -102,7 +120,7 @@ export const createRazorpaySubscription = onCall(
     // Firestore transaction: a transaction retry would repeat those calls.
     const subscriptionRef = db.doc(`subscriptions/${uid}`);
     const operationId = crypto.randomUUID();
-    const { existing, amountPaise } = await db.runTransaction(async (tx) => {
+    const { existing, amountPaise, reclaimedFrom } = await db.runTransaction(async (tx) => {
       const planDoc = await tx.get(db.doc(`subscription_plans/${adminPlanId}`));
       if (!planDoc.exists || planDoc.get("deleting") === true || planDoc.get("is_active") !== true
         || asString(planDoc.get("billing_interval")) !== interval) {
@@ -118,18 +136,107 @@ export const createRazorpaySubscription = onCall(
       if (deletion.exists) throw new HttpsError("failed-precondition", "Account deletion is in progress. A new checkout is not allowed.");
       const snap = await tx.get(subscriptionRef);
       const data = snap.data();
+      let reclaimedFrom: { operationId: string; lockedAtSec: number } | null = null;
       if (data?.checkoutLock) {
-        throw new HttpsError("failed-precondition", "A checkout is already being processed. Please wait before trying again.");
+        const lockedAt = data?.checkoutLockedAt;
+        const lockedAtMs = lockedAt && typeof lockedAt.toMillis === "function" ? lockedAt.toMillis() : 0;
+        if (Date.now() - lockedAtMs < CHECKOUT_LOCK_TTL_MS) {
+          throw new HttpsError("failed-precondition", "A checkout is already being processed. Please wait before trying again.");
+        }
+        // Stale lock from a killed invocation: reclaim it and reconcile the
+        // interrupted attempt below before creating anything new.
+        reclaimedFrom = { operationId: String(data.checkoutLock), lockedAtSec: Math.floor(lockedAtMs / 1000) };
       }
       tx.set(subscriptionRef, {
         checkoutLock: operationId,
         checkoutPlanId: adminPlanId,
         checkoutLockedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
-      return { existing: data, amountPaise };
+      return { existing: data, amountPaise, reclaimedFrom };
     });
     let creationSubmitted = false;
     try {
+      // Reconcile an interrupted attempt whose stale lock was just reclaimed.
+      // The first request may have succeeded provider-side after we gave up;
+      // adopting its still-unauthorized subscription prevents duplicates that
+      // a bare TTL would create. Razorpay's list API cannot filter by notes,
+      // but notes are returned in each item, so match client-side.
+      if (reclaimedFrom) {
+        const list = await rzp("/subscriptions?from=" + Math.max(0, reclaimedFrom.lockedAtSec - 900) + "&count=100", "GET");
+        const items = Array.isArray(list.items) ? (list.items as RzpJson[]) : [];
+        if (items.length === 100) {
+          // A full page means there may be more we did not see; creating
+          // anyway could duplicate. Fail safe instead of guessing.
+          throw new HttpsError("failed-precondition", "Checkout needs reconciliation before another attempt.");
+        }
+        const mine = items.filter((it) => (it?.notes as RzpJson | undefined)?.userId === uid);
+        for (const m of mine) {
+          const st = asString(m.status);
+          if (st === "authenticated" || st === "active") {
+            // The interrupted attempt actually completed provider-side.
+            // Record it (fenced) so status/confirm/cancel flows keep
+            // working, THEN refuse the new checkout — never strand a paid
+            // user without their subscription visible in the app.
+            const mid = asString(m.id);
+            await db.runTransaction(async (tx) => {
+              const snap = await tx.get(subscriptionRef);
+              if (snap.get("checkoutLock") !== operationId) return;
+              tx.set(subscriptionRef, {
+                userId: uid, adminPlanId, planInterval: interval,
+                razorpayPlanId: asString(m.plan_id), amountPaise,
+                razorpaySubscriptionId: mid, status: st,
+                updatedAt: FieldValue.serverTimestamp(),
+                checkoutLock: FieldValue.delete(), checkoutLockedAt: FieldValue.delete(),
+              }, { merge: true });
+            });
+            throw new HttpsError("failed-precondition", "Already subscribed");
+          }
+        }
+        const created = mine.filter((m) => asString(m.status) === "created");
+        let adopted: RzpJson | null = null;
+        for (const m of created) {
+          const mPlan = asString(m.plan_id);
+          const mPlanDoc = mPlan ? await rzp("/plans/" + mPlan, "GET") : null;
+          const mItem = mPlanDoc?.item as { amount?: unknown; currency?: unknown } | undefined;
+          if (!adopted && mPlanDoc && mPlanDoc.period === interval && mPlanDoc.interval === 1
+            && mItem?.amount === amountPaise && mItem.currency === "INR") {
+            adopted = m;
+          } else {
+            // Not adoptable (wrong price/plan or a duplicate): cancel the
+            // still-unauthorized mandate so it can never be charged later.
+            await rzp("/subscriptions/" + asString(m.id) + "/cancel", "POST", { cancel_at_cycle_end: 0 })
+              .catch(() => console.error("orphan cancel failed", { uid, sub: asString(m.id) }));
+          }
+        }
+        if (adopted) {
+          const adoptedId = asString(adopted.id)!;
+          const adoptedStart = typeof adopted.start_at === "number" ? adopted.start_at : Math.floor(Date.now() / 1000) + TRIAL_DAYS * 24 * 60 * 60;
+          await db.runTransaction(async (tx) => {
+            const snap = await tx.get(subscriptionRef);
+            if (snap.get("checkoutLock") !== operationId) {
+              throw new HttpsError("failed-precondition", "Checkout needs reconciliation before another attempt.");
+            }
+            tx.set(subscriptionRef,
+              {
+                userId: uid,
+                adminPlanId,
+                planInterval: interval,
+                razorpayPlanId: asString(adopted!.plan_id),
+                amountPaise,
+                razorpaySubscriptionId: adoptedId,
+                status: "created",
+                trialEndsAt: new Date(adoptedStart * 1000),
+                createdAt: FieldValue.serverTimestamp(),
+                updatedAt: FieldValue.serverTimestamp(),
+                checkoutLock: FieldValue.delete(),
+                checkoutLockedAt: FieldValue.delete(),
+              },
+              { merge: true },
+            );
+          });
+          return { subscriptionId: adoptedId, keyId: RAZORPAY_KEY_ID.value(), testMode: testMode(), trialDays: TRIAL_DAYS };
+        }
+      }
       // Reuse an open created subscription instead of creating a new one on every tap.
       if (existing) {
         const existingStatus = asString(existing.status);
@@ -290,7 +397,7 @@ export const getSubscriptionStatus = onCall({ region: REGION }, async (req) => {
 // current billing cycle by default, so the user keeps paid access until
 // then and is never charged again after.
 export const cancelRazorpaySubscription = onCall(
-  { region: REGION, secrets: [RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET] },
+  { region: REGION, secrets: [RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET], timeoutSeconds: 120 },
   async (req) => {
     const uid = requireVerifiedDriver(req);
     const ref = db.doc(`subscriptions/${uid}`);
