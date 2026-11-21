@@ -79,7 +79,8 @@ service cloud.firestore {
         return ['transactions','debts','debt_payments','goals','notes','reminders',
                 'car_checks','car_documents','health_logs','emergency_contacts',
                 'platform_affiliations','push_subscriptions','chat_messages',
-                'recurring_expenses','recurring_expense_payments','budgets'];
+                'recurring_expenses','recurring_expense_payments','budgets',
+                'habits','habit_logs','routine_settings'];
       }
       match /{collection}/{docId} {
         allow read, delete: if ((isOwner(uid) && notBlocked()) || isAdmin()) && collection in ownedCollections();
@@ -288,4 +289,3 @@ service cloud.firestore {
     match /{document=**} { allow read, write: if false; }
   }
 }
-
