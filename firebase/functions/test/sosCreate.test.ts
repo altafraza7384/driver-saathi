@@ -331,23 +331,40 @@ describe("countSosCreateIfUnclaimed (legacy claim protocol)", () => {
     expect((await db.doc(`sos_quota/${u}`).get()).get("count")).toBe(1);
   });
 
-  it("counts a doc created on a PREVIOUS IST day into that day's counter, not today's", async () => {
+  it("ADVERSARIAL: a backdated client-written created_at cannot move the count to a past day (server createTime is used)", async () => {
     const u = uid();
-    const yesterday = new Date(Date.now() - 36 * 3600_000);
-    const doc = legacyDoc(u, { created_at: yesterday.toISOString() });
+    const doc = legacyDoc(u, { created_at: "2020-01-01T00:00:00.000Z" });
     await db.doc(`sos_requests/${doc.id}`).set(doc);
     expect(await countSosCreateIfUnclaimed(doc.id)).toBe(true);
     const quota = await db.doc(`sos_quota/${u}`).get();
-    expect(quota.get("day")).toBe(istDayIso(yesterday));
-    expect(quota.get("dayEnd").toMillis()).toBe(istDayEndMs(yesterday));
+    expect(quota.get("day")).toBe(istDayIso(new Date()));
+    expect(quota.get("dayEnd").toMillis()).toBe(istDayEndMs(new Date()));
     expect(quota.get("count")).toBe(1);
   });
 
-  it("returns false for a missing doc and for a doc without driverId/created_at", async () => {
+  it("returns false for a missing doc and for a doc without driverId", async () => {
     expect(await countSosCreateIfUnclaimed(rid())).toBe(false);
     const bad = rid();
     await db.doc(`sos_requests/${bad}`).set({ status: "pending" });
     expect(await countSosCreateIfUnclaimed(bad)).toBe(false);
     expect((await db.doc(`sos_requests/${bad}`).get()).get("counted")).toBeUndefined();
+  });
+
+  it("ADVERSARIAL: legacy creates fired within trigger lag ALL pass rules; the counter converges exactly, and the NEXT create after convergence is denied", async () => {
+    // Documents the transition boundary honestly: the legacy path is
+    // eventually enforced, not synchronously enforced. A burst of direct
+    // creates before the trigger claims them exceeds 5; every doc is
+    // still counted exactly once, and enforcement resumes once the
+    // counter has converged.
+    const u = uid();
+    const ids = Array.from({ length: MAX_SOS_PER_DAY + 2 }, () => rid());
+    for (const id of ids) await db.doc(`sos_requests/${id}`).set(legacyDoc(u));
+    const claims = await Promise.all(ids.map((id) => countSosCreateIfUnclaimed(id)));
+    expect(claims.filter(Boolean)).toHaveLength(ids.length);
+    const quota = await db.doc(`sos_quota/${u}`).get();
+    expect(quota.get("day")).toBe(istDayIso(new Date()));
+    expect(quota.get("count")).toBe(MAX_SOS_PER_DAY + 2);
+    // The post-convergence denial itself (rules reading count >= 5) is
+    // covered in rules.test.ts ("denied when the counter already shows 5").
   });
 });
