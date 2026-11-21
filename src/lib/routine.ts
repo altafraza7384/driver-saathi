@@ -64,6 +64,26 @@ export function schedulePreset(mode: ShiftMode): ScheduleItem[] {
   return mode === "night" ? NIGHT_SCHEDULE : DEFAULT_SCHEDULE;
 }
 
+/**
+ * Switching Day/Night remaps only times that still sit on the OLD preset's
+ * defaults; any time the driver personalized is kept as-is, so toggling
+ * back and forth never destroys a custom schedule. Enabled flags and
+ * messages always carry over.
+ */
+export function retimeForMode(
+  current: ScheduleItem[],
+  fromMode: ShiftMode,
+  toMode: ShiftMode,
+): ScheduleItem[] {
+  const fromPreset = schedulePreset(fromMode);
+  return schedulePreset(toMode).map((toItem) => {
+    const cur = current.find((c) => c.key === toItem.key);
+    if (!cur) return toItem;
+    const wasDefault = fromPreset.find((f) => f.key === toItem.key)?.time === cur.time;
+    return { ...toItem, time: wasDefault ? toItem.time : cur.time, enabled: cur.enabled, message: cur.message || toItem.message };
+  });
+}
+
 /** Planning targets start UNSET (0–0) on purpose: the repo is public, so
  *  no personal earning numbers are hardcoded. Each driver enters their own
  *  range in Routine settings; the Home card and report stay quiet until
@@ -142,16 +162,26 @@ export interface DailyNotification {
 
 /** Repeating daily reminders for the enabled items. Disabled or
  *  unparseable items are skipped. */
-export function buildDailyNotifications(items: ScheduleItem[], titleFor: (key: string) => string): DailyNotification[] {
+export function buildDailyNotifications(
+  items: ScheduleItem[],
+  titleFor: (key: string) => string,
+  milestones: Milestone[] = [],
+): DailyNotification[] {
   const out: DailyNotification[] = [];
   for (const item of items) {
     if (!item.enabled) continue;
     const t = parseTime(item.time);
     if (!t) continue;
+    // Checkpoint reminders carry the driver's SAVED trial target, never an
+    // achieved amount: the text is static from settings at schedule time and
+    // is rebuilt on every save, so it cannot go stale or claim unverified
+    // earnings. Unset targets (0-0) add no suffix.
+    const m = milestones.find((x) => x.key === item.key);
+    const targetSuffix = m && (m.min > 0 || m.max > 0) ? ` Trial target: ${formatINR(m.min)}–${formatINR(m.max)} (guarantee nahi).` : "";
     out.push({
       id: routineNotificationId(item.key),
       title: titleFor(item.key),
-      body: item.message,
+      body: item.message + targetSuffix,
       schedule: { on: { hour: t.hour, minute: t.minute }, every: "day", allowWhileIdle: true },
     });
   }
