@@ -69,4 +69,14 @@ describe("malformed-data hardening", () => {
   it("normal lead is accepted", async () => {
     await assertSucceeds(setDoc(doc(env.authenticatedContext("alice").firestore(), "insurance_leads/l1"), { user_id: "alice", consent: true, status: "new", name: "Driver", phone: "+919999999999" }));
   });
+  it("admin cannot update a lead text field to an object", async () => {
+    const adb = env.authenticatedContext("adm", { admin: true }).firestore();
+    await assertSucceeds(setDoc(doc(env.authenticatedContext("alice").firestore(), "insurance_leads/l2"), { user_id: "alice", consent: true, status: "new", name: "Driver" }));
+    await assertFails(updateDoc(doc(adb, "insurance_leads/l2"), { name: { bad: true } }));
+  });
+  it("admin can still update lead status and commission", async () => {
+    const adb = env.authenticatedContext("adm", { admin: true }).firestore();
+    await assertSucceeds(setDoc(doc(env.authenticatedContext("alice").firestore(), "insurance_leads/l3"), { user_id: "alice", consent: true, status: "new", name: "Driver" }));
+    await assertSucceeds(updateDoc(doc(adb, "insurance_leads/l3"), { status: "contacted", commission_amount: 500, commission_note: "ok" }));
+  });
 });
