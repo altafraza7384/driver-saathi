@@ -242,9 +242,10 @@ export const createSosRequest = onCall({ region: REGION }, async (req) => {
  * guarantees: trigger retries, backfill re-runs and backfill/trigger
  * races all converge on count==1 per doc.
  *
- * The increment lands on the counter for the doc's OWN IST day (from its
- * created_at), not "today" — a backfill that runs after midnight must
- * not charge yesterday's requests against the driver's new day.
+ * The increment lands on the counter for the doc's OWN IST day, derived
+ * from the SERVER-ASSIGNED createTime (DocumentSnapshot.createTime) —
+ * never the client-written created_at field, which a malicious client
+ * could backdate to charge a past day's counter.
  *
  * Marker convergence: when the claimed doc is itself active and no
  * marker points at a genuinely active request, the marker is set to this
@@ -260,11 +261,9 @@ export async function countSosCreateIfUnclaimed(requestId: string): Promise<bool
     if (!snap.exists) return false;
     if (snap.get("counted") === true) return false;
     const driverId = snap.get("driverId");
-    const createdAt = snap.get("created_at");
     if (typeof driverId !== "string" || !driverId) return false;
-    if (typeof createdAt !== "string") return false;
-    const created = new Date(createdAt);
-    if (Number.isNaN(created.getTime())) return false;
+    const created = snap.createTime ? snap.createTime.toDate() : null;
+    if (!created || Number.isNaN(created.getTime())) return false;
     const status = snap.get("status") as string | undefined;
     const markerRef = db.doc(`sos_active/${driverId}`);
     const quotaRef = db.doc(`sos_quota/${driverId}`);
@@ -282,7 +281,7 @@ export async function countSosCreateIfUnclaimed(requestId: string): Promise<bool
     tx.update(reqRef, { counted: true });
     tx.set(quotaRef, { day, count: count + 1, dayEnd: Timestamp.fromMillis(istDayEndMs(created)) });
     if (!markerBlockedBy && status && (ACTIVE_SOS_STATUSES as readonly string[]).includes(status)) {
-      tx.set(markerRef, { requestId, created_at: createdAt });
+      tx.set(markerRef, { requestId, created_at: created.toISOString() });
     }
     return true;
   });
