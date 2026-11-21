@@ -12,6 +12,7 @@ import {
   createSosRequest,
   createSosRequestForUser,
   clearActiveMarker,
+  claimSosCreateDoc,
   countSosCreateIfUnclaimed,
   validateSosInput,
   istDayIso,
@@ -366,5 +367,73 @@ describe("countSosCreateIfUnclaimed (legacy claim protocol)", () => {
     expect(quota.get("count")).toBe(MAX_SOS_PER_DAY + 2);
     // The post-convergence denial itself (rules reading count >= 5) is
     // covered in rules.test.ts ("denied when the counter already shows 5").
+  });
+});
+
+describe("cross-day claim races (explicit test times)", () => {
+  const NOW = new Date();
+  const YESTERDAY = new Date(Date.now() - 36 * 3600_000);
+  const legacyDoc = (u: string, overrides: Record<string, unknown> = {}) => ({
+    id: rid(),
+    driverId: u,
+    category: "car",
+    status: "pending",
+    created_at: new Date().toISOString(),
+    ...overrides,
+  });
+
+  it("a yesterday-claim AFTER today's counter exists does NOT reset or overwrite today's count", async () => {
+    const u = uid();
+    const todayDoc = legacyDoc(u);
+    const oldDoc = legacyDoc(u);
+    await db.doc(`sos_requests/${todayDoc.id}`).set(todayDoc);
+    await db.doc(`sos_requests/${oldDoc.id}`).set(oldDoc);
+    expect(await claimSosCreateDoc(todayDoc.id, u, "pending", NOW)).toBe(true);
+    expect((await db.doc(`sos_quota/${u}`).get()).get("count")).toBe(1);
+    // Trigger retry/delayed claim for a doc from YESTERDAY arriving now:
+    expect(await claimSosCreateDoc(oldDoc.id, u, "pending", YESTERDAY)).toBe(true);
+    const quota = await db.doc(`sos_quota/${u}`).get();
+    expect(quota.get("day")).toBe(istDayIso(NOW));
+    expect(quota.get("count")).toBe(1);
+    // ...but the stale doc is still stamped, so it is never retried forever.
+    expect((await db.doc(`sos_requests/${oldDoc.id}`).get()).get("counted")).toBe(true);
+  });
+
+  it("reversed order: yesterday-claim first, then today-claim advances the counter to today with its own count", async () => {
+    const u = uid();
+    const oldDoc = legacyDoc(u);
+    const todayDoc = legacyDoc(u);
+    await db.doc(`sos_requests/${oldDoc.id}`).set(oldDoc);
+    await db.doc(`sos_requests/${todayDoc.id}`).set(todayDoc);
+    expect(await claimSosCreateDoc(oldDoc.id, u, "pending", YESTERDAY)).toBe(true);
+    let quota = await db.doc(`sos_quota/${u}`).get();
+    expect(quota.get("day")).toBe(istDayIso(YESTERDAY));
+    expect(quota.get("count")).toBe(1);
+    expect(await claimSosCreateDoc(todayDoc.id, u, "pending", NOW)).toBe(true);
+    quota = await db.doc(`sos_quota/${u}`).get();
+    expect(quota.get("day")).toBe(istDayIso(NOW));
+    expect(quota.get("count")).toBe(1);
+  });
+
+  it("concurrent mixed-day claims serialise: today's counter survives with exactly its own count", async () => {
+    const u = uid();
+    const oldDoc = legacyDoc(u);
+    const todayA = legacyDoc(u);
+    const todayB = legacyDoc(u);
+    await db.doc(`sos_requests/${oldDoc.id}`).set(oldDoc);
+    await db.doc(`sos_requests/${todayA.id}`).set(todayA);
+    await db.doc(`sos_requests/${todayB.id}`).set(todayB);
+    const results = await Promise.all([
+      claimSosCreateDoc(oldDoc.id, u, "pending", YESTERDAY),
+      claimSosCreateDoc(todayA.id, u, "pending", NOW),
+      claimSosCreateDoc(todayB.id, u, "pending", NOW),
+    ]);
+    expect(results).toEqual([true, true, true]);
+    const quota = await db.doc(`sos_quota/${u}`).get();
+    expect(quota.get("day")).toBe(istDayIso(NOW));
+    expect(quota.get("count")).toBe(2);
+    for (const d of [oldDoc, todayA, todayB]) {
+      expect((await db.doc(`sos_requests/${d.id}`).get()).get("counted")).toBe(true);
+    }
   });
 });
