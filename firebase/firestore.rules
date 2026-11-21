@@ -191,10 +191,13 @@ service cloud.firestore {
       // versions during the transition window (see the transition
       // comment above): same quota enforced against server-maintained
       // state, driverId/status pinned, owner-chosen cutoff.
+      // Clients may never supply accounting fields (`counted` drives the
+      // claim protocol — a forged counted:true would skip quota entirely).
       allow create: if request.time < legacySosCutoff()
         && signedIn() && notBlocked()
         && request.resource.data.driverId == request.auth.uid
         && request.resource.data.status == 'pending'
+        && !request.resource.data.keys().hasAny(['counted'])
         && legacyNoActiveSos()
         && legacySosQuotaOk();
       allow read: if signedIn()
