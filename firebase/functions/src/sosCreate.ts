@@ -153,23 +153,26 @@ export async function createSosRequestForUser(
         throw new HttpsError("failed-precondition", "sos-active-exists");
       }
       // Stale marker: the request is already closed (cleanup trigger
-      // lagging) — fall through and overwrite it.
-    } else {
-      // Pre-rollout compatibility: requests created before markers existed
-      // have no sos_active doc. Equality+equality queries need no composite
-      // index; this runs at most until the driver's first post-rollout
-      // create writes the marker. Two simultaneous first-creates still
-      // serialise on the marker write below.
-      for (const st of ACTIVE_SOS_STATUSES) {
-        const legacy = await tx.get(
-          db.collection("sos_requests")
-            .where("driverId", "==", uid)
-            .where("status", "==", st)
-            .limit(1),
-        );
-        if (!legacy.empty) {
-          throw new HttpsError("failed-precondition", "sos-active-exists");
-        }
+      // lagging) — fall through; the probe below still runs, because a
+      // pre-rollout active request never got a marker.
+    }
+    // Pre-rollout compatibility: requests created before markers existed
+    // have no sos_active doc, so the probe runs whenever there is no
+    // usable ACTIVE marker (absent, or stale pointing at a closed/gone
+    // request — the active case already threw above). Equality+equality
+    // queries need no composite index; this runs at most until the
+    // driver's first post-rollout create writes the marker. Two
+    // simultaneous first-creates still serialise on the marker write
+    // below.
+    for (const st of ACTIVE_SOS_STATUSES) {
+      const legacy = await tx.get(
+        db.collection("sos_requests")
+          .where("driverId", "==", uid)
+          .where("status", "==", st)
+          .limit(1),
+      );
+      if (!legacy.empty) {
+        throw new HttpsError("failed-precondition", "sos-active-exists");
       }
     }
     const today = istDayIso(new Date());
