@@ -15,6 +15,16 @@
 > is not in the code, it is listed under **Open questions** — never
 > invented. Where the in-app policy says something the code does not do,
 > that is listed under **Gaps vs the in-app Privacy Policy**.
+>
+> Corrections 2026-11-22 (PR #30, branch
+> `review/web-security-privacy-2026-11-22`): the first version of this
+> draft wrongly said per-user finance/health rows are owner-only, stated
+> the Firestore region as `asia-south1`, presented the logout cache
+> clear as already live, and described speech as on-device-only. All
+> four are corrected below against `firebase/firestore.rules`,
+> `src/lib/useDrivingMode.ts` / `src/lib/nativeSpeech.ts`, and the PR
+> status (the cache fix is proposed, not merged). Nothing else in the
+> draft was re-verified in that pass.
 
 ## 1. Who we are (as far as the code says)
 
@@ -32,23 +42,29 @@
 
 ## 2. Data map — what is collected, where it lives, who can read it
 
-All per-user data lives in Firestore (project `driver-saathi-app`,
-region `asia-south1`) under `users/{uid}` and per-user subcollections,
-owner-only under the Firestore rules. Top-level collections are listed
-in `src/integrations/firebase/adapter.ts` (`TOP_LEVEL_TABLES`).
+All per-user data lives in Firestore (project `driver-saathi-app`;
+the database region is **not stated anywhere in the repo** — do not
+assume `asia-south1` from the Cloud Functions region; confirm it in
+the Firebase console, Q12) under `users/{uid}` and per-user
+subcollections. Per-user subcollections are readable (and deletable)
+by the owner **and by admins** under the Firestore rules
+(`firebase/firestore.rules:156` — `allow read, delete: if
+((isOwner(uid) ...) || isAdmin())` over every collection in
+`ownedCollections()`). Top-level collections are listed in
+`src/integrations/firebase/adapter.ts` (`TOP_LEVEL_TABLES`).
 
 | Data | What exactly (code) | Stored where | Who can read it |
 |---|---|---|---|
 | Account | Email, password hash (Firebase Auth, never in app code), display name, phone (optional, profile), email-verified flag, `trial_started_at` / `trial_ends_at`, `subscription_plan_id` | Firebase Auth + `users/{uid}` | Owner + admin (admin panel) |
-| Finance | Transactions (amount, type income/expense, category, date, notes), debts (lender/name, principal, total_paid, interest rate, EMI), debt payments, budgets, savings goals, recurring expenses | `users/{uid}/transactions`, `debts`, `debt_payments`, `budgets`, `goals`, `recurring_expenses` (+ payments) | Owner only (rules); admin sees subscription status, not finance rows |
-| Health | Self-reported wellness only: sleep hours, glasses of water, breaks taken, steps — one row per day. No medical, BP, or clinical data is collected. | `users/{uid}/health_logs` | Owner only |
-| Reminders / notes | Reminder text + notify date/time, notes text, car checks, car documents metadata | `users/{uid}/reminders`, `notes`, `car_checks`, `car_documents` | Owner only |
-| Emergency contacts | Name + phone number, typed in by the user (not imported from the phone book — no phone-book code exists), `is_primary` flag | `users/{uid}/emergency_contacts` | Owner only; phone is sent by SMS/WhatsApp only when the user triggers SOS (see §5) |
+| Finance | Transactions (amount, type income/expense, category, date, notes), debts (lender/name, principal, total_paid, interest rate, EMI), debt payments, budgets, savings goals, recurring expenses | `users/{uid}/transactions`, `debts`, `debt_payments`, `budgets`, `goals`, `recurring_expenses` (+ payments) | Owner + admin — the rules allow admins to read AND delete these rows (`firestore.rules:156`); the admin panel UI surfaces subscription status, but nothing in the rules prevents an admin reading finance rows |
+| Health | Self-reported wellness only: sleep hours, glasses of water, breaks taken, steps — one row per day. No medical, BP, or clinical data is collected. | `users/{uid}/health_logs` | Owner + admin (same rule — `firestore.rules:156`) |
+| Reminders / notes | Reminder text + notify date/time, notes text, car checks, car documents metadata | `users/{uid}/reminders`, `notes`, `car_checks`, `car_documents` | Owner + admin (same rule — `firestore.rules:156`) |
+| Emergency contacts | Name + phone number, typed in by the user (not imported from the phone book — no phone-book code exists), `is_primary` flag | `users/{uid}/emergency_contacts` | Owner + admin (same rule); phone is sent by SMS/WhatsApp only when the user triggers SOS (see §5) |
 | Location — SOS only | Exact GPS latitude/longitude at SOS time; approximate coords (~1.1 km rounding) + geohash-6 | Exact: `sos_request_details/{id}` (driver + assigned mechanic only). Approx: `sos_requests/{id}` (visible to mechanics browsing requests — no phone, no exact location) | See §5 |
 | Location — otherwise | **None.** Location is read only inside the SOS flows (`src/pages/CarSosPage.tsx`, `src/pages/SOSPage.tsx`). No background tracking, no trip tracking. | — | — |
 | AI chats | Chat messages (user + assistant turns) | **Local only** — device localStorage, max 50 messages, pruned after 24 h (`src/lib/chatHistory.ts`). The server stores no chat history. | Only on that device; survives logout (see §8) |
 | AI quota accounting | Per-user AI usage counters, time-bucketed (`aiUsage` collection, `bucket_start`) | Firestore `aiUsage` | Server functions; not shown to other users |
-| Push tokens | FCM device token + endpoint, per user/device | `users/{uid}/push_subscriptions` | Server functions (to send that user's pushes) |
+| Push tokens | FCM device token + endpoint, per user/device | `users/{uid}/push_subscriptions` | Owner + admin (same rule — `firestore.rules:156`); server functions use the token to send that user's pushes |
 | Insurance leads | Name + contact details the user types on `/insurance`, only with explicit consent (`consent == true` required by rules); lead status + commission (admin-only fields) | `insurance_leads` (top-level, owner + admin read) | Owner + admin; forwarded to the insurance partner manually in Phase 1 (see §7) |
 | Marketplace | Posts the user creates (title, description, price, category, photos if any) | `marketplace_posts` (+ `marketplace_categories`) | Public to signed-in users by design |
 | Announcements | Admin-written title/message, audience, active flag | `announcements` | All signed-in users (content is public to them by design) |
@@ -74,13 +90,23 @@ in `src/integrations/firebase/adapter.ts` (`TOP_LEVEL_TABLES`).
 
 - Finance and health rows are never sent to any third party except as
   described in §6 (AI) and §7 (payments/insurance). They are not used
-  for ads. They are not visible to mechanics, other drivers, or admins
-  (admins see subscription status only, not finance rows).
+  for ads. They are not visible to mechanics or other drivers. They
+  **are** visible to admins: the Firestore rules allow admins to read
+  and delete every per-user subcollection, including finance and health
+  rows (`firebase/firestore.rules:156`). The admin panel UI currently
+  surfaces subscription status rather than finance rows, but that is a
+  UI choice, not a rules boundary — the policy must disclose admin
+  access as permitted, not as impossible. (No admin permission is
+  changed by this draft; the rules are stated as they are.)
 - The app works offline: Firestore keeps a persistent local (IndexedDB)
-  cache of the user's own data on the device. Since 2026-11-22 the
-  logout flow clears that cache when no offline writes are still
-  unsynced (`src/integrations/firebase/logoutCache.ts`); pending
-  offline writes are always preserved, never deleted.
+  cache of the user's own data on the device. A logout cache clear is
+  **proposed, not live** (PR #30, `review/web-security-privacy-2026-11-22`,
+  unmerged as of 2026-11-22): it would clear that cache on logout when
+  no offline writes are still unsynced
+  (`src/integrations/firebase/logoutCache.ts` + `signOutFlow.ts`);
+  pending offline writes would always be preserved, never deleted.
+  Until that PR merges and deploys, logout does **not** clear the
+  offline cache.
 
 ## 5. Location & SOS — the split that matters
 
@@ -92,11 +118,14 @@ in `src/integrations/firebase/adapter.ts` (`TOP_LEVEL_TABLES`).
   - **Private part** — `sos_request_details/{id}`: exact latitude/longitude
     + driver phone number. Readable only by the driver or the assigned
     mechanic (rules).
-- SOS alerts go by **SMS to all emergency contacts** and **WhatsApp to
-  the first contact** (message text + location link). The message is sent
-  from the driver's own device; the contacts' numbers are not uploaded
-  anywhere for this — they are read from the driver's own
-  `emergency_contacts` rows.
+- SOS alerts are handed off, not sent by the app, and delivery is not
+  guaranteed or confirmed: tapping SOS opens the device's SMS composer
+  (`sms:` link, all emergency contacts) and the WhatsApp share opens a
+  `wa.me` link for the first contact (`src/pages/SOSPage.tsx`) — the
+  user presses send in the messaging app, and the app records no
+  delivery confirmation. No SOS dispatch guarantee is made. The
+  contacts' numbers are not uploaded anywhere for this — they are read
+  from the driver's own `emergency_contacts` rows.
 - Mechanics: `mechanics` collection (profile, services, online status,
   phone-verified flag). Admin verifies a mechanic's phone number
   manually; there is no OTP.
@@ -164,11 +193,16 @@ in `src/integrations/firebase/adapter.ts` (`TOP_LEVEL_TABLES`).
 - **Routine reminders**: local notifications scheduled on the device
   (`@capacitor/local-notifications`); no server copy.
 - **Firestore offline cache**: the user's own Firestore data cached in
-  IndexedDB for offline use; cleared on logout when no writes are
-  pending (see §4).
-- **Speech/driving mode**: microphone input is processed for voice
-  commands; no audio is uploaded (voice is local + Groq text chat only
-  when the user sends a message).
+  IndexedDB for offline use; a logout clear is proposed, not live (see
+  §4 — PR #30, unmerged).
+- **Speech/driving mode**: microphone input is recognised for voice
+  commands, but neither path is evidenced as on-device-only, so no such
+  claim is made here. On the web the app uses the browser Web Speech API
+  (`src/lib/useDrivingMode.ts`); in the native app it uses the Capacitor
+  speech-recognition plugin, i.e. Android's recogniser
+  (`src/lib/nativeSpeech.ts`). The browser path may send audio to the
+  browser vendor's speech service. Only the text the user sends goes to
+  Groq (see §6); no audio is sent to Groq by the code.
 
 ## 9. Notifications, analytics, ads
 
@@ -197,7 +231,7 @@ in the code. What exists:
 - AI chat history: 24 h, on-device only (§8).
 - AI quota counters (`aiUsage`): pruned by the scheduled
   `cleanupTransactions` function (old buckets deleted).
-- Firestore offline cache: cleared on logout when clean (§4).
+- Firestore offline cache: a logout clear is proposed, not live (§4).
 - **The in-app policy's retention numbers are not implemented** — see
   the gaps below.
 
@@ -227,8 +261,9 @@ policy is relied on:
 7. **"Your information may be transferred … outside of Your
    jurisdiction. We ensure appropriate safeguards are in place."** —
    no safeguard is named. Actual transfers: Groq (US, §6), Razorpay
-   (payment data, §7), Firebase/Google (hosting + data, `asia-south1`
-   + Google's infrastructure).
+   (payment data, §7), Firebase/Google (hosting + data + Cloud
+   Functions in `asia-south1` — the Functions region only; the
+   Firestore database region is not stated in the repo, Q12).
 8. **No mention** of Groq/AI processing, Razorpay, the SOS
    exact-vs-approximate location split, the offline cache, or the
    insurance-lead sharing — the four highest-risk disclosures.
@@ -267,8 +302,11 @@ policy is relied on:
   access / correction / deletion / grievance escalation in practice
   (email? in-app? response time)? The policy must give a real process,
   not just an email address.
-- **Q12.** Confirm the Firestore region (`asia-south1`, Mumbai) and
-  Firebase/Google as processors may be named in the policy.
+- **Q12.** Confirm the Firestore database region in the Firebase
+  console (it is not stated anywhere in the repo — `asia-south1` is
+  evidenced only for Cloud Functions, `src/integrations/firebase/client.ts`,
+  and must not be assumed for the database) and that Firebase/Google
+  as processors may be named in the policy.
 
 ## 13. What this draft is NOT
 
