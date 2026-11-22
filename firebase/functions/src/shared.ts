@@ -122,10 +122,6 @@ export async function deleteUserData(uid: string): Promise<void> {
   }
   const sosDetails = await db.collection("sos_request_details").where("driverId", "==", uid).get();
   sosDetails.docs.forEach((d) => writer.delete(d.ref));
-  // SOS quota state (audit item 5, 2026-11-21): a leftover active marker
-  // or daily counter must not outlive the account.
-  await db.doc(`sos_active/${uid}`).delete();
-  await db.doc(`sos_quota/${uid}`).delete();
   await writer.close();
   await db.recursiveDelete(db.doc(`users/${uid}`));
   await db.doc(`roles/${uid}`).delete();
