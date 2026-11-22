@@ -21,7 +21,7 @@ checked 2026-11-22 ~13:54 IST).
 Each correction below first quotes the report's own wrong/misleading claim,
 then the evidence that contradicts it, then what changed. The
 `fieldOverrides` entry for `aiUsage` / `bucket_start` (§4) is unchanged by
-all four corrections — it was verified correct and stays as-is. The 11
+all corrections in this log — it was verified correct and stays as-is. The 11
 existing indexes, the Scheduler/opt-in facts (F7), and the P1–P10 pending
 list are likewise preserved.
 
@@ -43,7 +43,7 @@ list are likewise preserved.
   A confirmed total cannot be derived from unmeasured inputs.
 - **Correction:** §2 now gives conditional scenarios (A/B/C) from public
   rates plus the known console metadata only (asia-south1, Standard edition
-  per repo, cleanup failing daily), states the free tier is shared, and
+  per repo — withdrawn by C5 below; cleanup failing daily), states the free tier is shared, and
   carries no confirmed ₹0 or 100× figure. F1 and §6 no longer repeat ₹0;
   they point at §2.
 
@@ -115,6 +115,50 @@ list are likewise preserved.
   explicit owner confirmation; do NOT enforce. The earlier after-Play
   wording is removed as an approved decision.
 
+### Round 2 — 2026-11-22 (post-review corrections C5–C8)
+
+### C5 — Firestore location and edition are UNKNOWN, not repo-derived
+
+- **Old claims (exact quotes, §1):** "| Firestore location |
+  `asia-south1` (Mumbai) |" and "| Edition | **Standard** (default).
+  Nothing in the repo opts into Enterprise: no MongoDB-compatible queries,
+  no Enterprise-only features anywhere in `firebase/` or `src/`. |". The
+  same inference leaked into §2 ("Public pricing used (Firestore, Standard
+  edition, Mumbai `asia-south1`)", "Edition is repo-derived Standard") and
+  P8 ("Firestore edition confirmation (Standard) + database location
+  `(default)` / `asia-south1`"), and into C1's summary line above
+  ("asia-south1, Standard edition per repo").
+- **Contradicting evidence — location:** every `asia-south1` string in the
+  repo is a **Cloud Functions region**, not a Firestore database location:
+  `REGION = "asia-south1"` in 8 Functions files (`index.ts:21`,
+  `earningsNudge.ts:7`, `leads.ts:4`, `mechanicPhone.ts:12`,
+  `razorpay.ts:10`, `sosPush.ts:6`, `trialExpiryNudge.ts:6`,
+  `webhook.ts:9`) and `getFunctions(firebaseApp, "asia-south1")` in
+  `src/integrations/firebase/client.ts:66`. No repo file records a
+  Firestore database location: `firebase.json` has no `firestore` section
+  at all (hosting only), there is no `.firebaserc` in the repo, and
+  `firestore.rules` matches `/databases/{database}/documents` with no
+  location. `AGENTS.md:18` repeats "Firestore (asia-south1…)" but cites no
+  database metadata and appears to restate the Functions region — a repo
+  note is not database metadata. The proof note records the console
+  database as `(default)` (2026-11-22 ~13:54 IST) but records no location
+  field for it. A Functions region does not determine a database location
+  — the two are chosen independently.
+- **Contradicting evidence — edition:** a repo-wide grep for `mongo` /
+  `enterprise` across `firebase/`, `src/`, `docs/`, `AGENTS.md` returns
+  nothing (one false positive: a weekday name in `aiLogic.ts:188`) — but
+  absence of MongoDB-compatible code proves nothing about edition, because
+  Firestore **Enterprise edition also offers Native mode**: the same
+  Firestore API works on Enterprise without any MongoDB-compatible query.
+  "Standard is the default edition" is not evidence about this database —
+  edition is fixed when the database is created. No repo file, config, or
+  checked console record states the edition.
+- **Correction:** §1 now states both location and edition as **UNKNOWN**,
+  with the evidence above and the check that settles each (P8). §2 pricing
+  rates are now marked conditional on both (Standard-edition,
+  `asia-south1` rates as checked — they apply only if P8 confirms both).
+  P8 now asks for both as UNKNOWN items.
+
 ---
 
 ## 1. Database, billing, usage — what the repo/config can say
@@ -123,9 +167,15 @@ list are likewise preserved.
 
 | Item | Value (repo-derived) | Basis |
 |---|---|---|
-| Firestore location | `asia-south1` (Mumbai) | `REGION = "asia-south1"` in `firebase/functions/src/index.ts:21`, `earningsNudge.ts:7`, `ai.ts`; `AGENTS.md` |
+| Firestore location | **UNKNOWN** | No repo file records a Firestore database location (see C5). Every `asia-south1` in the repo is a Cloud Functions region. Settles via P8. |
 | Database ID | `(default)` | Proof note (console, 2026-11-22) |
-| Edition | **Standard** (default). Nothing in the repo opts into Enterprise: no MongoDB-compatible queries, no Enterprise-only features anywhere in `firebase/` or `src/`. | Absence of any Enterprise configuration in repo; Standard is the default edition. Console confirmation is PENDING (see §5). |
+| Edition | **UNKNOWN** | No repo file, config, or checked console record states the edition (see C5). Absence of MongoDB-compatible code proves nothing — Enterprise also offers Native mode. Settles via P8. |
+
+What settles them (P8): Firebase console → Firestore → Data shows the
+database `(default)` location and edition, or `gcloud firestore databases
+describe --database='(default)' --project=driver-saathi-app`
+(`locationId`, `databaseEdition`). Until that check runs, both stay
+UNKNOWN and every rate in §2 stays conditional.
 
 ### Billing currency — PENDING
 
@@ -140,9 +190,11 @@ cannot be confirmed from the repo — its existence/state is PENDING too.
 ### Available usage — PENDING (console numbers)
 
 Current usage / remaining quota cannot be derived from the repo. For scale,
-the public Firestore pricing page (Standard edition) gives the Blaze free tier
-that applies before any charge: **50,000 reads, 20,000 writes, 20,000 deletes
-per day, 1 GiB stored data**. Whether current usage sits inside that tier is
+the public Firestore pricing page for the Standard edition lists a free tier
+of **50,000 reads, 20,000 writes, 20,000 deletes per day, 1 GiB stored
+data** — but those figures apply only if the database is Standard, and
+edition is **UNKNOWN** until P8 (see C5), so this is conditional, not a
+confirmed tier for this database. Whether current usage sits inside that tier is
 PENDING — it needs the console's usage page. At test-only scale (no real users
 yet, only test accounts) the app is far inside it by construction; that is an
 inference from scale, not a measured usage figure.
@@ -180,14 +232,17 @@ Total < 0.5 MiB — about 0.05% of the 1 GiB free storage tier — *if* the
 collection were at that bound; the real size is unmeasured until the backlog
 is counted.
 
-### Public pricing used (Firestore, Standard edition, Mumbai `asia-south1`)
+### Public pricing used (Firestore, Standard edition, Mumbai `asia-south1` — both conditional until P8; see C5)
 
 Checked 2026-11-22 via Google's Firestore pricing page and a Mumbai-specific
 cross-check: reads **$0.03 / 100,000**, writes **$0.09 / 100,000**, deletes
 **$0.01 / 100,000**; stored data **from $0.15 / GiB/month** (Google's page,
 "starting at"; the Mumbai-specific figure seen is $0.104 / GiB/month — hence
 the range below). Free tier per day: 50K reads, 20K writes, 20K deletes,
-1 GiB storage.
+1 GiB storage. These are the Standard-edition, `asia-south1` rates as
+checked. Both inputs are **UNKNOWN** until P8 (see C5): if the database is
+Enterprise or in another location, different rates apply — so every rate in
+this section is conditional.
 
 ### Estimate — WITHDRAWN as a confirmed figure; conditional scenarios only
 
@@ -199,7 +254,8 @@ cannot be confirmed from the evidence available to this review:
   public USD prices, not from a bill.
 - Actual usage vs the free tier is PENDING (P2) — no console usage figure
   was available, so free-tier headroom is unknown.
-- Edition is repo-derived Standard; console confirmation is PENDING (P8).
+- Edition is **UNKNOWN** until P8 — the repo cannot show it (see C5); the
+  Standard-edition rates in this section are conditional on that check.
 - User count is unverified — "single-digit test accounts" is an inference
   from scale, not a count from the console or a data scan.
 - Backlog size is unverified — cleanup has been failing daily (F1), so the
@@ -209,8 +265,10 @@ cannot be confirmed from the evidence available to this review:
   every function, and every user — not this index alone. Headroom for this
   index depends on everything else the app does that day.
 
-What CAN be stated (public Firestore pricing, Standard edition, Mumbai
-`asia-south1`, checked 2026-11-22): reads $0.03 / 100,000, writes $0.09 /
+What CAN be stated (public Firestore pricing for the Standard edition in
+`asia-south1`, checked 2026-11-22 — **both inputs UNKNOWN until P8, see
+C5**, so these rates apply only if the database is Standard in
+`asia-south1`): reads $0.03 / 100,000, writes $0.09 /
 100,000, deletes $0.01 / 100,000; stored data from $0.10–0.18 / GiB/month;
 free tier per day: 50K reads, 20K writes, 20K deletes, 1 GiB storage.
 These are rates, not a bill.
@@ -549,7 +607,7 @@ the deploy output alone.
 | P5 | App Check enforcement state (expected off/unenforced — confirm) | Firebase console → App Check |
 | P6 | IAM bindings on `firebase-hosting-deploy@driver-saathi-app.iam.gserviceaccount.com` (roles listed in F5) | Cloud Console → IAM |
 | P7 | All 6 Secret Manager secrets exist with a version (`GROQ_API_KEY`, `VAPID_*`, `RAZORPAY_*`) | Cloud Console → Secret Manager |
-| P8 | Firestore edition confirmation (Standard) + database location `(default)` / `asia-south1` | Firebase console → Firestore → Data |
+| P8 | Firestore edition (Standard vs Enterprise) + database location for database `(default)` — both UNKNOWN until checked | Firebase console → Firestore → Data (database details), or `gcloud firestore databases describe --database='(default)' --project=driver-saathi-app` (`locationId` + `databaseEdition`) |
 | P9 | Supabase project `qtqgwqefuzylyyqxswwi` — live/paused/deleted? plan? (F4 decision input) | Supabase dashboard |
 | P10 | After the index is applied (future): index status Enabled + `cleanupTransactions` 03:00 run Success | Firebase console → Firestore → Indexes; Cloud Scheduler + Functions logs |
 
