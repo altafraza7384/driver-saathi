@@ -76,6 +76,18 @@ describe("email verification gate (owner decision 2026-11-21)", () => {
   it("unverified password user cannot create an SOS request", async () => {
     await assertFails(setDoc(doc(env.authenticatedContext("alice", PW_UNVERIFIED).firestore(), "sos_requests/r1"), { driverId: "alice", status: "pending", category: "car" }));
   });
+  it("unverified password user cannot create SOS details even for their own existing request (gate applies before ownership)", async () => {
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "sos_requests/r2"),
+      { driverId: "alice", status: "pending", category: "car", approxLat: 18.5, approxLng: 73.8 }));
+    await assertFails(setDoc(doc(env.authenticatedContext("alice", PW_UNVERIFIED).firestore(), "sos_request_details/r2"),
+      { id: "r2", requestId: "r2", driverId: "alice", driverPhone: "9876543210" }));
+  });
+  it("unverified password user cannot cancel their own SOS via a direct write (verify-first; account deletion and Razorpay cancel run through callables)", async () => {
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "sos_requests/r3"),
+      { driverId: "alice", status: "pending", category: "car", approxLat: 18.5, approxLng: 73.8 }));
+    await assertFails(updateDoc(doc(env.authenticatedContext("alice", PW_UNVERIFIED).firestore(), "sos_requests/r3"),
+      { status: "cancelled", updated_at: "2026-11-22T00:00:00.000Z" }));
+  });
   it("verified password user CAN read and write their own profile and data", async () => {
     const db = env.authenticatedContext("alice", PW_VERIFIED).firestore();
     await assertSucceeds(setDoc(doc(db, "users/alice"), { user_id: "alice", full_name: "A" }));
