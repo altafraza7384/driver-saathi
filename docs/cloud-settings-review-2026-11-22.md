@@ -70,6 +70,33 @@ list are likewise preserved.
   deletes, function charges, and user-facing effects are spelled out in
   §2 ("First resumed run"), and F1's impact note points at it.
 
+### C3 — Whole-file indexes deploy is NOT a one-field-only change
+
+- **Old claim (exact quote, §4):** "Applying it later is one command —
+  `firebase deploy --only firestore:indexes` from `firebase/` — which is an
+  index deploy, not a rules deploy, and does not touch the rules HOLD."
+  (F1 added "no blanket index deploy" while §4 proposed exactly the
+  whole-file deploy — the two contradicted each other.)
+- **Contradicting evidence:** the command deploys the entire
+  `firebase/firestore.indexes.json` — all 11 indexes + both
+  fieldOverrides. Live and repo formats differ (proof note, console
+  2026-11-22 ~13:54 IST): live shows 8 manual composite indexes + 4
+  single-field exemptions (`car_documents / notify_at`,
+  `chat_messages / created_at`, `reminders / notify_at`,
+  `transactions / transaction_date`); the repo file lists 11 indexes + 1
+  override. Reconciliation: live covers all 11 repo indexes — 8 as manual
+  composites, and 3 (#3 `transactions / transaction_date` CG, #8
+  `car_documents / notify_at` CG, #10 `chat_messages / created_at` CG)
+  only as single-field exemptions. A whole-file deploy re-asserts all 11 +
+  2 overrides and adds composite-index entries for those 3 — a
+  representation change to existing settings, not a one-field change.
+- **Correction:** §4 now reconciles live ↔ repo in a table, states the
+  whole-file deploy's full scope honestly, and gives the narrowly-scoped
+  route: console Firestore → Indexes → Add index for `aiUsage` /
+  `bucket_start` ASC, collection-group scope — creates exactly one index
+  and leaves all existing settings untouched. No manual cleanup, no TTL.
+  F1's contradictory "no blanket index deploy" line is fixed.
+
 ---
 
 ## 1. Database, billing, usage — what the repo/config can say
@@ -239,10 +266,11 @@ accumulated backlog in one run — not a normal night's worth:
   `fieldOverrides` entry for `aiUsage` / `bucket_start` to
   `firebase/firestore.indexes.json` (see §4). **Cost: conditional — see §2;
   no confirmed ₹0 figure (pending P1/P2).**
-  Applying it later is one command — `firebase deploy --only
-  firestore:indexes` from `firebase/` — which is an index deploy, not a
-  rules deploy, and does not touch the rules HOLD. No TTL, no manual
-  cleanup run, no blanket index deploy.
+  Applying it later is either the narrow console route (one index only) or
+  a whole-file `firebase deploy --only firestore:indexes` — see §4; the
+  whole-file deploy is NOT a one-field-only change. Either way it is an
+  index deploy, not a rules deploy, and does not touch the rules HOLD. No
+  TTL, no manual cleanup run.
 
 ### F2 — App Check: not configured in code; enforcement state is console-only
 
@@ -445,13 +473,47 @@ but keeping the collection-scope entries costs nothing at this scale and
 avoids a future foot-gun if one is ever added. This mirrors the existing
 `reminders.notify_at` override, which lists the same four entries.
 
-**To apply later (after cost/effects approval — NOT done here):**
-`firebase deploy --only firestore:indexes` from `firebase/` (index deploy
-only; does not touch rules). The console path (Firestore → Indexes → Add
-index, collection group `aiUsage`, `bucket_start` Ascending, collection-group
-scope) is equivalent and needs no code change. Either way, the next
-`cleanupTransactions` run (03:00 IST) should then succeed — verify from the
-Scheduler job status + Functions logs, not from the deploy output alone.
+**Live ↔ repo reconciliation (proof note, console 2026-11-22 ~13:54 IST):**
+live shows 8 manual composite indexes + 4 single-field exemptions, while
+the repo file lists 11 indexes + 1 field override. The two cover the same
+ground — every repo index exists live:
+
+| Repo entry | Live form |
+|---|---|
+| #1 transactions type ASC, transaction_date DESC (COLLECTION) | Manual composite `CICAgOjXh4EK` |
+| #2 transactions transaction_date ASC, created_at DESC (COLLECTION) | Manual composite `CICAgJiUpoMK` |
+| #3 transactions transaction_date ASC (COLLECTION_GROUP) | Single-field exemption `transactions / transaction_date` (CG Ascending) |
+| #4 reminders is_completed ASC, notify_at ASC (CG) | Manual composite `CICAgOi3kJAK` |
+| #5 debts is_active ASC, notify_at ASC (CG) | Manual composite `CICAgJiUpoMJ` |
+| #6 goals is_completed ASC, notify_at ASC (CG) | Manual composite `CICAgJim14AK` |
+| #7 car_checks is_completed ASC, notify_at ASC (CG) | Manual composite `CICAgJjF9oIK` |
+| #8 car_documents notify_at ASC (CG) | Single-field exemption `car_documents / notify_at` (CG Ascending) |
+| #9 recurring_expenses is_active ASC, notify_at ASC (CG) | Manual composite `CICAgJj7z4EK` |
+| #10 chat_messages created_at ASC (CG) | Single-field exemption `chat_messages / created_at` (CG Ascending) |
+| #11 announcements is_active ASC, created_at DESC (COLLECTION) | Manual composite `CICAgJiUsZIK` |
+| fieldOverride reminders.notify_at (4 entries) | Single-field exemption `reminders / notify_at` (CG Ascending) |
+| fieldOverride aiUsage.bucket_start (NEW, this branch) | **Missing live — this is the gap** |
+
+**To apply later (after cost/effects approval — NOT done here) — two routes,
+not one:**
+
+- **Narrow route (recommended for a one-field-only change):** Firebase
+  console → Firestore → Indexes → Add index, collection group `aiUsage`,
+  `bucket_start` Ascending, collection-group scope. Creates exactly this
+  one index and leaves every existing setting untouched. No code change,
+  no deploy, no TTL, no manual cleanup run.
+- **Whole-file route:** `firebase deploy --only firestore:indexes` from
+  `firebase/` (index deploy only; does not touch rules). This deploys the
+  ENTIRE file — all 11 indexes + both fieldOverrides — it is NOT a
+  one-field-only change. It also re-asserts the three entries live currently
+  covers only via single-field exemptions (#3, #8, #10), adding composite
+  index entries for them — a representation change to existing settings
+  (same query coverage, different console form). Use it only if the
+  whole-file state is what is wanted; do not describe it as one-field-only.
+
+Either way, the next `cleanupTransactions` run (03:00 IST) should then
+succeed — verify from the Scheduler job status + Functions logs, not from
+the deploy output alone.
 
 ---
 
