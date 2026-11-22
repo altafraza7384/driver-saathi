@@ -687,6 +687,105 @@ export type Database = {
         }
         Relationships: []
       }
+      habits: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          name: string
+          sort_order: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          name: string
+          sort_order?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          name?: string
+          sort_order?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      habit_logs: {
+        Row: {
+          created_at: string
+          date: string
+          done: boolean
+          habit_id: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          done?: boolean
+          habit_id: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          done?: boolean
+          habit_id?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      routine_settings: {
+        Row: {
+          created_at: string
+          enabled: boolean | null
+          id: string
+          key: string
+          kind: string
+          max_amount: number | null
+          message: string | null
+          min_amount: number | null
+          time: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean | null
+          id?: string
+          key: string
+          kind: string
+          max_amount?: number | null
+          message?: string | null
+          min_amount?: number | null
+          time?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean | null
+          id?: string
+          key?: string
+          kind?: string
+          max_amount?: number | null
+          message?: string | null
+          min_amount?: number | null
+          time?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       notes: {
         Row: {
           audio_url: string | null
