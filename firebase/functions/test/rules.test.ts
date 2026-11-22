@@ -82,10 +82,28 @@ describe("email verification gate (owner decision 2026-11-21)", () => {
     await assertFails(setDoc(doc(env.authenticatedContext("alice", PW_UNVERIFIED).firestore(), "sos_request_details/r2"),
       { id: "r2", requestId: "r2", driverId: "alice", driverPhone: "9876543210" }));
   });
-  it("unverified password user cannot cancel their own SOS via a direct write (verify-first; account deletion and Razorpay cancel run through callables)", async () => {
+  it("unverified password user CAN cancel their own existing SOS (narrow closure: status to cancelled only)", async () => {
     await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "sos_requests/r3"),
       { driverId: "alice", status: "pending", category: "car", approxLat: 18.5, approxLng: 73.8 }));
-    await assertFails(updateDoc(doc(env.authenticatedContext("alice", PW_UNVERIFIED).firestore(), "sos_requests/r3"),
+    await assertSucceeds(updateDoc(doc(env.authenticatedContext("alice", PW_UNVERIFIED).firestore(), "sos_requests/r3"),
+      { status: "cancelled", updated_at: "2026-11-22T00:00:00.000Z" }));
+  });
+  it("unverified password user CANNOT mark their own SOS completed (completion + rating need a verified email)", async () => {
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "sos_requests/r4"),
+      { driverId: "alice", status: "accepted", category: "car", approxLat: 18.5, approxLng: 73.8 }));
+    await assertFails(updateDoc(doc(env.authenticatedContext("alice", PW_UNVERIFIED).firestore(), "sos_requests/r4"),
+      { status: "completed", updated_at: "2026-11-22T00:00:00.000Z" }));
+  });
+  it("unverified password user CANNOT change any other field while cancelling (narrow closure is not an open update)", async () => {
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "sos_requests/r5"),
+      { driverId: "alice", status: "pending", category: "car", approxLat: 18.5, approxLng: 73.8 }));
+    await assertFails(updateDoc(doc(env.authenticatedContext("alice", PW_UNVERIFIED).firestore(), "sos_requests/r5"),
+      { status: "cancelled", rating: 1, updated_at: "2026-11-22T00:00:00.000Z" }));
+  });
+  it("unverified password user CANNOT cancel someone else's SOS", async () => {
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "sos_requests/r6"),
+      { driverId: "bob", status: "pending", category: "car", approxLat: 18.5, approxLng: 73.8 }));
+    await assertFails(updateDoc(doc(env.authenticatedContext("alice", PW_UNVERIFIED).firestore(), "sos_requests/r6"),
       { status: "cancelled", updated_at: "2026-11-22T00:00:00.000Z" }));
   });
   it("verified password user CAN read and write their own profile and data", async () => {
