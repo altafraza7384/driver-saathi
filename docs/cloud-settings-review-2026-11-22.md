@@ -16,6 +16,39 @@ checked 2026-11-22 ~13:54 IST).
 
 ---
 
+## Corrections applied — 2026-11-22 (post-review)
+
+Each correction below first quotes the report's own wrong/misleading claim,
+then the evidence that contradicts it, then what changed. The
+`fieldOverrides` entry for `aiUsage` / `bucket_start` (§4) is unchanged by
+all four corrections — it was verified correct and stays as-is. The 11
+existing indexes, the Scheduler/opt-in facts (F7), and the P1–P10 pending
+list are likewise preserved.
+
+### C1 — Cost: confirmed ₹0/month and 100×-scale <₹1 claims withdrawn
+
+- **Old claim (exact quotes, §2):** "| **Total, expected at current scale**
+  | **₹0 / month** |" and "| Even at 100× current scale | **< ₹1 / month**
+  (under $0.01) |".
+- **Contradicting evidence:** the same report's §1 states billing currency
+  is PENDING ("The repo contains no billing record at all"), current usage
+  is PENDING ("cannot be derived from the repo"), and edition confirmation
+  is PENDING (P8). The user count behind the estimate ("single-digit test
+  accounts") is stated in §1 as "an inference from scale, not a measured
+  usage figure". The backlog is unmeasured — cleanup has been failing daily
+  (F1) and no scan was run to count it. And the free tier (50K reads / 20K
+  writes / 20K deletes per day, 1 GiB storage) is **shared with the whole
+  app** — every collection, every function, every user — so headroom for
+  this index depends on all other usage that day, which is also unmeasured.
+  A confirmed total cannot be derived from unmeasured inputs.
+- **Correction:** §2 now gives conditional scenarios (A/B/C) from public
+  rates plus the known console metadata only (asia-south1, Standard edition
+  per repo, cleanup failing daily), states the free tier is shared, and
+  carries no confirmed ₹0 or 100× figure. F1 and §6 no longer repeat ₹0;
+  they point at §2.
+
+---
+
 ## 1. Database, billing, usage — what the repo/config can say
 
 ### Database edition / location
@@ -79,19 +112,51 @@ cross-check: reads **$0.03 / 100,000**, writes **$0.09 / 100,000**, deletes
 the range below). Free tier per day: 50K reads, 20K writes, 20K deletes,
 1 GiB storage.
 
-### Estimate
+### Estimate — WITHDRAWN as a confirmed figure; conditional scenarios only
 
-| Item | Cost |
-|---|---|
-| One-time index build (backfill reads of the existing docs, a few hundred at most) | **₹0** — inside the 50K/day free reads |
-| Index storage, ongoing (< 0.5 MiB at $0.10–0.18 / GiB/month) | **< ₹0.01 / month**, inside the 1 GiB free tier → **₹0** |
-| Resumed `cleanupTransactions`: 1 collection-group query + up to a few hundred deletes per night | **₹0** — inside the 20K/day free deletes |
-| **Total, expected at current scale** | **₹0 / month** |
-| Even at 100× current scale | **< ₹1 / month** (under $0.01) |
+The previous version of this section stated a confirmed **₹0 / month**
+total and **< ₹1 / month at 100× scale**. Both claims are WITHDRAWN. They
+cannot be confirmed from the evidence available to this review:
 
-Billing currency is PENDING, so the INR figures above use the public USD
-prices; the conclusion (effectively zero) does not depend on the currency.
-**Cost is not a blocker for this index.** The blocker is approval, not money.
+- Billing currency is PENDING (P1) — the INR figures were converted from
+  public USD prices, not from a bill.
+- Actual usage vs the free tier is PENDING (P2) — no console usage figure
+  was available, so free-tier headroom is unknown.
+- Edition is repo-derived Standard; console confirmation is PENDING (P8).
+- User count is unverified — "single-digit test accounts" is an inference
+  from scale, not a count from the console or a data scan.
+- Backlog size is unverified — cleanup has been failing daily (F1), so the
+  stale-bucket backlog is unknown; no scan was run to measure it.
+- The free tier is **shared with the whole app**: the 50K reads / 20K
+  writes / 20K deletes per day and 1 GiB storage cover every collection,
+  every function, and every user — not this index alone. Headroom for this
+  index depends on everything else the app does that day.
+
+What CAN be stated (public Firestore pricing, Standard edition, Mumbai
+`asia-south1`, checked 2026-11-22): reads $0.03 / 100,000, writes $0.09 /
+100,000, deletes $0.01 / 100,000; stored data from $0.10–0.18 / GiB/month;
+free tier per day: 50K reads, 20K writes, 20K deletes, 1 GiB storage.
+These are rates, not a bill.
+
+Conditional scenarios (each is conditional on the PENDING items above):
+
+| Scenario | Condition | Cost of this index |
+|---|---|---|
+| A — usage well inside free tier | Console usage (P2) shows the app well inside the daily free tier, with headroom for the backfill reads + nightly deletes | ₹0 for this index (no charge arises) |
+| B — usage at/over free tier | Usage is at or over the free tier, so marginal reads/writes/deletes are billed | Backfill: one read per existing `aiUsage` doc at $0.03/100K; nightly cleanup: one delete per stale bucket at $0.01/100K; storage: index size × $0.10–0.18/GiB/month — small in absolute terms at any measured backlog, but NOT ₹0 by assertion |
+| C — backlog unknown | Backlog never measured | The cost of the first resumed cleanup run cannot be stated until the backlog is counted (console usage page, P2, or a read-only count) |
+
+Illustrative arithmetic only (public rates, NOT a measured estimate): at the
+generous upper bound used before (10 users × 2 features × 48 buckets = 960
+docs), the backfill is 960 reads and the index is < 0.5 MiB — but 960 docs
+assumes healthy 48h retention and a 10-user base, neither of which is
+measured, and the backlog after days of failed cleanup is by definition
+larger than the healthy bound (see the retention correction, C2). Do not
+use 960 as a backlog figure.
+
+**Cost is not proven to be a blocker, and not proven to be zero either.**
+The blocker remains approval — plus the PENDING console checks P1/P2 that
+would turn these scenarios into a number.
 
 ---
 
@@ -114,7 +179,8 @@ prices; the conclusion (effectively zero) does not depend on the currency.
   deletes queued earlier in the same run may never flush.
 - **Proposed change (this branch, patch only — NOT applied):** add a
   `fieldOverrides` entry for `aiUsage` / `bucket_start` to
-  `firebase/firestore.indexes.json` (see §4). **Cost: ₹0/month (§2).**
+  `firebase/firestore.indexes.json` (see §4). **Cost: conditional — see §2;
+  no confirmed ₹0 figure (pending P1/P2).**
   Applying it later is one command — `firebase deploy --only
   firestore:indexes` from `firebase/` — which is an index deploy, not a
   rules deploy, and does not touch the rules HOLD. No TTL, no manual
@@ -352,7 +418,7 @@ Scheduler job status + Functions logs, not from the deploy output alone.
 
 | # | Proposed change | Cost | Status |
 |---|---|---|---|
-| 1 | Add `aiUsage`/`bucket_start` COLLECTION_GROUP ASC index (fieldOverrides patch in this branch) | ₹0/month (§2) | **Patch ready, NOT applied** — needs cost/effects approval |
+| 1 | Add `aiUsage`/`bucket_start` COLLECTION_GROUP ASC index (fieldOverrides patch in this branch) | Conditional — see §2 (no confirmed figure; pending P1/P2) | **Patch ready, NOT applied** — needs cost/effects approval |
 | 2 | Harden `cleanupTransactions` (per-query try/catch + log + retryCount, F6) | $0 | Proposed for a later bundle — not in this branch |
 | 3 | Harden `earningsNudge` send (per-batch error logging, F6) | $0 | Proposed for a later bundle — not in this branch |
 | 4 | Restrict web API key in console (APIs + referrers, F3) | $0 | Proposed, console-only — verify on installed app after |
