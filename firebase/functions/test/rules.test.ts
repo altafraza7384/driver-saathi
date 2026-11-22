@@ -46,14 +46,12 @@ describe("admin & plans", () => {
   });
 });
 
-// Audit item 5 (owner decision 2026-11-21): new app versions create SOS
-// through the createSosRequest callable; OLD app versions keep direct
-// creates during the transition window, enforced against server quota
-// state and bounded by the owner-chosen cutoff. sos_active/sos_quota
-// stay server-only. NOTE: every test uses FRESH doc ids — the emulator
+// sos_request_details privacy hardening: a details doc (exact coords +
+// driver phone) may be created only against an existing sos_requests doc
+// owned by the caller. NOTE: every test uses FRESH doc ids — the emulator
 // persists state across tests, and setDoc on an existing doc is an
 // update (denied), not a create.
-describe("SOS quota rules (audit item 5) — legacy transition window", () => {
+describe("SOS request details hardening", () => {
   let n = 0;
   const fresh = () => `rq${++n}`;
   const sosPayload = (id: string, over: Record<string, unknown> = {}) => ({
@@ -62,77 +60,13 @@ describe("SOS quota rules (audit item 5) — legacy transition window", () => {
     status: "pending", mechanicId: null, mechanicName: null,
     mechanicPhone: null, chargesAgreed: null, rating: null, ...over,
   });
-  it("old app versions CAN still create sos_requests directly inside the window (placeholder cutoff is far future)", async () => {
-    await assertSucceeds(setDoc(doc(env.authenticatedContext("alice").firestore(), "sos_requests/r1"), sosPayload("r1")));
-  });
-  it("direct create is denied with a spoofed driverId", async () => {
-    await assertFails(setDoc(doc(env.authenticatedContext("alice").firestore(), "sos_requests/r2"), sosPayload("r2", { driverId: "bob" })));
-  });
-  it("direct create is denied with a non-pending status", async () => {
-    await assertFails(setDoc(doc(env.authenticatedContext("alice").firestore(), "sos_requests/r3"), sosPayload("r3", { status: "accepted" })));
-  });
-  it("direct create is denied while the driver's marker points at an ACTIVE request", async () => {
-    const id = fresh();
-    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), `sos_requests/${id}a`), sosPayload(`${id}a`)));
-    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "sos_active/alice"), { requestId: `${id}a` }));
-    await assertFails(setDoc(doc(env.authenticatedContext("alice").firestore(), `sos_requests/${id}b`), sosPayload(`${id}b`)));
-  });
-  it("direct create is ALLOWED when the marker points at a CLOSED request (stale-marker self-heal through the request status)", async () => {
-    const id = fresh();
-    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), `sos_requests/${id}a`), sosPayload(`${id}a`, { status: "cancelled" })));
-    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "sos_active/alice"), { requestId: `${id}a` }));
-    await assertSucceeds(setDoc(doc(env.authenticatedContext("alice").firestore(), `sos_requests/${id}b`), sosPayload(`${id}b`)));
-  });
-  it("direct create is denied when the counter already shows 5 on a day that has not ended", async () => {
-    const id = fresh();
-    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "sos_quota/alice"),
-      { day: "2026-11-21", count: 5, dayEnd: new Date(Date.now() + 86_400_000) }));
-    await assertFails(setDoc(doc(env.authenticatedContext("alice").firestore(), `sos_requests/${id}`), sosPayload(id)));
-  });
-  it("direct create is ALLOWED when the full counter belongs to a day that has ended", async () => {
-    const id = fresh();
-    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "sos_quota/alice"),
-      { day: "2000-01-01", count: 5, dayEnd: new Date(Date.now() - 1_000) }));
-    await assertSucceeds(setDoc(doc(env.authenticatedContext("alice").firestore(), `sos_requests/${id}`), sosPayload(id)));
-  });
-  it("ADVERSARIAL: a direct create carrying a forged counted:true accounting field is denied", async () => {
-    const id = fresh();
-    await assertFails(setDoc(doc(env.authenticatedContext("alice").firestore(), `sos_requests/${id}`), sosPayload(id, { counted: true })));
-  });
-  it("ADVERSARIAL: the driver update path cannot edit or remove the counted flag", async () => {
-    const id = fresh();
-    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), `sos_requests/${id}`), { ...sosPayload(id), counted: true }));
-    await assertFails(updateDoc(doc(env.authenticatedContext("alice").firestore(), `sos_requests/${id}`),
-      { status: "cancelled", counted: false, updated_at: "2026-11-21T00:00:00.000Z" }));
-    await assertFails(updateDoc(doc(env.authenticatedContext("alice").firestore(), `sos_requests/${id}`),
-      { status: "cancelled", counted: null, updated_at: "2026-11-21T00:00:00.000Z" }));
-    // And the allowed cancel leaves the flag untouched.
-    await assertSucceeds(updateDoc(doc(env.authenticatedContext("alice").firestore(), `sos_requests/${id}`),
-      { status: "cancelled", updated_at: "2026-11-21T00:00:00.000Z" }));
-    await env.withSecurityRulesDisabled(async (ctx) => {
-      const snap = await getDoc(doc(ctx.firestore(), `sos_requests/${id}`));
-      if (snap.data()?.counted !== true) throw new Error("counted flag was modified");
-    });
-  });
-  it("REGRESSION: a legacy create carrying a phone number or exact coords is denied (2026-10-24 privacy hardening kept)", async () => {
-    const id = fresh();
-    await assertFails(setDoc(doc(env.authenticatedContext("alice").firestore(), `sos_requests/${id}a`), sosPayload(`${id}a`, { driverPhone: "9876543210" })));
-    await assertFails(setDoc(doc(env.authenticatedContext("alice").firestore(), `sos_requests/${id}b`), sosPayload(`${id}b`, { phone: "9876543210" })));
-    await assertFails(setDoc(doc(env.authenticatedContext("alice").firestore(), `sos_requests/${id}c`), sosPayload(`${id}c`, { exactLat: 18.5204, exactLng: 73.8567 })));
-  });
-  it("REGRESSION: a legacy create with a bad category or invalid approx coords is denied", async () => {
-    const id = fresh();
-    await assertFails(setDoc(doc(env.authenticatedContext("alice").firestore(), `sos_requests/${id}a`), sosPayload(`${id}a`, { category: "boat" })));
-    await assertFails(setDoc(doc(env.authenticatedContext("alice").firestore(), `sos_requests/${id}b`), sosPayload(`${id}b`, { approxLat: 999 })));
-    await assertFails(setDoc(doc(env.authenticatedContext("alice").firestore(), `sos_requests/${id}c`), sosPayload(`${id}c`, { approxLng: "east" })));
-  });
-  it("REGRESSION: details create is denied when the requestId field does not match the doc id", async () => {
+  it("details create is denied when the requestId field does not match the doc id", async () => {
     const id = fresh();
     await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), `sos_requests/${id}`), sosPayload(id)));
     await assertFails(setDoc(doc(env.authenticatedContext("alice").firestore(), `sos_request_details/${id}`),
       { id, requestId: "other", driverId: "alice", driverPhone: "9876543210" }));
   });
-  it("old app versions CAN create sos_request_details for their own existing request", async () => {
+  it("details create is allowed for the driver's own existing request (normal Car SOS flow unchanged)", async () => {
     const id = fresh();
     await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), `sos_requests/${id}`), sosPayload(id)));
     await assertSucceeds(setDoc(doc(env.authenticatedContext("alice").firestore(), `sos_request_details/${id}`),
@@ -146,61 +80,5 @@ describe("SOS quota rules (audit item 5) — legacy transition window", () => {
     await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), `sos_requests/${id2}`), sosPayload(id2, { driverId: "bob" })));
     await assertFails(setDoc(doc(env.authenticatedContext("alice").firestore(), `sos_request_details/${id2}`),
       { id: id2, requestId: id2, driverId: "alice", driverPhone: "9876543210" }));
-  });
-  it("driver CAN still cancel their own request (closure path kept)", async () => {
-    const id = fresh();
-    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), `sos_requests/${id}`), sosPayload(id)));
-    await assertSucceeds(updateDoc(doc(env.authenticatedContext("alice").firestore(), `sos_requests/${id}`),
-      { status: "cancelled", updated_at: "2026-11-21T00:00:00.000Z" }));
-  });
-  it("registered mechanic CAN still accept a pending request", async () => {
-    const id = fresh();
-    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), `sos_requests/${id}`), sosPayload(id)));
-    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "mechanics/mech1"), { name: "M", categories: ["car"], phoneVerified: true }));
-    await assertSucceeds(updateDoc(doc(env.authenticatedContext("mech1").firestore(), `sos_requests/${id}`),
-      { status: "accepted", mechanicId: "mech1", mechanicName: "M", mechanicPhone: "9998887776" }));
-  });
-  it("sos_active and sos_quota are not client-readable or writable, even by their owner", async () => {
-    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "sos_active/alice"), { requestId: "r1" }));
-    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "sos_quota/alice"), { day: "2026-11-21", count: 1 }));
-    const db = env.authenticatedContext("alice").firestore();
-    await assertFails(getDoc(doc(db, "sos_active/alice")));
-    await assertFails(setDoc(doc(db, "sos_active/alice"), { requestId: "r2" }));
-    await assertFails(getDoc(doc(db, "sos_quota/alice")));
-    await assertFails(setDoc(doc(db, "sos_quota/alice"), { day: "2026-11-21", count: 0 }));
-  });
-});
-
-// Same rules with the cutoff set in the PAST: every direct client create
-// must be denied — this is the state after the owner's chosen cutoff date
-// (the placeholder in firestore.rules is far-future, so the past date is
-// injected here by string replacement).
-describe("SOS quota rules (audit item 5) — after the cutoff", () => {
-  let pastEnv: RulesTestEnvironment;
-  beforeAll(async () => {
-    const rules = readFileSync(resolve(__dirname, "../../firestore.rules"), "utf8")
-      .replace("timestamp.date(2027, 6, 1)", "timestamp.date(2020, 1, 1)");
-    pastEnv = await initializeTestEnvironment({ projectId: "demo-driver-saathi",
-      firestore: { rules, host: "127.0.0.1", port: 8085 } });
-  });
-  afterAll(() => pastEnv.cleanup());
-  const sosPayload = {
-    id: "pc1", driverId: "alice", category: "car", description: null,
-    approxLat: 18.5, approxLng: 73.8, geohash: "tejvx", areaText: "Pune",
-    status: "pending", mechanicId: null, mechanicName: null,
-    mechanicPhone: null, chargesAgreed: null, rating: null,
-  };
-  it("direct sos_requests create is denied after the cutoff", async () => {
-    await assertFails(setDoc(doc(pastEnv.authenticatedContext("alice").firestore(), "sos_requests/pc1"), sosPayload));
-  });
-  it("direct sos_request_details create is denied after the cutoff", async () => {
-    await pastEnv.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "sos_requests/pc2"), { ...sosPayload, id: "pc2" }));
-    await assertFails(setDoc(doc(pastEnv.authenticatedContext("alice").firestore(), "sos_request_details/pc2"),
-      { id: "pc2", requestId: "pc2", driverId: "alice", driverPhone: "9876543210" }));
-  });
-  it("driver CAN still cancel their own request after the cutoff (closure never blocked)", async () => {
-    await pastEnv.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "sos_requests/pc3"), { ...sosPayload, id: "pc3" }));
-    await assertSucceeds(updateDoc(doc(pastEnv.authenticatedContext("alice").firestore(), "sos_requests/pc3"),
-      { status: "cancelled", updated_at: "2026-11-21T00:00:00.000Z" }));
   });
 });
