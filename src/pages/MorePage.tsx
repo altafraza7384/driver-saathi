@@ -4,7 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { db } from "@/lib/backend";
 import {
   CreditCard, Target, Car, Bell, StickyNote, Shield,
-  Settings, ChevronRight, Info, HardDrive, Wallet
+  Settings, ChevronRight, Info, HardDrive, Wallet,
+  AlarmClock, ListChecks, Share2
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -39,6 +40,9 @@ export default function MorePage() {
       headingKey: "more.groupVehicleDaily",
       items: [
         { labelKey: "more.carChecks", icon: Car, path: "/car-checks" },
+        { labelKey: "more.routine", icon: AlarmClock, path: "/routine" },
+        { labelKey: "more.habits", icon: ListChecks, path: "/habits" },
+        { labelKey: "more.dailyReport", icon: Share2, path: "/daily-report" },
         { labelKey: "more.reminders", icon: Bell, path: "/reminders" },
         { labelKey: "more.notes", icon: StickyNote, path: "/notes" },
         { labelKey: "more.emergencySos", icon: Shield, path: "/sos" },
