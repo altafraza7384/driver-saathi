@@ -143,29 +143,50 @@ export default function CarSosPage() {
       if (!gps && !areaText.trim()) throw new Error("location");
       const id = newRequestId();
       const loc = gps ? splitLocation(gps.lat, gps.lng) : null;
-      // Server-side quota (audit item 5, owner decision 2026-11-21):
-      // 1 active SOS + max 5 new SOS per IST day per driver, enforced
-      // atomically in the callable; the rules deny client direct creates.
-      // The callable also replaces the old insert+rollback pair: request
-      // and details are created in ONE transaction, so a half-created SOS
-      // is no longer possible. requestId is generated here so a network
-      // retry is idempotent server-side (never counted twice).
-      const { error } = await db.functions.invoke("createSosRequest", {
-        body: {
+      const { error: reqError } = await db.from("sos_requests").insert({
+        id,
+        driverId: user!.id,
+        category,
+        description: description.trim() || null,
+        approxLat: loc ? loc.approxLat : null,
+        approxLng: loc ? loc.approxLng : null,
+        geohash: loc ? loc.geohash : null,
+        areaText: areaText.trim() || null,
+        status: "pending",
+        mechanicId: null,
+        mechanicName: null,
+        mechanicPhone: null,
+        chargesAgreed: null,
+        rating: null,
+      });
+      if (reqError) throw reqError;
+      // Private details doc: exact location + driver phone. Only the driver
+      // and (after accept) the assigned mechanic may read it — see rules.
+      const { error: detError } = await db
+        .from("sos_request_details")
+        .insert({
+          id,
           requestId: id,
-          category,
-          description: description.trim() || null,
-          approxLat: loc ? loc.approxLat : null,
-          approxLng: loc ? loc.approxLng : null,
-          geohash: loc ? loc.geohash : null,
-          areaText: areaText.trim() || null,
-          driverPhone: phone.replace(/\D/g, ""),
-          driverName: name.trim() || null,
+          driverId: user!.id,
+          driverPhone: phone.replace(/\D/g, ""), driverName: name.trim() || null,
           exactLat: gps ? gps.lat : null,
           exactLng: gps ? gps.lng : null,
-        },
-      });
-      if (error) throw error;
+          mechanicId: null,
+        });
+      if (detError) {
+        // Roll back the public request so no half-created SOS stays live.
+        // Use a status update, NOT a delete: the rules forbid deleting
+        // sos_requests (allow delete: if false), so the old delete-based
+        // rollback silently failed and left a phantom live request
+        // (backend audit 2026-10-24). A driver may update their own
+        // request to "cancelled" under the rules.
+        const { error: rollbackError } = await db
+          .from("sos_requests")
+          .update({ status: "cancelled" })
+          .eq("id", id);
+        if (rollbackError) throw new Error(friendlyErrorMessage(rollbackError));
+        throw detError;
+      }
     },
     onSuccess: () => {
       invalidate();
@@ -176,18 +197,7 @@ export default function CarSosPage() {
       setGps(null); setDescTouched(false); setName(profile?.full_name ?? "");
       toast.success(t("carSos.requestSent"));
     },
-    onError: (e: Error) => {
-      // Quota rejections carry stable tokens from the callable; show the
-      // localized explanation instead of a generic error.
-      const msg = e?.message ?? "";
-      if (msg.includes("sos-active-exists")) {
-        toast.error(t("carSos.errorActiveExists"));
-      } else if (msg.includes("sos-daily-limit")) {
-        toast.error(t("carSos.errorDailyLimit"));
-      } else {
-        toast.error(friendlyErrorMessage(e));
-      }
-    },
+    onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
 
   const cancelMutation = useMutation({
