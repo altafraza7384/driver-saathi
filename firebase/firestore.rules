@@ -247,12 +247,12 @@ service cloud.firestore {
     }
 
     match /sos_request_details/{requestId} {
+      // The matching request must already exist and belong to the
+      // caller: no orphaned or forged details docs (the details doc
+      // carries the driver's exact coords + phone).
       allow create: if signedIn() && notBlocked()
         && request.resource.data.driverId == request.auth.uid
         && request.resource.data.requestId == requestId
-        // The matching request must already exist and belong to the
-        // caller: no orphaned or forged details docs (the details doc
-        // carries the driver's exact coords + phone).
         && exists(/databases/$(database)/documents/sos_requests/$(requestId))
         && get(/databases/$(database)/documents/sos_requests/$(requestId)).data.get('driverId', '') == request.auth.uid;
       // Driver reads own details; a mechanic reads them only after being
