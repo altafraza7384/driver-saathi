@@ -101,12 +101,21 @@ by the owner **and by admins** under the Firestore rules
 - The app works offline: Firestore keeps a persistent local (IndexedDB)
   cache of the user's own data on the device. A logout cache clear is
   **proposed, not live** (PR #30, `review/web-security-privacy-2026-11-22`,
-  unmerged as of 2026-11-22): it would clear that cache on logout when
-  no offline writes are still unsynced
-  (`src/integrations/firebase/logoutCache.ts` + `signOutFlow.ts`);
-  pending offline writes would always be preserved, never deleted.
-  Until that PR merges and deploys, logout does **not** clear the
-  offline cache.
+  unmerged as of 2026-11-22): it would clear that cache on logout only
+  when two things are both proven — the departing user's own offline
+  queue is clean, AND no earlier signed-in user has unresolved
+  preserved writes recorded in the preserved-writes ledger
+  (`src/integrations/firebase/logoutCache.ts` + `signOutFlow.ts` +
+  `preservedWrites.ts`). A clean check of the departing user's queue
+  alone does NOT prove a whole-cache clear safe, because
+  `waitForPendingWrites` only sees the active identity's queue. The
+  safety claim is conditional on that proven scope only: the ledger
+  records only identities whose logout went through this flow, so a
+  session that ends without that logout path (e.g. a token revoked
+  while offline) leaves no record, and a later clear cannot be proven
+  safe for that identity's writes. Within the proven scope, pending
+  offline writes are always preserved, never deleted. Until that PR
+  merges and deploys, logout does **not** clear the offline cache.
 
 ## 5. Location & SOS — the split that matters
 
