@@ -119,6 +119,26 @@ describe("HabitsPage per-habit in-flight guard", () => {
     expect(btnA).not.toBeDisabled();
   });
 
+  it("shows per-row saving feedback only on the habit whose save is in flight", async () => {
+    const d = deferred<{ error: null }>();
+    mockInsertQueue.push(d);
+    renderPage();
+    const btnA = await screen.findByRole("button", { name: /Habit A/ });
+    const btnB = await screen.findByRole("button", { name: /Habit B/ });
+
+    fireEvent.click(btnA); // A's save starts, held pending
+    await waitFor(() => expect(btnA).toBeDisabled());
+    // A shows the saving state; B (not saving) shows none.
+    expect(screen.getAllByText("Saving...")).toHaveLength(1);
+    expect(btnA).toHaveAttribute("aria-busy", "true");
+    expect(btnB).toHaveAttribute("aria-busy", "false");
+    expect(btnB).not.toBeDisabled();
+
+    d.resolve({ error: null });
+    await waitFor(() => expect(btnA).not.toBeDisabled());
+    expect(screen.queryByText("Saving...")).toBeNull();
+  });
+
   it("two different habits' overlapping saves both complete with no cross-interference", async () => {
     const dA = deferred<{ error: null }>();
     const dB = deferred<{ error: null }>();

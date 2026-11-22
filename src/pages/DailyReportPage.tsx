@@ -138,9 +138,9 @@ export default function DailyReportPage() {
   return (
     <div className="space-y-5 p-4 pt-6 pb-24">
       <button onClick={() => navigate("/more")} className="flex items-center gap-1 text-sm text-muted-foreground mb-2"><ArrowLeft className="h-4 w-4" /> {t("common.back")}</button>
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{t("report.title")}</h1>
-        <Button size="sm" className="gap-1" onClick={share} disabled={!canShareDailyReport(isLoading, hasError)}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="min-w-0 break-words text-xl font-bold sm:text-2xl">{t("report.title")}</h1>
+        <Button size="sm" className="shrink-0 gap-1" onClick={share} disabled={!canShareDailyReport(isLoading, hasError)}>
           <Share2 className="h-4 w-4" /> {t("report.share")}
         </Button>
       </div>

@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Check, Flame, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, Flame, Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/backend";
 import { friendlyErrorMessage } from "@/lib/errors";
@@ -200,6 +200,7 @@ export default function HabitsPage() {
                       className="flex flex-1 items-center gap-3 text-left"
                       onClick={() => toggleHabit(habit.id, !done)}
                       aria-pressed={done}
+                      aria-busy={pendingIds.has(habit.id)}
                       // Disabled only while THIS habit's toggle save is in
                       // flight (per-habit set in toggleHabit): another
                       // habit's save never re-enables it, and a rapid
@@ -212,6 +213,15 @@ export default function HabitsPage() {
                       </div>
                       <div>
                         <p className={`text-sm font-medium ${done ? "line-through text-muted-foreground" : ""}`}>{habit.name}</p>
+                        {/* Visible per-row saving state while THIS habit's
+                          save is in flight: the toggle is disabled, so
+                          without this the row would look dead with no
+                          feedback. Other rows never show it. */}
+                        {pendingIds.has(habit.id) && (
+                          <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" /> {t("common.saving")}
+                          </p>
+                        )}
                         {streak > 0 && (
                           <p className="flex items-center gap-1 text-xs text-muted-foreground">
                             <Flame className="h-3 w-3" /> {t("habits.streak", { days: streak })}
