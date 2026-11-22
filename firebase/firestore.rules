@@ -3,7 +3,7 @@ rules_version = '2';
 // Server-only: roles, aiUsage, sentNotifications, appConfig (Admin SDK bypasses rules).
 // Admin access: a user is an admin when they carry the Auth custom claim
 // `admin: true` OR when a roles/{uid} document (created via the Firebase
-// console â client writes to roles are denied by design) lists "admin" in
+// console — client writes to roles are denied by design) lists "admin" in
 // its `roles` array. The console-granted roles doc is how the in-app admin
 // panel is activated.
 service cloud.firestore {
@@ -17,7 +17,7 @@ service cloud.firestore {
     }
     // Block enforcement (fail-closed, user decision 2026-10-24): a profile
     // flagged is_blocked by an admin is denied every data read/write
-    // below EXCEPT reading their own users/{uid} profile doc â the app's
+    // below EXCEPT reading their own users/{uid} profile doc — the app's
     // block gate reads exactly that doc to show the Blocked screen, and
     // the gate treats read errors as NOT blocked, so denying it would let
     // a blocked user straight into the app. A missing profile doc counts
@@ -27,8 +27,8 @@ service cloud.firestore {
     // unblocked via the other admin account or the console.
     function isBlocked() {
       // 2026-10-25: .data.is_blocked ERRORED ("Property is_blocked is
-      // undefined") when the profile doc has no is_blocked field â which
-      // is every profile today â and that error poisoned every &&-chain
+      // undefined") when the profile doc has no is_blocked field — which
+      // is every profile today — and that error poisoned every &&-chain
       // using notBlocked(), denying plans reads outright (proven in the
       // Rules Playground). .get() with a default is null-safe: a missing
       // field counts as NOT blocked, which is the documented intent.
@@ -39,7 +39,7 @@ service cloud.firestore {
     function notBlocked() { return !isBlocked(); }
     // Email verification gate (owner decision 2026-11-21): an email/password
     // account whose email is NOT verified cannot read or write its own data
-    // until the link is opened â the same bar the trusted callables apply in
+    // until the link is opened — the same bar the trusted callables apply in
     // requireVerifiedDriver. Google sign-in is verified by Google; phone
     // sign-in (Mechanic Saathi) has no email and stays exempt; admin paths
     // are unaffected (the admin-only account is a Google account). There is
@@ -79,13 +79,13 @@ service cloud.firestore {
       allow read: if (isOwner(uid) && notUnverified()) || isAdmin();
       // create: the NEW document must not contain admin-managed fields.
       // trial_started_at/trial_ends_at are server-only (set by functions on
-      // first AI use) â a client must never be able to grant itself a trial.
+      // first AI use) — a client must never be able to grant itself a trial.
       allow create: if (isOwner(uid) && notBlocked() && notUnverified()
         && !request.resource.data.keys().hasAny(['role', 'roles', 'admin', 'is_blocked', 'subscription_plan_id', 'trial_started_at', 'trial_ends_at']))
         || isAdmin();
       // update: only the CHANGED fields are checked (diff().affectedKeys()),
       // because the merged post-update document always contains fields the
-      // admin assigned earlier (e.g. subscription_plan_id) â checking the
+      // admin assigned earlier (e.g. subscription_plan_id) — checking the
       // whole document locked plan-holding users out of their own profile.
       allow update: if (isOwner(uid) && notBlocked() && notUnverified()
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'roles', 'admin', 'is_blocked', 'subscription_plan_id', 'trial_started_at', 'trial_ends_at']))
@@ -140,7 +140,7 @@ service cloud.firestore {
 
     // Admin announcements (2026-10-22): in-app banner + popup for all
     // signed-in users; audience filtering (all vs non-subscribers) happens
-    // client-side in AnnouncementBanner, never as a security boundary â
+    // client-side in AnnouncementBanner, never as a security boundary —
     // announcement content is public to signed-in users by design, so a
     // subscriber reading an offer is harmless. Only admins may create,
     // edit or delete. Closed-app push for these announcements is the
@@ -178,7 +178,7 @@ service cloud.firestore {
         && !request.resource.data.keys().hasAny(['commission_amount', 'commission_note']);
       allow read: if signedIn()
         && ((resource.data.user_id == request.auth.uid && notBlocked() && notUnverified()) || isAdmin());
-      // update: only CHANGED fields are checked (diff().affectedKeys()) â
+      // update: only CHANGED fields are checked (diff().affectedKeys()) —
       // the merged document always contains user_id/phone/consent, so the
       // old whole-document check denied EVERY admin update (status and
       // commission could never be saved).
@@ -195,7 +195,7 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Car SOS â public request doc carries NO phone number and NO exact
+    // Car SOS — public request doc carries NO phone number and NO exact
     // location (approx coords + geohash only). Any signed-in user may read
     // pending requests (mechanics list them); names/phones/exact location
     // live in sos_request_details, readable only by the driver and the
@@ -298,7 +298,7 @@ service cloud.firestore {
       allow create: if signedIn() && notBlocked() && mechanicId == request.auth.uid
         && !request.resource.data.keys().hasAny(['status', 'warnings', 'warning_history', 'held_at', 'held_reason', 'isVerified', 'phoneVerified', 'phoneVerifiedAt']);
       allow read: if signedIn() && ((mechanicId == request.auth.uid && notBlocked()) || isAdmin());
-      // update: only CHANGED fields are checked (diff().affectedKeys()) â
+      // update: only CHANGED fields are checked (diff().affectedKeys()) —
       // the merged document of a held mechanic always contains status, so
       // the old whole-document check locked held mechanics out of ALL
       // profile edits, not just status changes.
