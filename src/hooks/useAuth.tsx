@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { db } from "@/lib/backend";
+import { BACKEND, db } from "@/lib/backend";
+import { firebaseDb } from "@/integrations/firebase/client";
+import { clearFirestoreCacheOnLogout } from "@/integrations/firebase/logoutCache";
 import type { User, Session } from "@supabase/supabase-js";
 
 type AuthContextType = {
@@ -102,8 +104,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error("Sign out failed, clearing local session", error);
       await db.auth.signOut({ scope: "local" });
     }
+    // Existing cleanup, unchanged: drop every in-memory cached query so
+    // the previous account's data never shows for the next account.
     queryClient.cancelQueries();
     queryClient.clear();
+    // Firestore offline cache (IndexedDB) is a separate layer the React
+    // Query clear does not touch: without this, the signed-out user's
+    // documents stay on a shared device after logout. Clear it only
+    // when no offline writes are still unsynced — the helper preserves
+    // pending writes instead of destroying them.
+    // A successful clear terminates the Firestore instance, so the page
+    // must reload to get a fresh one; on any other outcome logout
+    // continues normally and the cache is kept.
+    if (BACKEND === "firebase") {
+      try {
+        const result = await clearFirestoreCacheOnLogout(firebaseDb);
+        if (result.cleared) {
+          window.location.reload();
+        } else {
+          console.warn(
+            "Firestore offline cache kept on logout:",
+            result.reason,
+            result.detail ?? "",
+          );
+        }
+      } catch (error) {
+        console.warn("Firestore offline cache clear on logout failed", error);
+      }
+    }
   };
 
   return <AuthContext.Provider value={{ user, session, loading, signOut }}>{children}</AuthContext.Provider>;
