@@ -230,6 +230,35 @@ describe("performSignOut — departing user's pending writes (fix 1)", () => {
   });
 });
 
-/* FIX-2 TESTS (commit B): moved out — the clear-failed reinit test lives
- * in the fix-2 commit, where it is added first (failing) and then fixed.
- * See signOutFlow.test.ts history. */
+describe("performSignOut — recovery when the clear fails after terminate (fix 2)", () => {
+  it("reinitializes a usable client and keeps pending data when the clear fails", async () => {
+    const fake = new FakeFirestore();
+    fake.signIn("user-A");
+    fake.write("user-A", "tx-1", { amount: 500 });
+    fake.syncAll(); // synced, so the check passes and the clear is attempted
+    const { deps, reload } = makeDeps(fake, {
+      firestore: {
+        db: fake as unknown as Firestore,
+        timeoutMs: 50,
+        api: {
+          waitForPendingWrites: () => fake.waitForPendingWrites(),
+          terminate: () => fake.terminate(),
+          clearIndexedDbPersistence: async () => {
+            throw new Error("failed-precondition: another tab holds the DB");
+          },
+        },
+      },
+    });
+
+    const result = await performSignOut(deps);
+
+    expect(result.cache?.reason).toBe("clear-failed");
+    expect(result.cache?.cleared).toBe(false);
+    expect(result.reinitialized).toBe(true);
+    expect(fake.calls).toContain("reinitializeFirestore");
+    // The client works again and the data was NOT discarded.
+    expect(fake.read("tx-1")).toEqual({ amount: 500 });
+    expect(result.signedOut).toBe(true);
+    expect(reload).not.toHaveBeenCalled();
+  });
+});

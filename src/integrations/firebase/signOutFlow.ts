@@ -96,6 +96,24 @@ export async function performSignOut(
       openGate();
     }
     if (!cache.cleared) deps.onCacheKept?.(cache);
+
+    // Fix 2: terminate() succeeded but the clear failed — the instance
+    // is dead (cache.terminated) and the next read would throw "client
+    // already terminated". Reinitialize NOW, before Auth sign-out and
+    // before any post-logout read. The pending data is still in
+    // IndexedDB — reinit does NOT discard it; the new client resumes
+    // syncing it.
+    if (!cache.cleared && cache.terminated) {
+      try {
+        reinit();
+        reinitialized = true;
+      } catch (e) {
+        console.warn(
+          "Firestore reinit after failed cache clear failed",
+          e,
+        );
+      }
+    }
   }
 
   // 5. NOW sign out of Auth — only after the departing user's writes

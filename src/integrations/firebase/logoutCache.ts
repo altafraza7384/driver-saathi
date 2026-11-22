@@ -59,6 +59,17 @@ export type LogoutCacheResult = {
   reason: LogoutCacheReason;
   /** Human-readable detail for logs; never contains user data. */
   detail?: string;
+  /**
+   * True when the Firestore instance was terminated (terminate() was
+   * attempted) but the cache was NOT cleared — i.e. reason
+   * "clear-failed". The client is dead in that state: the next read
+   * throws "client already terminated". The caller MUST reinitialize
+   * the client (reinitializeFirestore) before using Firestore again;
+   * the data itself is still in IndexedDB, so reinit discards nothing.
+   * Absent/false on every other outcome (pending-writes-preserved
+   * never terminates; "cleared" is followed by a page reload).
+   */
+  terminated?: boolean;
 };
 
 /** Firestore SDK calls used here, injectable so tests need no SDK/emulator. */
@@ -127,6 +138,10 @@ export async function clearFirestoreCacheOnLogout(
 
   // terminate() can fail if the instance is already terminated; that is
   // fine — the clear is attempted anyway and decides the outcome.
+  // Either way the instance is dead from here on (a successful terminate,
+  // or one that failed because it was already terminated), so a failed
+  // clear below must report terminated: true — the caller has to
+  // reinitialize the client instead of leaving a dead one behind.
   try {
     await api.terminate(db);
   } catch (e) {
@@ -140,6 +155,7 @@ export async function clearFirestoreCacheOnLogout(
       cleared: false,
       reason: "clear-failed",
       detail: `clearIndexedDbPersistence failed: ${e instanceof Error ? e.message : String(e)}`,
+      terminated: true,
     };
   }
 

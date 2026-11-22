@@ -140,4 +140,25 @@ describe("clearFirestoreCacheOnLogout", () => {
       "clearIndexedDbPersistence",
     ]);
   });
+
+  it("marks the client terminated when the clear fails after terminate (fix 2)", async () => {
+    // terminate() succeeded, so the instance is dead even though the
+    // clear failed — the caller must reinitialize before the next read,
+    // or it gets "client already terminated". The flag is what tells it.
+    const { api } = apiWith({
+      clearIndexedDbPersistence: async () => {
+        throw new Error("failed-precondition");
+      },
+    });
+    const result = await clearFirestoreCacheOnLogout(fakeDb, {
+      timeoutMs: 50,
+      api,
+    });
+    expect(result).toEqual({
+      cleared: false,
+      reason: "clear-failed",
+      detail: expect.stringContaining("failed-precondition"),
+      terminated: true,
+    });
+  });
 });
