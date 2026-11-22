@@ -33,7 +33,13 @@ function refOf(path: string): any {
 const fakeDb = {
   doc: (path: string) => refOf(path),
   collection: (path: string) => ({
-    where: () => ({ get: async () => ({ docs: [] }) }),
+    where: (field: string, _op: string, value: any) => ({
+      get: async () => ({
+        docs: [...store.entries()]
+          .filter(([k, v]) => k.startsWith(path + "/") && k.split("/").length === path.split("/").length + 1 && v[field] === value)
+          .map(([k, v]) => ({ id: k.split("/").pop()!, ref: refOf(k), data: () => v, get: (f: string) => v[f] })),
+      }),
+    }),
   }),
   runTransaction: async (fn: (tx: any) => any) => {
     const tx = {
@@ -349,5 +355,38 @@ describe("stale-lock cancel + reconciliation scoping (Muse review 2026-11-22)", 
     const doc = store.get(`subscriptions/${UID}`)!;
     expect(doc.reconciliationNeeded).toBeUndefined();
     expect(doc.razorpaySubscriptionId).toBe("sub_new");
+  });
+
+  it("ACCOUNT DELETION is not blocked by a stale checkout lock (Gap 1: cancelSubscriptionForUser call site)", async () => {
+    store.set(`subscriptions/${UID}`, { checkoutLock: "dead-op", checkoutLockedAt: lockAgeMs(10 * 60_000), razorpaySubscriptionId: "sub_live", status: "active" });
+    steps = [
+      ["GET", "/subscriptions/sub_live", [200, { id: "sub_live", status: "active" }]],
+      ["POST", "/subscriptions/sub_live/cancel", [200, { id: "sub_live", status: "cancelled" }]],
+    ];
+    const { cancelSubscriptionForUser } = await import("../src/razorpay");
+    await cancelSubscriptionForUser(UID);
+    expect(calls.some((c) => c.method === "POST" && /\/cancel$/.test(c.path))).toBe(true);
+    // Subscription doc deleted, deletion marker completed.
+    expect(store.get(`subscriptions/${UID}`)).toBeUndefined();
+    expect(store.get(`subscriptions/${UID}/lifecycle/account_deletion`)!.completedAt).toBeDefined();
+  });
+
+  it("PLAN DELETION is not blocked by a stale checkout lock (Gap 1: deleteSubscriptionPlan call site)", async () => {
+    store.set(`subscriptions/${UID}`, { checkoutLock: "dead-op", checkoutLockedAt: lockAgeMs(10 * 60_000), razorpaySubscriptionId: "sub_live", status: "active", adminPlanId: "planAdmin1" });
+    store.set(`users/${UID}`, { full_name: "Test", subscription_plan_id: "planAdmin1" });
+    steps = [
+      ["GET", "/subscriptions/sub_live", [200, { id: "sub_live", status: "active" }]],
+      ["POST", "/subscriptions/sub_live/cancel", [200, { id: "sub_live", status: "cancelled" }]],
+    ];
+    const { deleteSubscriptionPlan } = await import("../src/razorpay");
+    const res = await (deleteSubscriptionPlan as any).run({ auth: { uid: "admin1" }, data: { planId: "planAdmin1" } });
+    expect(res.deleted).toBe(true);
+    expect(calls.some((c) => c.method === "POST" && /\/cancel$/.test(c.path))).toBe(true);
+    // Mandate ended and lock cleared; access revoked; plan doc removed.
+    const sub = store.get(`subscriptions/${UID}`)!;
+    expect(sub.status).toBe("cancelled");
+    expect(sub.checkoutLock).toBeUndefined();
+    expect(store.get(`users/${UID}`)!.subscription_plan_id).toBeNull();
+    expect(store.get("subscription_plans/planAdmin1")).toBeUndefined();
   });
 });
