@@ -97,6 +97,24 @@ list are likewise preserved.
   and leaves all existing settings untouched. No manual cleanup, no TTL.
   F1's contradictory "no blanket index deploy" line is fixed.
 
+### C4 — App Check-after-Play is NOT presented as an approved decision
+
+- **Old claim (exact quotes, F2 and §6):** "The user's standing decision
+  (2026-11-06) is to turn App Check ON + enforce **after Play Store
+  publish**, not before (debug/sideload APKs could be blocked by Play
+  Integrity)." (§6 row 5: "Per standing user decision — not now".)
+- **Contradicting evidence:** no permission evidence or decision record for
+  an App Check rollout was found in the repo — a grep for `appCheck` /
+  `AppCheck` / `initializeAppCheck` / `ReCaptcha` across `docs/`,
+  `AGENTS.md`, `firebase/README.md` returns only this report itself and
+  the state note "App Check is off" in `AGENTS.md` (a statement of current
+  state, not an approval). Enforcement state is console-only and PENDING
+  (P5). Nothing in the repo authorises presenting the after-Play timing as
+  an approved owner decision.
+- **Correction:** F2 and §6 now state rollout timing is OPEN / pending
+  explicit owner confirmation; do NOT enforce. The earlier after-Play
+  wording is removed as an approved decision.
+
 ---
 
 ## 1. Database, billing, usage — what the repo/config can say
@@ -279,10 +297,13 @@ accumulated backlog in one run — not a normal night's worth:
   `capacitor.config.ts` returns **nothing**. `AGENTS.md` confirms: "App
   Check is off". So no App Check provider (Play Integrity / reCAPTCHA v3)
   is wired into the web or native app.
-- **Proposed change:** none now. The user's standing decision (2026-11-06)
-  is to turn App Check ON + enforce **after Play Store publish**, not
-  before (debug/sideload APKs could be blocked by Play Integrity). When
-  that time comes: add Play Integrity (Android) + reCAPTCHA v3 (web) in
+- **Proposed change:** none now. **Rollout timing is OPEN — pending explicit
+  owner confirmation; do NOT enforce.** The previous version of this report
+  cited a standing user decision (2026-11-06) to turn App Check ON + enforce
+  after Play Store publish, but no approval record or permission evidence
+  for that rollout was found in the repo (see C4 above), so this report does
+  not treat it as an approved decision. When the owner confirms timing and
+  scope: add Play Integrity (Android) + reCAPTCHA v3 (web) in
   `src/integrations/firebase/client.ts`, then enforce in the console.
   **Cost: $0** (App Check itself is free; reCAPTCHA v3 has a free tier
   that covers this scale).
@@ -542,7 +563,7 @@ the deploy output alone.
 | 2 | Harden `cleanupTransactions` (per-query try/catch + log + retryCount, F6) | $0 | Proposed for a later bundle — not in this branch |
 | 3 | Harden `earningsNudge` send (per-batch error logging, F6) | $0 | Proposed for a later bundle — not in this branch |
 | 4 | Restrict web API key in console (APIs + referrers, F3) | $0 | Proposed, console-only — verify on installed app after |
-| 5 | App Check on + enforce after Play publish (F2) | $0 | Per standing user decision — not now |
+| 5 | App Check on + enforce (F2) | $0 | OPEN — pending explicit owner confirmation; do NOT enforce |
 | 6 | Decide Supabase project fate after Firebase cutover proven (F4) | $0 if free tier | User decision — not now |
 | 7 | Fix stale `firebase/README.md` status + workflow "Gemini" comment (F4/F8) | $0 | Docs-only, later pass |
 
