@@ -352,6 +352,16 @@ export function canShareDailyReport(isLoading: boolean, hasError: boolean): bool
   return !isLoading && !hasError;
 }
 
+/** "10:30 (Rs. 500–Rs. 700)" — the label for one checkpoint in the Daily
+ *  Report. Unset targets (0–0) show the time alone. Night-shift times
+ *  past midnight (02:00, 05:00, 06:00) label exactly the same way: the
+ *  label is the reminder time, not a calendar day, so crossing midnight
+ *  changes nothing about the label. */
+export function formatCheckpointLabel(time: string, min: number, max: number): string {
+  if (min <= 0 && max <= 0) return time;
+  return `${time} (${formatINR(min)}–${formatINR(max)})`;
+}
+
 /** Plain-text WhatsApp summary, Romanized Hinglish, no auto-send. */
 export function buildDailyReportText(input: {
   dateLabel: string;

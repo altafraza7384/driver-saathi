@@ -34,6 +34,10 @@ import {
   SCHEDULE_KEYS,
 } from "@/lib/routine";
 
+/** Stable empty rows for the routine_settings query default (see below). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const EMPTY_SETTINGS: any[] = [];
+
 export default function RoutinePage() {
   const { user } = useAuth();
   const { t } = useI18n();
@@ -45,7 +49,12 @@ export default function RoutinePage() {
   const [milestones, setMilestones] = useState<Milestone[]>(() => mergeMilestones([]));
   const [notifStatus, setNotifStatus] = useState<string>("");
 
-  const { data: settings = [], isLoading } = useQuery({
+  // Module-level empty rows: `data: settings = []` would hand the
+  // useEffect below a FRESH array on every render while the query is
+  // still loading, so the effect (which setStates on [settings]) would
+  // re-run after every render and spin the page in a render loop until
+  // the fetch resolves. A stable reference breaks that loop.
+  const { data: settings = EMPTY_SETTINGS, isLoading } = useQuery({
     queryKey: ["routine_settings"],
     queryFn: async () => {
       const { data, error } = await db.from("routine_settings").select("*");

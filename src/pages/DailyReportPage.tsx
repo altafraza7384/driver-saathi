@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import {
   buildDailyReportText,
   canShareDailyReport,
+  formatCheckpointLabel,
   mergeMilestones,
   mergeSchedule,
   milestoneForNow,
@@ -109,10 +110,10 @@ export default function DailyReportPage() {
   // cutoff reach the target, otherwise "not confirmed" (never "missed" -
   // the driver may have earned it without logging in time).
   const checkpoints: (ReportCheckpoint & { noData: boolean })[] = milestones.map((m) => {
-    if (minutesOf(timeForKey(m.key)) > nowMin) return { label: `${timeForKey(m.key)} (${formatINR(m.min)}–${formatINR(m.max)})`, met: null, noData: false };
+    if (minutesOf(timeForKey(m.key)) > nowMin) return { label: formatCheckpointLabel(timeForKey(m.key), m.min, m.max), met: null, noData: false };
     const earned = incomeEarnedBy(todayTx as any[], today, timeForKey(m.key));
     return {
-      label: `${timeForKey(m.key)} (${formatINR(m.min)}–${formatINR(m.max)})`,
+      label: formatCheckpointLabel(timeForKey(m.key), m.min, m.max),
       met: earned.total >= m.min,
       noData: earned.count === 0,
     };
