@@ -184,17 +184,7 @@ service cloud.firestore {
     // live in sos_request_details, readable only by the driver and the
     // assigned mechanic. Admins may read every request for oversight.
     match /sos_requests/{requestId} {
-      // New app versions create through the createSosRequest callable
-      // (Admin SDK, bypasses rules), which enforces the quota — 1 active
-      // SOS per driver + max 5 new SOS per driver per IST day —
-      // atomically. Direct client creates remain allowed for OLD app
-      // versions during the transition window (see the transition
-      // comment above): same quota enforced against server-maintained
-      // state, driverId/status pinned, owner-chosen cutoff.
-      // Clients may never supply accounting fields (`counted` drives the
-      // claim protocol — a forged counted:true would skip quota entirely).
-      allow create: if request.time < legacySosCutoff()
-        && signedIn() && notBlocked()
+      allow create: if signedIn() && notBlocked()
         && request.resource.data.driverId == request.auth.uid
         && request.resource.data.status == 'pending'
         // The public doc must never carry phone/exact coords (audit
@@ -202,10 +192,7 @@ service cloud.firestore {
         && !request.resource.data.keys().hasAny(['driverPhone', 'phone', 'exactLat', 'exactLng'])
         && request.resource.data.category in ['car', 'battery', 'towing', 'other', 'custom']
         && isValidApproxLat(request.resource.data.get('approxLat', null))
-        && isValidApproxLng(request.resource.data.get('approxLng', null))
-        && !request.resource.data.keys().hasAny(['counted'])
-        && legacyNoActiveSos()
-        && legacySosQuotaOk();
+        && isValidApproxLng(request.resource.data.get('approxLng', null));
       allow read: if signedIn()
         && ((notBlocked()
           && (resource.data.driverId == request.auth.uid
@@ -260,15 +247,12 @@ service cloud.firestore {
     }
 
     match /sos_request_details/{requestId} {
-      // New app versions: created inside the same atomic createSosRequest
-      // transaction (Admin SDK, bypasses rules). OLD app versions write
-      // details directly right after the request doc during the
-      // transition window — the matching request must already exist and
-      // belong to the caller (same cutoff as sos_requests).
-      allow create: if request.time < legacySosCutoff()
-        && signedIn() && notBlocked()
+      allow create: if signedIn() && notBlocked()
         && request.resource.data.driverId == request.auth.uid
         && request.resource.data.requestId == requestId
+        // The matching request must already exist and belong to the
+        // caller: no orphaned or forged details docs (the details doc
+        // carries the driver's exact coords + phone).
         && exists(/databases/$(database)/documents/sos_requests/$(requestId))
         && get(/databases/$(database)/documents/sos_requests/$(requestId)).data.get('driverId', '') == request.auth.uid;
       // Driver reads own details; a mechanic reads them only after being
@@ -283,43 +267,6 @@ service cloud.firestore {
         && request.resource.data.mechanicId == request.auth.uid
 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['mechanicId']);
       allow delete: if false;
-    }
-
-    // ---- Audit item 5 transition window (2026-11-21) ----
-    // New app versions create SOS requests through the createSosRequest
-    // callable (the Admin SDK bypasses these rules). Installed OLD app
-    // versions still write sos_requests/sos_request_details directly, and
-    // there is no force-update gate (Capacitor loads the web bundle from
-    // Firebase Hosting on the next app open), so denying direct creates
-    // outright would take SOS creation away from any driver who has not
-    // reopened the app since the update. Direct creates therefore stay
-    // allowed UNTIL the owner-chosen cutoff below, enforced against the
-    // server-maintained quota state (the createSosRequest callable, the
-    // sosLegacyCreateCounter trigger and the one-time backfill keep
-    // sos_active/sos_quota current for every create path).
-    //
-    // Enforcement here fails OPEN within trigger lag and never wrongly
-    // denies: the pointed request doc's status is the source of truth
-    // for "active" (marker lag self-heals through it), and the counter
-    // only grows within its day so a stale read can only under-deny.
-    //
-    // OWNER DECISION REQUIRED BEFORE THE RULES DEPLOY: the cutoff date
-    // (UTC) after which direct client creates are denied. The far-future
-    // placeholder below means "no cutoff in effect" until the owner
-    // picks a real date — the old-app interruption never arrives
-    // unchosen.
-    function legacySosCutoff() { return timestamp.date(2027, 6, 1); }
-    function legacySosQuotaOk() {
-      let q = /databases/$(database)/documents/sos_quota/$(request.auth.uid);
-      return !exists(q)
-        || get(q).data.get('dayEnd', timestamp.date(1970, 1, 1)) <= request.time
-        || get(q).data.get('count', 0) < 5;
-    }
-    function legacyNoActiveSos() {
-      let m = /databases/$(database)/documents/sos_active/$(request.auth.uid);
-      return !exists(m)
-        || !exists(/databases/$(database)/documents/sos_requests/$(get(m).data.get('requestId', 'none')))
-        || get(/databases/$(database)/documents/sos_requests/$(get(m).data.get('requestId', 'none'))).data.get('status', '') in ['cancelled', 'completed'];
     }
 
     // Mechanic profiles (Mechanic Saathi app). A mechanic owns exactly one
@@ -343,12 +290,6 @@ service cloud.firestore {
     // Server-only push log (sendSosRequestPush): mechanics' FCM tokens.
     // No client may read or write it; the Admin SDK bypasses rules.
     match /sos_push_log/{requestId} { allow read, write: if false; }
-    // Server-only quota state (createSosRequest): the active-SOS marker
-    // and the per-IST-day submission counter. Server-only for the same
-    // reason as sos_push_log — a client-writable counter would be a
-    // client-writable quota bypass.
-    match /sos_active/{uid} { allow read, write: if false; }
-    match /sos_quota/{uid} { allow read, write: if false; }
     match /{document=**} { allow read, write: if false; }
   }
 }
