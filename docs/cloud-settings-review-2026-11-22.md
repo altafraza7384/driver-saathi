@@ -47,6 +47,29 @@ list are likewise preserved.
   carries no confirmed ₹0 or 100× figure. F1 and §6 no longer repeat ₹0;
   they point at §2.
 
+### C2 — 48h cutoff is NOT a retention guarantee
+
+- **Old claim (exact quote, §2):** "`cleanupTransactions` deletes buckets
+  older than 48h, so the collection can never hold more than ~48 hourly
+  buckets per user per feature."
+- **Contradicting evidence:** committed source
+  `firebase/functions/src/index.ts:345-362` — the `aiUsage`
+  collection-group query throws `FAILED_PRECONDITION` before
+  `writer.close()`, so no deletes flush while the index is missing; the
+  job has failed daily (proven 2026-11-22 03:00 IST, next failure
+  2026-11-23 03:00 IST unless the index is created). While broken, each day
+  adds up to 24 new buckets per user per feature and deletes none, so the
+  collection grows without bound — the "~48 buckets" bound is false today.
+  Even with a healthy daily 03:00 IST run: a bucket created just after
+  03:00 is first eligible at the run ~48h later and is only deleted at the
+  run after that, so it lives up to nearly 72h (same arithmetic: the 24h
+  chat-message cutoff means messages live ~24h to ~48h).
+- **Correction:** §2 now states retention as ~48h to just under 72h for
+  buckets (~24h to ~48h for chat messages) under a healthy daily run, and
+  unbounded while cleanup is broken. The first resumed run's reads,
+  deletes, function charges, and user-facing effects are spelled out in
+  §2 ("First resumed run"), and F1's impact note points at it.
+
 ---
 
 ## 1. Database, billing, usage — what the repo/config can say
@@ -93,15 +116,24 @@ a range, not a false precise figure.
 per user, per feature (`chat`, `financeAi`), per hour — doc id
 `<feature>_<ISO hour>`, 3 small fields (`feature`, `bucket_start`,
 `request_count`). `cleanupTransactions`
-(`firebase/functions/src/index.ts:345-362`) deletes buckets older than 48h,
-so the collection can never hold more than ~48 hourly buckets per user per
-feature. With a test-only user base (single-digit accounts), the live
-collection is at most a few hundred docs; each doc is ~100–200 bytes
-including Firestore overhead. Even at a generous upper bound (10 users ×
-2 features × 48 buckets = 960 docs), data is **< 200 KiB** and the index
-itself (one entry per doc: collection ID + timestamp + doc name, ~100–150
-bytes each) is **< 200 KiB**. Total < 0.5 MiB — about 0.05% of the 1 GiB
-free storage tier.
+(`firebase/functions/src/index.ts:345-362`) deletes buckets older than 48h —
+but 48h is a **cutoff, not a retention guarantee** (see C2 above): while the
+job is broken the backlog grows without bound, and even with a healthy daily
+03:00 IST run a bucket lives **~48h to just under 72h** before deletion (a
+bucket created just after 03:00 is only deleted at the third run after its
+creation; the same arithmetic gives chat messages ~24h to ~48h). So the
+"at most ~48 buckets per user per feature" bound holds only while cleanup
+runs successfully every night — it does not hold today. With a test-only
+user base (single-digit accounts — an inference, not a measured count), the
+live collection would be at most a few hundred docs *if cleanup were
+healthy*; with cleanup failing, the actual count is unknown and larger.
+Each doc is ~100–200 bytes including Firestore overhead. At the generous
+upper bound used for illustration only (10 users × 2 features × 48 buckets
+= 960 docs), data is **< 200 KiB** and the index itself (one entry per doc:
+collection ID + timestamp + doc name, ~100–150 bytes each) is **< 200 KiB**.
+Total < 0.5 MiB — about 0.05% of the 1 GiB free storage tier — *if* the
+collection were at that bound; the real size is unmeasured until the backlog
+is counted.
 
 ### Public pricing used (Firestore, Standard edition, Mumbai `asia-south1`)
 
@@ -158,6 +190,28 @@ use 960 as a backlog figure.
 The blocker remains approval — plus the PENDING console checks P1/P2 that
 would turn these scenarios into a number.
 
+### First resumed run — what it will read, delete, and cost
+
+Once the index exists, the next 03:00 IST run reads and deletes the whole
+accumulated backlog in one run — not a normal night's worth:
+
+- **Reads:** one collection-group query read per stale `aiUsage` doc, plus
+  one per stale `chat_messages` doc (the chat deletes queued before the
+  throw never flushed either, so stale chat messages have been accumulating
+  too). Exact counts equal the backlog size, which is unmeasured.
+- **Deletes:** one delete per stale doc via `bulkWriter`, then the normal
+  nightly deletes thereafter.
+- **Function charges:** one scheduled invocation + the compute time of a
+  longer-than-normal run (a large backlog means a longer run). Billed at
+  the public rates in §2 if outside the shared free tier — conditional on
+  P1/P2, like everything else in §2.
+- **Effects on users:** none on live quota — `consumeQuota` only ever reads
+  the current hour's bucket, and only buckets older than 48h are deleted.
+  Chat messages older than 24h are deleted as designed (chat history, not
+  money data — transaction deletion was removed 2026-10-24). No document
+  newer than the cutoffs is touched. The run does not change any schedule,
+  flag, or user-facing behaviour.
+
 ---
 
 ## 3. Findings
@@ -174,9 +228,13 @@ would turn these scenarios into a number.
   (2026-11-22 03:00:02 + 03:00:06 IST, Cloud Scheduler job
   `firebase-schedule-cleanupTransactions-asia-south1`, schedule
   `0 3 * * *`, Asia/Kolkata, Enabled). Next failure: 2026-11-23 03:00 IST
-  unless the index is created. Stale hourly quota buckets accumulate, and
-  because the throw happens before `writer.close()`, the chat-message
-  deletes queued earlier in the same run may never flush.
+  unless the index is created. Stale hourly quota buckets accumulate
+  without bound while the job is broken (the 48h cutoff is not a retention
+  guarantee — see C2; even healthy, buckets live ~48h to just under 72h),
+  and because the throw happens before `writer.close()`, the chat-message
+  deletes queued earlier in the same run may never flush — so stale chat
+  messages accumulate too. The first resumed run clears the whole backlog
+  at once (see §2, "First resumed run").
 - **Proposed change (this branch, patch only — NOT applied):** add a
   `fieldOverrides` entry for `aiUsage` / `bucket_start` to
   `firebase/firestore.indexes.json` (see §4). **Cost: conditional — see §2;
