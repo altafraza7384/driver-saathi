@@ -27,10 +27,12 @@ import {
   findSettingRow,
   mergeSchedule,
   mergeMilestones,
+  milestoneRows,
   buildDailyNotifications,
   routineNotificationId,
   routineSettingId,
   schedulePreset,
+  resolveShiftMode,
   retimeForMode,
   summarizeRoutineSave,
   validateMilestone,
@@ -82,9 +84,7 @@ export default function RoutinePage() {
   useEffect(() => {
     const mergedSchedule = mergeSchedule((settings as any[]).filter((r) => r.kind === "schedule"));
     const mergedMilestones = mergeMilestones(
-      (settings as any[])
-        .filter((r) => r.kind === "milestone")
-        .map((r) => ({ key: r.key, min: Number(r.min_amount) || 0, max: Number(r.max_amount) || 0 })),
+      milestoneRows((settings as any[]).filter((r) => r.kind === "milestone")),
     );
     // A failed edit is still the driver's intent: overlay it on top of
     // the refetched (old) values, or the next Save would write the old
@@ -102,9 +102,12 @@ export default function RoutinePage() {
     }
     setSchedule(mergedSchedule);
     const modeRow = (settings as any[]).find((r) => r.kind === "shift" && r.key === "mode");
-    if (modeRow?.message === "night") setShiftMode("night");
-    else if (modeRow?.message === "day") setShiftMode("day");
-    else if (pendingFailedEdits?.shiftMode) setShiftMode(pendingFailedEdits.shiftMode);
+    // A failed shift intent takes priority over the stored row: the
+    // refetch after a partial save returns the OLD mode, and letting it
+    // win would clobber the driver's intent (see resolveShiftMode).
+    const storedMode: ShiftMode | null =
+      modeRow?.message === "night" ? "night" : modeRow?.message === "day" ? "day" : null;
+    setShiftMode(resolveShiftMode(storedMode, pendingFailedEdits?.shiftMode ?? null));
     setMilestones(mergedMilestones);
   }, [settings, pendingFailedEdits]);
 

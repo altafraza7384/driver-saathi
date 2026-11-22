@@ -65,6 +65,22 @@ export function schedulePreset(mode: ShiftMode): ScheduleItem[] {
 }
 
 /**
+ * Which shift mode the page should show after a settings load: a FAILED
+ * shift intent wins over the stored row. The save invalidates the query,
+ * so the refetch returns the OLD stored mode (e.g. Day) while the
+ * driver's Night edit is still pending retry — letting the stored row
+ * win would clobber the intent, and Save-again would then write Day
+ * while reporting success. With no failed intent the stored mode stands;
+ * with neither, Day is the default.
+ */
+export function resolveShiftMode(
+  stored: ShiftMode | null,
+  pendingFailed: ShiftMode | null,
+): ShiftMode {
+  return pendingFailed ?? stored ?? "day";
+}
+
+/**
  * Switching Day/Night remaps only times that still sit on the OLD preset's
  * defaults; any time the driver personalized is kept as-is, so toggling
  * back and forth never destroys a custom schedule. Enabled flags and
@@ -155,6 +171,28 @@ export function mergeMilestones(
     const row = findStoredRow(stored, "milestone", d.key);
     return row ? { key: d.key, min: row.min, max: row.max } : d;
   });
+}
+
+/**
+ * Raw routine_settings rows as stored (min/max_amount) → the shape
+ * mergeMilestones reads. The row `id` MUST be preserved: the merge
+ * prefers the stable-id row over a legacy random-id row for the same
+ * kind+key, and it can only do that when it can see the id. Call sites
+ * that hand-mapped `{key, min, max}` dropped the id, so a legacy row
+ * listed first won and a stale value showed (cp1 500 over the stable
+ * 600). Every milestone read must go through this helper, never a
+ * hand-rolled map.
+ */
+export function milestoneRows(
+  rows: { id?: string; kind?: string; key: string; min_amount?: number | string; max_amount?: number | string }[],
+): { id?: string; kind?: string; key: string; min: number; max: number }[] {
+  return rows.map((r) => ({
+    id: r.id,
+    kind: r.kind,
+    key: r.key,
+    min: Number(r.min_amount) || 0,
+    max: Number(r.max_amount) || 0,
+  }));
 }
 
 /**

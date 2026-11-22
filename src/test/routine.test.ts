@@ -13,10 +13,12 @@ import {retimeForMode, SCHEDULE_KEYS, schedulePreset,
   findSettingRow,
   mergeMilestones,
   mergeSchedule,
+  milestoneRows,
   milestoneForNow,
   minutesOf,
   parseTime,
   planHabitToggle,
+  resolveShiftMode,
   routineNotificationId,
   routineSettingId,
   summarizeRoutineSave,
@@ -569,5 +571,39 @@ describe("night mode never changes accounting dates/history (pin)", () => {
     // never calls. This test pins the observable contract: switching
     // modes cannot rewrite a transaction date.
     expect(night.every((i) => Object.keys(i).sort().join() === "enabled,key,message,time")).toBe(true);
+  });
+});
+
+describe("resolveShiftMode (failed shift intent beats the stored row)", () => {
+  it("a failed Night intent wins over the stored Day row", () => {
+    expect(resolveShiftMode("day", "night")).toBe("night");
+  });
+
+  it("a failed Day intent wins over the stored Night row", () => {
+    expect(resolveShiftMode("night", "day")).toBe("day");
+  });
+
+  it("with no failed intent the stored mode stands", () => {
+    expect(resolveShiftMode("night", null)).toBe("night");
+    expect(resolveShiftMode("day", null)).toBe("day");
+  });
+
+  it("with neither stored nor failed intent the default is Day", () => {
+    expect(resolveShiftMode(null, null)).toBe("day");
+  });
+});
+
+describe("milestoneRows (legacy + stable reconciliation)", () => {
+  it("preserves the row id so the stable-id row wins over a legacy row listed first", () => {
+    const rows = milestoneRows([
+      { id: "legacy-9", kind: "milestone", key: "cp1", min_amount: 500, max_amount: 700 },
+      { id: "milestone_cp1", kind: "milestone", key: "cp1", min_amount: 600, max_amount: 800 },
+    ]);
+    expect(rows[0].id).toBe("legacy-9");
+    expect(rows[1].id).toBe("milestone_cp1");
+    // The merge prefers the stable-id row: 600 shows, not the legacy 500.
+    expect(mergeMilestones(rows)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ key: "cp1", min: 600, max: 800 })]),
+    );
   });
 });
