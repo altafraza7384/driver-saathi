@@ -4,6 +4,7 @@ import {retimeForMode, SCHEDULE_KEYS, schedulePreset,
   DEFAULT_SCHEDULE,
   buildDailyNotifications,
   buildDailyReportText,
+  canShareDailyReport,
   computeStreak,
   habitLogId,
   isHabitDone,
@@ -173,6 +174,15 @@ describe("buildDailyReportText", () => {
     expect(text).toContain("2 covered");
     expect(text).not.toContain("not confirmed");
     expect(text).not.toContain("no entry");
+  });
+});
+
+describe("canShareDailyReport", () => {
+  it("allows sharing only once every load has settled successfully", () => {
+    expect(canShareDailyReport(false, false)).toBe(true);
+    expect(canShareDailyReport(true, false)).toBe(false); // still loading
+    expect(canShareDailyReport(false, true)).toBe(false); // load failed
+    expect(canShareDailyReport(true, true)).toBe(false);
   });
 });
 

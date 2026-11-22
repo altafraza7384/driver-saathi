@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   buildDailyReportText,
+  canShareDailyReport,
   mergeMilestones,
   mergeSchedule,
   milestoneForNow,
@@ -121,6 +122,10 @@ export default function DailyReportPage() {
   const dateLabel = now.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 
   const share = () => {
+    // Guard inside the handler too, via the same predicate as the button:
+    // a programmatic/queued click while loading or errored is a no-op —
+    // sharing the not-yet-loaded (₹0) totals would send a wrong report.
+    if (!canShareDailyReport(isLoading, hasError)) return;
     const text = buildDailyReportText({ dateLabel, income, expense, habitsDone, habitsTotal, checkpoints });
     // wa.me without a number: WhatsApp's own contact picker (same pattern
     // and audit trail as SOSPage). The user chooses who gets the report.
@@ -134,7 +139,7 @@ export default function DailyReportPage() {
       <button onClick={() => navigate("/more")} className="flex items-center gap-1 text-sm text-muted-foreground mb-2"><ArrowLeft className="h-4 w-4" /> {t("common.back")}</button>
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{t("report.title")}</h1>
-        <Button size="sm" className="gap-1" onClick={share} disabled={hasError}>
+        <Button size="sm" className="gap-1" onClick={share} disabled={!canShareDailyReport(isLoading, hasError)}>
           <Share2 className="h-4 w-4" /> {t("report.share")}
         </Button>
       </div>

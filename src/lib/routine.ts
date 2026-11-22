@@ -302,6 +302,17 @@ export interface ReportCheckpoint {
   noData?: boolean;
 }
 
+/**
+ * Share is only safe once every load has settled successfully: sharing
+ * while loading or errored would send a ₹0 report built from data that
+ * has not arrived (or failed to arrive). The Share button is disabled in
+ * those states AND the handler checks this same predicate, so a
+ * programmatic/queued invocation is a no-op too.
+ */
+export function canShareDailyReport(isLoading: boolean, hasError: boolean): boolean {
+  return !isLoading && !hasError;
+}
+
 /** Plain-text WhatsApp summary, Romanized Hinglish, no auto-send. */
 export function buildDailyReportText(input: {
   dateLabel: string;

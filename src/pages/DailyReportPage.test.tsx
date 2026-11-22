@@ -12,7 +12,9 @@ afterEach(cleanup);
 // returns a promise (the settings query awaits it directly) with an .eq()
 // that returns the same promise (the other queries await .eq(...)).
 type Row = Record<string, unknown>;
-const mockResponses: Record<string, { data: Row[] | null; error: Error | null }> = {};
+// `promise` lets a test hold one load pending (delayed data-load): select()
+// returns it instead of an already-resolved answer.
+const mockResponses: Record<string, { data: Row[] | null; error: Error | null; promise?: Promise<any> }> = {};
 let mockSelectCalls = 0;
 
 vi.mock("@/lib/backend", () => ({
@@ -21,9 +23,9 @@ vi.mock("@/lib/backend", () => ({
       select: () => {
         mockSelectCalls += 1;
         const r = mockResponses[table] ?? { data: [], error: null };
-        const p: any = r.error
+        const p: any = r.promise ?? (r.error
           ? Promise.reject(r.error)
-          : Promise.resolve({ data: r.data ?? [], error: null });
+          : Promise.resolve({ data: r.data ?? [], error: null }));
         p.eq = () => p;
         return p;
       },
@@ -68,7 +70,16 @@ describe("DailyReportPage load error vs genuinely empty", () => {
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
     // No totals at all in the error state (and no share of a wrong report).
     expect(screen.queryByText("Today's earnings")).toBeNull();
-    expect(screen.getByRole("button", { name: /Share on WhatsApp/ })).toBeDisabled();
+    const share = screen.getByRole("button", { name: /Share on WhatsApp/ });
+    expect(share).toBeDisabled();
+    // The handler guard: even a click dispatched at the disabled button
+    // must not open WhatsApp. (In this jsdom/React setup a click on a
+    // disabled button never reaches onClick at all; the guard itself is
+    // covered by the canShareDailyReport unit test in routine.test.ts.)
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    fireEvent.click(share);
+    expect(openSpy).not.toHaveBeenCalled();
+    openSpy.mockRestore();
   });
 
   it("retries all four loads and shows the report once they succeed", async () => {
@@ -95,6 +106,35 @@ describe("DailyReportPage load error vs genuinely empty", () => {
     expect(screen.queryByText(LOAD_ERROR)).toBeNull();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     expect(screen.getByRole("button", { name: /Share on WhatsApp/ })).not.toBeDisabled();
+  });
+
+  it("keeps Share disabled and shares nothing while a load is still pending", async () => {
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    // Hold the transactions load pending; the other three resolve at once.
+    let resolveTx!: (v: { data: Row[]; error: null }) => void;
+    const txPromise = new Promise<{ data: Row[]; error: null }>((res) => {
+      resolveTx = res;
+    });
+    mockResponses.transactions = { data: null, error: null, promise: txPromise };
+    renderPage();
+
+    // Spinner state: no totals yet, Share disabled — and nothing opens
+    // (the disabled button cannot be clicked through, and the handler
+    // guard in share() is covered by the canShareDailyReport unit test),
+    // so no ₹0 report can be shared.
+    const share = screen.getByRole("button", { name: /Share on WhatsApp/ });
+    expect(share).toBeDisabled();
+    fireEvent.click(share);
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(screen.queryByText("₹0")).toBeNull();
+
+    // The load resolves with genuinely empty data: ₹0 totals appear and
+    // Share enables.
+    resolveTx({ data: [], error: null });
+    const zeros = await screen.findAllByText("₹0");
+    expect(zeros).toHaveLength(3);
+    expect(screen.getByRole("button", { name: /Share on WhatsApp/ })).not.toBeDisabled();
+    openSpy.mockRestore();
   });
 
   it("still renders real totals when entries exist", async () => {
