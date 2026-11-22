@@ -366,6 +366,9 @@ const authAdapter = {
       if (fullName) {
         await updateProfile(cred.user, { displayName: fullName }).catch(() => undefined);
       }
+      // Under the 2026-11-21 rules policy this write is DENIED while the
+      // email is unverified; the profile row is created by the Verify
+      // screen's ensureVerifiedProfileForCurrentUser() retry instead.
       void ensureProfile(cred.user, fullName);
       // HARD email verification (2026-11-03): every password signup gets a
       // verification email immediately. Sending is best-effort — a send
@@ -475,6 +478,22 @@ export async function reloadCurrentUser() {
   // Firestore and callable functions inspect the ID token's verification
   // claim, which is not refreshed by reloading the User object alone.
   await user.getIdToken(true);
+}
+
+/**
+ * Verify-screen retry for the 2026-11-21 rules policy: a password signup's
+ * ensureProfile runs while the email is still unverified and the security
+ * rules deny it, and the session-bootstrap path (getSession / readyUser /
+ * onIdTokenChanged) never calls ensureProfile again — so without this call
+ * the users/{uid} row would only be created after a manual sign-out and
+ * sign-in. Call after reloadCurrentUser() once the user says they verified;
+ * it is a no-op unless the token now shows a verified email. ensureProfile
+ * swallows and logs its own errors, so this never breaks the Verify screen.
+ */
+export async function ensureVerifiedProfileForCurrentUser() {
+  const user = firebaseAuth.currentUser;
+  if (!user || !user.emailVerified) return;
+  await ensureProfile(user);
 }
 
 /**

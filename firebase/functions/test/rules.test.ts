@@ -45,3 +45,93 @@ describe("admin & plans", () => {
     await assertSucceeds(setDoc(doc(env.authenticatedContext("adm", { admin: true }).firestore(), "subscription_plans/p"), { billing_interval: "free", price_inr: 0, is_active: true }));
   });
 });
+
+// Owner decision 2026-11-21: an email/password account with an unverified
+// email cannot read or write its own data until verified. Google sign-in is
+// verified by Google; phone sign-in (mechanics) has no email and stays
+// exempt; admin paths are unaffected.
+const PW_UNVERIFIED = { email_verified: false, firebase: { sign_in_provider: "password" } };
+const PW_VERIFIED = { email_verified: true, firebase: { sign_in_provider: "password" } };
+const GOOGLE = { email_verified: true, firebase: { sign_in_provider: "google.com" } };
+const PHONE = { firebase: { sign_in_provider: "phone" } };
+
+describe("email verification gate (owner decision 2026-11-21)", () => {
+  it("unverified password user cannot READ their own profile doc", async () => {
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "users/alice"), { user_id: "alice", full_name: "A" }));
+    await assertFails(getDoc(doc(env.authenticatedContext("alice", PW_UNVERIFIED).firestore(), "users/alice")));
+  });
+  it("unverified password user cannot WRITE their own profile doc", async () => {
+    await assertFails(setDoc(doc(env.authenticatedContext("alice", PW_UNVERIFIED).firestore(), "users/alice"), { user_id: "alice", full_name: "A" }));
+  });
+  it("unverified password user cannot READ their own collection data", async () => {
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "users/alice/transactions/t1"), { user_id: "alice", amount: 100 }));
+    await assertFails(getDoc(doc(env.authenticatedContext("alice", PW_UNVERIFIED).firestore(), "users/alice/transactions/t1")));
+  });
+  it("unverified password user cannot WRITE their own collection data", async () => {
+    await assertFails(setDoc(doc(env.authenticatedContext("alice", PW_UNVERIFIED).firestore(), "users/alice/transactions/t1"), { user_id: "alice", amount: 100 }));
+  });
+  it("unverified password user cannot create their own insurance lead", async () => {
+    await assertFails(setDoc(doc(env.authenticatedContext("alice", PW_UNVERIFIED).firestore(), "insurance_leads/l1"), { user_id: "alice", consent: true, status: "new", name: "D" }));
+  });
+  it("unverified password user cannot create an SOS request", async () => {
+    await assertFails(setDoc(doc(env.authenticatedContext("alice", PW_UNVERIFIED).firestore(), "sos_requests/r1"), { driverId: "alice", status: "pending", category: "car" }));
+  });
+  it("unverified password user cannot create SOS details even for their own existing request (gate applies before ownership)", async () => {
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "sos_requests/r2"),
+      { driverId: "alice", status: "pending", category: "car", approxLat: 18.5, approxLng: 73.8 }));
+    await assertFails(setDoc(doc(env.authenticatedContext("alice", PW_UNVERIFIED).firestore(), "sos_request_details/r2"),
+      { id: "r2", requestId: "r2", driverId: "alice", driverPhone: "9876543210" }));
+  });
+  it("unverified password user CAN cancel their own existing SOS (narrow closure: status to cancelled only)", async () => {
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "sos_requests/r3"),
+      { driverId: "alice", status: "pending", category: "car", approxLat: 18.5, approxLng: 73.8 }));
+    await assertSucceeds(updateDoc(doc(env.authenticatedContext("alice", PW_UNVERIFIED).firestore(), "sos_requests/r3"),
+      { status: "cancelled", updated_at: "2026-11-22T00:00:00.000Z" }));
+  });
+  it("unverified password user CANNOT mark their own SOS completed (completion + rating need a verified email)", async () => {
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "sos_requests/r4"),
+      { driverId: "alice", status: "accepted", category: "car", approxLat: 18.5, approxLng: 73.8 }));
+    await assertFails(updateDoc(doc(env.authenticatedContext("alice", PW_UNVERIFIED).firestore(), "sos_requests/r4"),
+      { status: "completed", updated_at: "2026-11-22T00:00:00.000Z" }));
+  });
+  it("unverified password user CANNOT change any other field while cancelling (narrow closure is not an open update)", async () => {
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "sos_requests/r5"),
+      { driverId: "alice", status: "pending", category: "car", approxLat: 18.5, approxLng: 73.8 }));
+    await assertFails(updateDoc(doc(env.authenticatedContext("alice", PW_UNVERIFIED).firestore(), "sos_requests/r5"),
+      { status: "cancelled", rating: 1, updated_at: "2026-11-22T00:00:00.000Z" }));
+  });
+  it("unverified password user CANNOT cancel someone else's SOS", async () => {
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "sos_requests/r6"),
+      { driverId: "bob", status: "pending", category: "car", approxLat: 18.5, approxLng: 73.8 }));
+    await assertFails(updateDoc(doc(env.authenticatedContext("alice", PW_UNVERIFIED).firestore(), "sos_requests/r6"),
+      { status: "cancelled", updated_at: "2026-11-22T00:00:00.000Z" }));
+  });
+  it("verified password user CAN read and write their own profile and data", async () => {
+    const db = env.authenticatedContext("alice", PW_VERIFIED).firestore();
+    await assertSucceeds(setDoc(doc(db, "users/alice"), { user_id: "alice", full_name: "A" }));
+    await assertSucceeds(getDoc(doc(db, "users/alice")));
+    await assertSucceeds(setDoc(doc(db, "users/alice/transactions/t1"), { user_id: "alice", amount: 100 }));
+    await assertSucceeds(getDoc(doc(db, "users/alice/transactions/t1")));
+  });
+  it("Google sign-in user CAN read and write their own data (Google verifies the email)", async () => {
+    const db = env.authenticatedContext("alice", GOOGLE).firestore();
+    await assertSucceeds(setDoc(doc(db, "users/alice"), { user_id: "alice", full_name: "A" }));
+    await assertSucceeds(setDoc(doc(db, "users/alice/transactions/t1"), { user_id: "alice", amount: 100 }));
+  });
+  it("phone sign-in user (mechanic flow) stays exempt: can create own mechanic profile", async () => {
+    await assertSucceeds(setDoc(doc(env.authenticatedContext("mech1", PHONE).firestore(), "mechanics/mech1"), { name: "M", categories: ["car"] }));
+  });
+  it("verified user still CANNOT read another user's data (non-owner denied)", async () => {
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "users/alice/transactions/t1"), { user_id: "alice", amount: 100 }));
+    await assertFails(getDoc(doc(env.authenticatedContext("bob", PW_VERIFIED).firestore(), "users/alice/transactions/t1")));
+  });
+  it("admin CAN still read an unverified user's profile (admin paths unaffected)", async () => {
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "users/alice"), { user_id: "alice", full_name: "A" }));
+    await assertSucceeds(getDoc(doc(env.authenticatedContext("adm", { admin: true }).firestore(), "users/alice")));
+  });
+  it("unverified user cannot read their own insurance lead, admin can", async () => {
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "insurance_leads/l1"), { user_id: "alice", consent: true, status: "new", name: "D" }));
+    await assertFails(getDoc(doc(env.authenticatedContext("alice", PW_UNVERIFIED).firestore(), "insurance_leads/l1")));
+    await assertSucceeds(getDoc(doc(env.authenticatedContext("adm", { admin: true }).firestore(), "insurance_leads/l1")));
+  });
+});

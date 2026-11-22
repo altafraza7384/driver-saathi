@@ -14,7 +14,7 @@ import { lazyWithRetry } from "@/lib/lazyWithRetry";
 import { AndroidBackButton } from "@/components/AndroidBackButton";
 import { logScreen } from "@/lib/analytics";
 import { useToast } from "@/hooks/use-toast";
-import { sendVerificationEmailToCurrentUser, reloadCurrentUser } from "@/integrations/firebase/adapter";
+import { sendVerificationEmailToCurrentUser, reloadCurrentUser, ensureVerifiedProfileForCurrentUser } from "@/integrations/firebase/adapter";
 
 import { isAdminOnlyAccount } from "@/lib/admin-only";
 
@@ -128,6 +128,10 @@ function VerifyEmailScreen() {
     setChecking(true);
     try {
       await reloadCurrentUser();
+      // Create the users/{uid} profile row that the rules denied at signup
+      // (2026-11-21 policy). No-op unless the email is now verified, and it
+      // never throws into this handler.
+      await ensureVerifiedProfileForCurrentUser();
     } catch {
       // Reload failure just means the check below re-reads the old flag;
       // the page reload re-bootstraps the session either way.

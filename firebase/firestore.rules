@@ -37,6 +37,23 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('is_blocked', false) == true;
     }
     function notBlocked() { return !isBlocked(); }
+    // Email verification gate (owner decision 2026-11-21): an email/password
+    // account whose email is NOT verified cannot read or write its own data
+    // until the link is opened — the same bar the trusted callables apply in
+    // requireVerifiedDriver. Google sign-in is verified by Google; phone
+    // sign-in (Mechanic Saathi) has no email and stays exempt; admin paths
+    // are unaffected (the admin-only account is a Google account). There is
+    // deliberately NO client-writable bypass: the only way through is a
+    // verified email token. The Verify screen needs only Firebase Auth
+    // (resend/reload/sign-out), so this gate can never lock an unverified
+    // user out of verifying, and server callables (Admin SDK) bypass rules
+    // as before, keeping status/cancel/account-deletion paths intact.
+    function isUnverifiedEmailUser() {
+      return signedIn()
+        && request.auth.token.get('firebase', {}).get('sign_in_provider', '') == 'password'
+        && request.auth.token.get('email_verified', false) != true;
+    }
+    function notUnverified() { return !isUnverifiedEmailUser(); }
     function ownsPayload(uid) {
       return !('user_id' in request.resource.data) || request.resource.data.user_id == uid;
     }
@@ -59,18 +76,18 @@ service cloud.firestore {
       // (needed for block/unblock and plan assignment); owners may not touch
       // admin-managed fields, so a user can never unblock themselves or
       // grant themselves a plan.
-      allow read: if isOwner(uid) || isAdmin();
+      allow read: if (isOwner(uid) && notUnverified()) || isAdmin();
       // create: the NEW document must not contain admin-managed fields.
       // trial_started_at/trial_ends_at are server-only (set by functions on
       // first AI use) — a client must never be able to grant itself a trial.
-      allow create: if (isOwner(uid) && notBlocked()
+      allow create: if (isOwner(uid) && notBlocked() && notUnverified()
         && !request.resource.data.keys().hasAny(['role', 'roles', 'admin', 'is_blocked', 'subscription_plan_id', 'trial_started_at', 'trial_ends_at']))
         || isAdmin();
       // update: only the CHANGED fields are checked (diff().affectedKeys()),
       // because the merged post-update document always contains fields the
       // admin assigned earlier (e.g. subscription_plan_id) — checking the
       // whole document locked plan-holding users out of their own profile.
-      allow update: if (isOwner(uid) && notBlocked()
+      allow update: if (isOwner(uid) && notBlocked() && notUnverified()
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'roles', 'admin', 'is_blocked', 'subscription_plan_id', 'trial_started_at', 'trial_ends_at']))
         || isAdmin();
       allow delete: if false; // deletion only via deleteAccount function
@@ -82,16 +99,16 @@ service cloud.firestore {
                 'recurring_expenses','recurring_expense_payments','budgets'];
       }
       match /{collection}/{docId} {
-        allow read, delete: if ((isOwner(uid) && notBlocked()) || isAdmin()) && collection in ownedCollections();
-        allow create: if isOwner(uid) && notBlocked() && ownsPayload(uid) && collection in ownedCollections();
+        allow read, delete: if ((isOwner(uid) && notBlocked() && notUnverified()) || isAdmin()) && collection in ownedCollections();
+        allow create: if isOwner(uid) && notBlocked() && notUnverified() && ownsPayload(uid) && collection in ownedCollections();
         // chat messages are append-only (matches previous policy: no UPDATE)
-        allow update: if isOwner(uid) && notBlocked() && ownsPayload(uid)
+        allow update: if isOwner(uid) && notBlocked() && notUnverified() && ownsPayload(uid)
           && collection in ownedCollections() && collection != 'chat_messages';
       }
       // aiUsage / sentNotifications fall through: denied for clients.
     }
 
-    match /roles/{uid} { allow read: if (isOwner(uid) && notBlocked()) || isAdmin(); allow write: if false; }
+    match /roles/{uid} { allow read: if (isOwner(uid) && notBlocked() && notUnverified()) || isAdmin(); allow write: if false; }
 
     match /subscription_plans/{planId} {
       // Split read (2026-10-25): a single allow combining a per-document
@@ -154,13 +171,13 @@ service cloud.firestore {
     // never appear in a public marketplace post. Partner forwarding is
     // manual in Phase 1; an automated webhook comes after Blaze.
     match /insurance_leads/{id} {
-      allow create: if signedIn() && notBlocked()
+      allow create: if signedIn() && notBlocked() && notUnverified()
         && request.resource.data.user_id == request.auth.uid
         && request.resource.data.consent == true
         && request.resource.data.status == 'new'
         && !request.resource.data.keys().hasAny(['commission_amount', 'commission_note']);
       allow read: if signedIn()
-        && ((resource.data.user_id == request.auth.uid && notBlocked()) || isAdmin());
+        && ((resource.data.user_id == request.auth.uid && notBlocked() && notUnverified()) || isAdmin());
       // update: only CHANGED fields are checked (diff().affectedKeys()) —
       // the merged document always contains user_id/phone/consent, so the
       // old whole-document check denied EVERY admin update (status and
@@ -184,7 +201,7 @@ service cloud.firestore {
     // live in sos_request_details, readable only by the driver and the
     // assigned mechanic. Admins may read every request for oversight.
     match /sos_requests/{requestId} {
-      allow create: if signedIn() && notBlocked()
+      allow create: if signedIn() && notBlocked() && notUnverified()
         && request.resource.data.driverId == request.auth.uid
         && request.resource.data.status == 'pending'
         // The public doc must never carry phone/exact coords (audit
@@ -195,7 +212,7 @@ service cloud.firestore {
         && isValidApproxLng(request.resource.data.get('approxLng', null));
       allow read: if signedIn()
         && ((notBlocked()
-          && (resource.data.driverId == request.auth.uid
+          && ((resource.data.driverId == request.auth.uid && notUnverified())
             // Pending requests are visible only to registered mechanics
             // (hardening 2026-10-26: previously ANY signed-in user could
             // list stranded drivers' approx locations).
@@ -212,8 +229,17 @@ service cloud.firestore {
         // adds updated_at to every update).
         (resource.data.driverId == request.auth.uid
           && request.resource.data.driverId == request.auth.uid
-          && request.resource.data.status in ['cancelled', 'completed']
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'rating', 'updated_at']))
+          && ((notUnverified()
+            && request.resource.data.status in ['cancelled', 'completed']
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'rating', 'updated_at']))
+            // Narrow closure for unverified users (2026-11-22): they may
+            // CANCEL their own existing request and nothing else - status
+            // to cancelled with only updated_at alongside, no other field
+            // may change, and no create or read is opened. A pending SOS
+            // must always be closable by its owner; cancelling cannot
+            // forge data or expose anything.
+            || (request.resource.data.status == 'cancelled'
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updated_at']))))
         // Assigned mechanic: accept a pending request. A held mechanic is
         // blocked server-side (not just in the app UI); a missing status
         // field counts as not held (old mechanic docs have no status field).
@@ -247,14 +273,14 @@ service cloud.firestore {
     }
 
     match /sos_request_details/{requestId} {
-      allow create: if signedIn() && notBlocked()
+      allow create: if signedIn() && notBlocked() && notUnverified()
         && request.resource.data.driverId == request.auth.uid
         && request.resource.data.requestId == requestId;
       // Driver reads own details; a mechanic reads them only after being
       // assigned (the mechanic app claims the doc right after accepting).
       // Admins read them for SOS oversight/disputes (audit 2026-10-24).
       allow read: if signedIn()
-        && (((resource.data.driverId == request.auth.uid
+        && ((((resource.data.driverId == request.auth.uid && notUnverified())
           || resource.data.mechanicId == request.auth.uid) && notBlocked())
           || isAdmin());
       allow update: if signedIn() && notBlocked()
