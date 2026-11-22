@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Share2 } from "lucide-react";
+import { ArrowLeft, Share2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/backend";
 import { useAuth } from "@/hooks/useAuth";
@@ -32,7 +32,10 @@ export default function DailyReportPage() {
   const navigate = useNavigate();
   const today = localToday();
 
-  const { data: todayTx = [], isLoading } = useQuery({
+  // Every load is tracked: on any failure the page must show an error
+  // instead of ₹0 totals — ₹0 is only shown when all four loads succeeded
+  // and today genuinely has no entries (see the error branch below).
+  const { data: todayTx = [], isLoading: txLoading, isError: txError, refetch: refetchTx } = useQuery({
     queryKey: ["transactions_today", "totals"],
     queryFn: async () => {
       const { data, error } = await db.from("transactions").select("*").eq("transaction_date", today);
@@ -42,7 +45,7 @@ export default function DailyReportPage() {
     enabled: !!user,
   });
 
-  const { data: habits = [] } = useQuery({
+  const { data: habits = [], isLoading: habitsLoading, isError: habitsError, refetch: refetchHabits } = useQuery({
     queryKey: ["habits"],
     queryFn: async () => {
       const { data, error } = await db.from("habits").select("*").eq("active", true);
@@ -52,7 +55,7 @@ export default function DailyReportPage() {
     enabled: !!user,
   });
 
-  const { data: todayLogs = [] } = useQuery({
+  const { data: todayLogs = [], isLoading: logsLoading, isError: logsError, refetch: refetchLogs } = useQuery({
     queryKey: ["habit_logs", today],
     queryFn: async () => {
       const { data, error } = await db.from("habit_logs").select("*").eq("date", today);
@@ -62,7 +65,7 @@ export default function DailyReportPage() {
     enabled: !!user,
   });
 
-  const { data: settings = [] } = useQuery({
+  const { data: settings = [], isLoading: settingsLoading, isError: settingsError, refetch: refetchSettings } = useQuery({
     queryKey: ["routine_settings"],
     queryFn: async () => {
       const { data, error } = await db.from("routine_settings").select("*");
@@ -71,6 +74,17 @@ export default function DailyReportPage() {
     },
     enabled: !!user,
   });
+
+  const hasError = txError || habitsError || logsError || settingsError;
+  // Spinner until every load has settled: rendering totals while any load
+  // is still in flight would flash ₹0 for data that has not arrived yet.
+  const isLoading = txLoading || habitsLoading || logsLoading || settingsLoading;
+  const retry = () => {
+    void refetchTx();
+    void refetchHabits();
+    void refetchLogs();
+    void refetchSettings();
+  };
 
   const income = (todayTx as any[]).filter((tx) => tx.type === "income").reduce((s, tx) => s + toAmount(tx.amount), 0);
   const expense = (todayTx as any[]).filter((tx) => tx.type === "expense").reduce((s, tx) => s + toAmount(tx.amount), 0);
@@ -120,13 +134,21 @@ export default function DailyReportPage() {
       <button onClick={() => navigate("/more")} className="flex items-center gap-1 text-sm text-muted-foreground mb-2"><ArrowLeft className="h-4 w-4" /> {t("common.back")}</button>
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{t("report.title")}</h1>
-        <Button size="sm" className="gap-1" onClick={share}>
+        <Button size="sm" className="gap-1" onClick={share} disabled={hasError}>
           <Share2 className="h-4 w-4" /> {t("report.share")}
         </Button>
       </div>
       <p className="text-sm text-muted-foreground">{dateLabel}</p>
 
-      {isLoading ? (
+      {hasError ? (
+        <Card className="border-0 shadow-sm">
+          <CardContent className="p-6 text-center space-y-3">
+            <AlertTriangle className="mx-auto h-8 w-8 text-destructive" />
+            <p className="text-sm font-medium">{t("home.loadError")}</p>
+            <Button variant="outline" onClick={retry}>{t("common.retry")}</Button>
+          </CardContent>
+        </Card>
+      ) : isLoading ? (
         <div className="flex justify-center py-10"><div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>
       ) : (
         <>
@@ -135,6 +157,9 @@ export default function DailyReportPage() {
               <div className="flex justify-between text-sm"><span>{t("report.income")}</span><span className="font-semibold text-success">{formatINR(income)}</span></div>
               <div className="flex justify-between text-sm"><span>{t("report.expense")}</span><span className="font-semibold text-destructive">{formatINR(expense)}</span></div>
               <div className="flex justify-between border-t pt-2 text-sm"><span>{t("report.net")}</span><span className="font-bold">{formatINR(income - expense)}</span></div>
+              {(todayTx as any[]).length === 0 && (
+                <p className="text-xs text-muted-foreground">{t("report.noData")}</p>
+              )}
             </CardContent>
           </Card>
 
