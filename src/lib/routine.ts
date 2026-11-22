@@ -153,6 +153,45 @@ export function mergeMilestones(
   });
 }
 
+/**
+ * A checkpoint target is valid when both ends are finite, non-negative,
+ * and the maximum is unset (0) or not below the minimum. Returns the
+ * i18n key of the error, or null when the target is fine. The page
+ * blocks the save on a non-null result, so an invalid target can never
+ * be stored and then misread as a real target.
+ */
+export function validateMilestone(min: number, max: number): "routine.invalidTarget" | null {
+  if (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max < 0) return "routine.invalidTarget";
+  if (max > 0 && max < min) return "routine.invalidTarget";
+  return null;
+}
+
+/** Outcome of the reminder-scheduling step, kept apart from the save
+ *  result: scheduling can fail (no permission, no plugin, web) while
+ *  the settings themselves saved fine, and the user must see exactly
+ *  that — never "save failed". */
+export type ScheduleOutcome =
+  | { status: "scheduled"; count: number }
+  | { status: "no-permission" }
+  | { status: "failed" };
+
+/** Result of one Routine save: which settings rows failed, and what the
+ *  scheduling step did. `schedule` is null when the save failed
+ *  outright and scheduling was never attempted. */
+export interface RoutineSaveResult {
+  failedKeys: string[];
+  schedule: ScheduleOutcome | null;
+}
+
+/** Overall save status from the failed-row count: all saved, some
+ *  saved (retry only the failed rows by tapping Save again — every row
+ *  write is an idempotent upsert), or nothing saved. */
+export function summarizeRoutineSave(failedCount: number, totalCount: number): "saved" | "partial" | "failed" {
+  if (failedCount <= 0) return "saved";
+  if (failedCount >= totalCount) return "failed";
+  return "partial";
+}
+
 export interface DailyNotification {
   id: number;
   title: string;

@@ -21,12 +21,16 @@ import {
   ScheduleItem,
   Milestone,
   ShiftMode,
+  ScheduleOutcome,
+  RoutineSaveResult,
   mergeSchedule,
   mergeMilestones,
   buildDailyNotifications,
   routineNotificationId,
   schedulePreset,
   retimeForMode,
+  summarizeRoutineSave,
+  validateMilestone,
   SCHEDULE_KEYS,
 } from "@/lib/routine";
 
@@ -75,70 +79,114 @@ export default function RoutinePage() {
   };
 
   /** Cancel every routine reminder we know, then schedule the enabled set.
-   *  Ids are stable per key, so rescheduling never leaves duplicates. */
-  const reschedule = async (items: ScheduleItem[]): Promise<void> => {
-    const granted = await requestLocalNotificationPermission();
-    if (!granted) {
-      setNotifStatus(t("routine.noPermission"));
-      return;
-    }
+   *  Ids are stable per key, so rescheduling never leaves duplicates.
+   *  Returns the outcome instead of setting UI state: the caller reports
+   *  scheduling separately from the save (see saveMutation) — a
+   *  scheduling failure must never be shown as a failed save. */
+  const reschedule = async (items: ScheduleItem[]): Promise<ScheduleOutcome> => {
     try {
+      const granted = await requestLocalNotificationPermission();
+      if (!granted) return { status: "no-permission" };
       await LocalNotifications.cancel({
         notifications: SCHEDULE_KEYS.map((key) => ({ id: routineNotificationId(key) })),
       });
       const notifications = buildDailyNotifications(items, titleFor, milestones);
       if (notifications.length > 0) await LocalNotifications.schedule({ notifications });
-      setNotifStatus(t("routine.notifScheduled", { count: notifications.length }));
+      return { status: "scheduled", count: notifications.length };
     } catch (e) {
       // Web without Notification support, or an old APK missing the native
       // plugin: the settings still save, only the reminders cannot fire.
-      setNotifStatus(t("routine.notifFailed"));
       console.warn("Routine schedule failed", e);
+      return { status: "failed" };
     }
   };
 
   const saveMutation = useMutation({
-    mutationFn: async () => {
+    // Every row is attempted even when an earlier one fails, so one bad
+    // row cannot silently drop the rest; failures are collected by key
+    // and reported as partial, with Save-again as the retry (every row
+    // write is an idempotent upsert). Scheduling runs only when every
+    // row saved — the scheduled reminders must match what is stored.
+    mutationFn: async (): Promise<RoutineSaveResult> => {
+      const failedKeys: string[] = [];
+      const attempt = async (key: string, work: () => Promise<void>) => {
+        try {
+          await work();
+        } catch {
+          failedKeys.push(key);
+        }
+      };
       const rows = settings as any[];
       for (const item of schedule) {
-        const existing = rows.find((r) => r.kind === "schedule" && r.key === item.key);
-        const payload = { kind: "schedule", key: item.key, time: item.time, enabled: item.enabled, message: item.message };
-        if (existing) {
-          const { error } = await db.from("routine_settings").update(payload).eq("id", existing.id);
+        await attempt(`schedule:${item.key}`, async () => {
+          const existing = rows.find((r) => r.kind === "schedule" && r.key === item.key);
+          const payload = { kind: "schedule", key: item.key, time: item.time, enabled: item.enabled, message: item.message };
+          const { error } = existing
+            ? await db.from("routine_settings").update(payload).eq("id", existing.id)
+            : await db.from("routine_settings").insert({ ...payload, user_id: user!.id });
           if (error) throw error;
-        } else {
-          const { error } = await db.from("routine_settings").insert({ ...payload, user_id: user!.id });
-          if (error) throw error;
-        }
+        });
       }
       for (const m of milestones) {
-        const existing = rows.find((r) => r.kind === "milestone" && r.key === m.key);
-        const payload = { kind: "milestone", key: m.key, min_amount: m.min, max_amount: m.max };
-        if (existing) {
-          const { error } = await db.from("routine_settings").update(payload).eq("id", existing.id);
+        await attempt(`milestone:${m.key}`, async () => {
+          const existing = rows.find((r) => r.kind === "milestone" && r.key === m.key);
+          const payload = { kind: "milestone", key: m.key, min_amount: m.min, max_amount: m.max };
+          const { error } = existing
+            ? await db.from("routine_settings").update(payload).eq("id", existing.id)
+            : await db.from("routine_settings").insert({ ...payload, user_id: user!.id });
           if (error) throw error;
-        } else {
-          const { error } = await db.from("routine_settings").insert({ ...payload, user_id: user!.id });
-          if (error) throw error;
-        }
+        });
       }
-      const modeRow = (settings as any[]).find((r) => r.kind === "shift" && r.key === "mode");
-      const modePayload = { kind: "shift", key: "mode", message: shiftMode };
-      if (modeRow) {
-        const { error } = await db.from("routine_settings").update(modePayload).eq("id", modeRow.id);
+      await attempt("shift:mode", async () => {
+        const modeRow = (settings as any[]).find((r) => r.kind === "shift" && r.key === "mode");
+        const modePayload = { kind: "shift", key: "mode", message: shiftMode };
+        const { error } = modeRow
+          ? await db.from("routine_settings").update(modePayload).eq("id", modeRow.id)
+          : await db.from("routine_settings").insert({ ...modePayload, user_id: user!.id });
         if (error) throw error;
-      } else {
-        const { error } = await db.from("routine_settings").insert({ ...modePayload, user_id: user!.id });
-        if (error) throw error;
-      }
-      await reschedule(schedule);
+      });
+      const scheduleOutcome = failedKeys.length === 0 ? await reschedule(schedule) : null;
+      return { failedKeys, schedule: scheduleOutcome };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["routine_settings"] });
-      toast.success(t("routine.saved"));
+      // Save and scheduling are reported SEPARATELY: the save toast says
+      // only whether the settings saved; the status line below says only
+      // what scheduling did. A scheduling failure never rewrites the
+      // save result, and a partial save never hides behind "saved".
+      const total = schedule.length + milestones.length + 1;
+      const status = summarizeRoutineSave(result.failedKeys.length, total);
+      if (status === "failed") {
+        toast.error(t("routine.saveFailed"));
+        return;
+      }
+      if (status === "partial") {
+        toast.info(t("routine.savedPartial", { count: result.failedKeys.length }));
+      } else {
+        toast.success(t("routine.saved"));
+      }
+      if (!result.schedule) return;
+      if (result.schedule.status === "scheduled") {
+        setNotifStatus(t("routine.notifScheduled", { count: result.schedule.count }));
+      } else if (result.schedule.status === "no-permission") {
+        setNotifStatus(t("routine.noPermission"));
+      } else {
+        setNotifStatus(t("routine.savedButNotScheduled"));
+      }
     },
     onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
+
+  /** Invalid targets never reach the save: block with a plain error so
+   *  a bad min/max cannot be stored and then misread as a real target. */
+  const save = () => {
+    const bad = milestones.find((m) => validateMilestone(m.min, m.max) !== null);
+    if (bad) {
+      toast.error(t("routine.invalidTarget"));
+      return;
+    }
+    saveMutation.mutate();
+  };
 
   const sendTest = async () => {
     const granted = await requestLocalNotificationPermission();
@@ -174,7 +222,7 @@ export default function RoutinePage() {
       <button onClick={() => navigate("/more")} className="flex items-center gap-1 text-sm text-muted-foreground mb-2"><ArrowLeft className="h-4 w-4" /> {t("common.back")}</button>
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{t("routine.title")}</h1>
-        <Button size="sm" className="gap-1" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || isLoading}>
+        <Button size="sm" className="gap-1" onClick={save} disabled={saveMutation.isPending || isLoading}>
           <Save className="h-4 w-4" /> {saveMutation.isPending ? t("common.saving") : t("common.save")}
         </Button>
       </div>
