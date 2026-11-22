@@ -37,6 +37,11 @@ type InsuranceLead = {
   created_at?: string | null;
 };
 
+
+// Malformed-record defense (audit follow-up, 2026-11-21): a non-string field
+// in a damaged lead doc must never crash the admin list or detail view.
+const text = (v: unknown): string => (typeof v === "string" ? v : "");
+
 const STATUSES = ["all", "new", "contacted", "quoted", "converted", "rejected"] as const;
 
 const STATUS_LABELS: Record<string, string> = {
@@ -66,15 +71,15 @@ export default function AdminInsuranceLeadsPage() {
     },
   });
 
-  const filtered = filter === "all" ? leads : leads.filter((l) => l.status === filter);
-  const converted = leads.filter((l) => l.status === "converted");
+  const filtered = filter === "all" ? leads : leads.filter((l) => text(l.status) === filter);
+  const converted = leads.filter((l) => text(l.status) === "converted");
   const totalCommission = converted.reduce((sum, l) => sum + (Number(l.commission_amount) || 0), 0);
 
   const openLead = (l: InsuranceLead) => {
     setSelected(l);
-    setStatus(l.status ?? "new");
-    setCommission(l.commission_amount != null ? String(l.commission_amount) : "");
-    setNote(l.commission_note ?? "");
+    setStatus(text(l.status) || "new");
+    setCommission(typeof l.commission_amount === "number" ? String(l.commission_amount) : "");
+    setNote(text(l.commission_note));
   };
 
   const saveMutation = useMutation({
@@ -158,16 +163,16 @@ export default function AdminInsuranceLeadsPage() {
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Shield className="h-4 w-4" /></div>
                     <div className="min-w-0">
-                      <p className="text-sm font-bold truncate">{l.name ?? "—"} • {l.vehicle_model ?? "—"}</p>
+                      <p className="text-sm font-bold truncate">{text(l.name) || "—"} • {text(l.vehicle_model) || "—"}</p>
                       <p className="text-xs text-muted-foreground truncate">
-                        {l.phone ?? "—"} • {l.city ?? "—"}
-                        {l.commission_amount != null ? ` • ₹${l.commission_amount}` : ""}
+                        {text(l.phone) || "—"} • {text(l.city) || "—"}
+                        {typeof l.commission_amount === "number" ? ` • ₹${l.commission_amount}` : ""}
                       </p>
                     </div>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-xs font-semibold">{STATUS_LABELS[l.status ?? ""] ?? (l.status ?? "—")}</p>
-                    {l.created_at && <p className="text-[10px] text-muted-foreground">{new Date(l.created_at).toLocaleDateString()}</p>}
+                    <p className="text-xs font-semibold">{STATUS_LABELS[text(l.status)] ?? (text(l.status) || "—")}</p>
+                    {text(l.created_at) && !isNaN(new Date(text(l.created_at)).getTime()) && <p className="text-[10px] text-muted-foreground">{new Date(text(l.created_at)).toLocaleDateString()}</p>}
                   </div>
                 </div>
               </CardContent>
@@ -183,11 +188,11 @@ export default function AdminInsuranceLeadsPage() {
           </DialogHeader>
           {selected && (
             <div className="space-y-3 text-sm">
-              <p><span className="text-muted-foreground">{"Name"}: </span>{selected.name ?? "—"}</p>
-              <p><span className="text-muted-foreground">{"Phone"}: </span><a href={`tel:${selected.phone}`} className="text-primary">{selected.phone ?? "—"}</a></p>
-              <p><span className="text-muted-foreground">{"Vehicle"}: </span>{selected.vehicle_number ?? "—"} • {selected.vehicle_model ?? "—"} {selected.vehicle_year ? `(${selected.vehicle_year})` : ""}</p>
-              <p><span className="text-muted-foreground">{"City"}: </span>{selected.city ?? "—"}</p>
-              <p><span className="text-muted-foreground">{"Policy expiry"}: </span>{selected.policy_expiry ?? "—"}</p>
+              <p><span className="text-muted-foreground">{"Name"}: </span>{text(selected.name) || "—"}</p>
+              <p><span className="text-muted-foreground">{"Phone"}: </span><a href={`tel:${text(selected.phone)}`} className="text-primary">{text(selected.phone) || "—"}</a></p>
+              <p><span className="text-muted-foreground">{"Vehicle"}: </span>{text(selected.vehicle_number) || "—"} • {text(selected.vehicle_model) || "—"} {text(selected.vehicle_year) ? `(${text(selected.vehicle_year)})` : ""}</p>
+              <p><span className="text-muted-foreground">{"City"}: </span>{text(selected.city) || "—"}</p>
+              <p><span className="text-muted-foreground">{"Policy expiry"}: </span>{text(selected.policy_expiry) || "—"}</p>
               <p><span className="text-muted-foreground">{"Consent"}: </span>{selected.consent ? "Yes" : "No"}</p>
               <p><span className="text-muted-foreground">{"Lead ID"}: </span><span className="break-all">{selected.id}</span></p>
               <div>
@@ -228,7 +233,7 @@ export default function AdminInsuranceLeadsPage() {
           </DialogHeader>
           {selected && (
             <div className="space-y-3 text-sm">
-              <p>{selected.name ?? "—"}</p>
+              <p>{text(selected.name) || "—"}</p>
               <p className="text-muted-foreground">{"Delete this lead? This cannot be undone."}</p>
               <div className="flex gap-2">
                 <Button variant="destructive" className="flex-1" onClick={() => deleteMutation.mutate(selected.id)} disabled={deleteMutation.isPending}>

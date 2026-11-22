@@ -35,11 +35,3 @@ export const isCapacitor = (): boolean => {
   if (typeof window === "undefined") return false;
   return !!(window as any).Capacitor?.isNativePlatform?.();
 };
-
-/** Get platform name for analytics/debugging */
-export const getPlatformName = (): string => {
-  if (isCapacitor()) return "capacitor";
-  if (isDespiaNative()) return "despia";
-  if (isStandalonePWA()) return "pwa";
-  return "web";
-};

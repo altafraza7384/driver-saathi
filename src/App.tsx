@@ -14,7 +14,7 @@ import { lazyWithRetry } from "@/lib/lazyWithRetry";
 import { AndroidBackButton } from "@/components/AndroidBackButton";
 import { logScreen } from "@/lib/analytics";
 import { useToast } from "@/hooks/use-toast";
-import { sendVerificationEmailToCurrentUser, reloadCurrentUser } from "@/integrations/firebase/adapter";
+import { sendVerificationEmailToCurrentUser, reloadCurrentUser, ensureVerifiedProfileForCurrentUser } from "@/integrations/firebase/adapter";
 
 import { isAdminOnlyAccount } from "@/lib/admin-only";
 
@@ -29,6 +29,9 @@ const MorePage = lazyWithRetry(() => import("./pages/MorePage"));
 const CarChecksPage = lazyWithRetry(() => import("./pages/CarChecksPage"));
 const RemindersPage = lazyWithRetry(() => import("./pages/RemindersPage"));
 const NotesPage = lazyWithRetry(() => import("./pages/NotesPage"));
+const RoutinePage = lazyWithRetry(() => import("./pages/RoutinePage"));
+const HabitsPage = lazyWithRetry(() => import("./pages/HabitsPage"));
+const DailyReportPage = lazyWithRetry(() => import("./pages/DailyReportPage"));
 const SOSPage = lazyWithRetry(() => import("./pages/SOSPage"));
 const CarSosPage = lazyWithRetry(() => import("./pages/CarSosPage"));
 const SettingsPage = lazyWithRetry(() => import("./pages/SettingsPage"));
@@ -128,6 +131,10 @@ function VerifyEmailScreen() {
     setChecking(true);
     try {
       await reloadCurrentUser();
+      // Create the users/{uid} profile row that the rules denied at signup
+      // (2026-11-21 policy). No-op unless the email is now verified, and it
+      // never throws into this handler.
+      await ensureVerifiedProfileForCurrentUser();
     } catch {
       // Reload failure just means the check below re-reads the old flag;
       // the page reload re-bootstraps the session either way.
@@ -273,6 +280,9 @@ const App = () => (
                     <Route path="/car-checks" element={<CarChecksPage />} />
                     <Route path="/reminders" element={<RemindersPage />} />
                     <Route path="/notes" element={<NotesPage />} />
+                    <Route path="/routine" element={<RoutinePage />} />
+                    <Route path="/habits" element={<HabitsPage />} />
+                    <Route path="/daily-report" element={<DailyReportPage />} />
                     <Route path="/sos" element={<SOSPage />} />
                     <Route path="/car-sos" element={<CarSosPage />} />
                     <Route path="/insurance" element={<InsuranceLeadPage />} />
