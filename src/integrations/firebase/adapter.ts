@@ -64,7 +64,7 @@ import {
 } from "firebase/auth";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { httpsCallable } from "firebase/functions";
-import { firebaseAuth, firebaseDb, firebaseStorage, firebaseFunctions } from "./client";
+import { firebaseAuth, firebaseDb, firebaseStorage, firebaseFunctions, isLogoutWriteGateClosed } from "./client";
 import { isAdminOnlyAccount } from "@/lib/admin-only";
 
 /* ---------------------------------- errors --------------------------------- */
@@ -981,6 +981,21 @@ class QueryBuilder implements PromiseLike<Result> {
   }
 
   private async execute(): Promise<Result> {
+    // Logout write gate (PR #30 fix 1): during sign-out the flow closes
+    // this gate for the pending-writes check → terminate()+clear window.
+    // A write landing in that window would be silently destroyed by the
+    // clear, so it is rejected here instead (the caller sees an error
+    // and can retry after signing back in). Reads are unaffected, and
+    // the gate is never closed outside that short window.
+    if (this.mode !== "select" && isLogoutWriteGateClosed()) {
+      return {
+        data: null,
+        error: new BackendError(
+          "Sign-out is in progress — writes are paused. Please try again after signing back in.",
+          "LOGOUT_WRITE_GATE",
+        ),
+      };
+    }
     try {
       switch (this.mode) {
         case "insert":

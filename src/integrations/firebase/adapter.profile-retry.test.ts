@@ -21,6 +21,8 @@ vi.mock("@/integrations/firebase/client", () => ({
   firebaseDb: {},
   firebaseStorage: {},
   firebaseFunctions: {},
+  // Logout write gate (client.ts): never closed in these tests.
+  isLogoutWriteGateClosed: () => false,
 }));
 
 const getDocMock = vi.fn();

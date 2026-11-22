@@ -1,0 +1,133 @@
+/**
+ * Sign-out orchestration (extracted from useAuth.signOut so the ordering
+ * is testable without rendering React).
+ *
+ * ORDERING — this is the whole point (PR #30 fix 1):
+ * 1. Cancel in-flight queries first, so a fetch started under the old
+ *    account cannot resolve after the clear and write stale data back.
+ * 2. Close the logout write gate, so no NEW write can land between the
+ *    pending-writes check and terminate()+clear (a write landing there
+ *    would be silently destroyed by the clear; the adapter rejects it
+ *    instead, with a retryable error).
+ * 3. WHILE STILL SIGNED IN as the departing user, check for pending
+ *    writes and clear the offline cache if clean. waitForPendingWrites
+ *    only sees the ACTIVE identity's queue: checking after Auth sign-out
+ *    sees the next (empty) identity's queue and reports "clean" while
+ *    the departing user's offline writes are still unsynced — the old
+ *    order destroyed those writes. Checking first preserves them.
+ * 4. Reopen the write gate (finally — the window is over either way).
+ * 5. THEN sign out of Auth. Only now does the identity change.
+ * 6. Reload ONLY once signed out: the clear terminates the Firestore
+ *    instance, so the page needs a fresh one — but a reload while still
+ *    signed in would bring the user straight back in. If the cache was
+ *    cleared but sign-out failed, reinitialize the client instead so the
+ *    app stays usable (server data re-syncs) and logout can be retried.
+ *
+ * SHARED / TRUSTED-DEVICE POLICY (explicit): on a shared device, logout
+ * clears the previous user's offline cache ONLY when that user has no
+ * unsynced writes. If writes are pending (offline), the cache is KEPT —
+ * privacy yields to data safety, because clearing would destroy data the
+ * user created offline. The data stays on the device until the user is
+ * back online and logs out again after it syncs. The kept-cache case is
+ * logged (onCacheKept); there is no silent loss either way.
+ */
+import {
+  clearFirestoreCacheOnLogout,
+  type FirestoreCacheApi,
+  type LogoutCacheResult,
+} from "./logoutCache";
+import {
+  closeLogoutWriteGate,
+  openLogoutWriteGate,
+  reinitializeFirestore,
+} from "./client";
+import type { Firestore } from "firebase/firestore";
+
+export type SignOutFlowDeps = {
+  /** Firestore cache step. Null/omitted on non-Firebase backends. */
+  firestore?: {
+    db: Firestore;
+    api?: FirestoreCacheApi;
+    timeoutMs?: number;
+  } | null;
+  /** Auth sign-out (full). Must run AFTER the cache step. */
+  signOutAuth: () => Promise<void>;
+  /** Local-only sign-out fallback when the full sign-out throws. */
+  signOutAuthLocal: () => Promise<void>;
+  cancelQueries: () => void;
+  clearQueries: () => void;
+  closeWriteGate?: () => void;
+  openWriteGate?: () => void;
+  reinitializeFirestore?: () => void;
+  reload?: () => void;
+  onCacheKept?: (result: LogoutCacheResult) => void;
+};
+
+export type SignOutFlowResult = {
+  cache: LogoutCacheResult | null;
+  signedOut: boolean;
+  reloaded: boolean;
+  reinitialized: boolean;
+};
+
+export async function performSignOut(
+  deps: SignOutFlowDeps,
+): Promise<SignOutFlowResult> {
+  const closeGate = deps.closeWriteGate ?? closeLogoutWriteGate;
+  const openGate = deps.openWriteGate ?? openLogoutWriteGate;
+  const reinit = deps.reinitializeFirestore ?? reinitializeFirestore;
+  const reload = deps.reload ?? (() => window.location.reload());
+
+  // 1. Stop in-flight reads before anything else.
+  deps.cancelQueries();
+  deps.clearQueries();
+
+  // 2–4. Cache step while still signed in as the departing user.
+  let cache: LogoutCacheResult | null = null;
+  let reinitialized = false;
+  if (deps.firestore) {
+    closeGate();
+    try {
+      cache = await clearFirestoreCacheOnLogout(deps.firestore.db, {
+        timeoutMs: deps.firestore.timeoutMs,
+        api: deps.firestore.api,
+      });
+    } finally {
+      openGate();
+    }
+    if (!cache.cleared) deps.onCacheKept?.(cache);
+  }
+
+  // 5. NOW sign out of Auth — only after the departing user's writes
+  //    were handled.
+  let signedOut = false;
+  try {
+    await deps.signOutAuth();
+    signedOut = true;
+  } catch (error) {
+    console.error("Sign out failed, clearing local session", error);
+    try {
+      await deps.signOutAuthLocal();
+      signedOut = true;
+    } catch (e2) {
+      console.error("Local sign out also failed", e2);
+    }
+  }
+
+  // 6. Reload only once signed out (a reload while still signed in
+  //    would bring the user straight back in). If the cache was cleared
+  //    but sign-out failed, restore a usable client instead.
+  let reloaded = false;
+  if (cache?.cleared && signedOut) {
+    reload();
+    reloaded = true;
+  } else if (cache?.cleared && !signedOut) {
+    try {
+      reinit();
+      reinitialized = true;
+    } catch (e) {
+      console.warn("Firestore reinit after failed sign-out failed", e);
+    }
+  }
+  return { cache, signedOut, reloaded, reinitialized };
+}

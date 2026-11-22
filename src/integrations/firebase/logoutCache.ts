@@ -27,6 +27,19 @@ import {
  * the caller MUST reload the page (module init creates a fresh
  * instance). The helper reports what happened; it never throws.
  *
+ * SHARED / TRUSTED-DEVICE POLICY (explicit): on a shared device, logout
+ * clears the previous user's offline cache ONLY when that user has no
+ * unsynced writes. If writes are pending (offline), the cache is KEPT —
+ * privacy yields to data safety, because clearing would destroy data the
+ * user created offline. The data stays on the device until the user is
+ * back online and logs out again after it syncs. The caller (signOutFlow)
+ * is responsible for checking BEFORE Auth sign-out changes the identity:
+ * waitForPendingWrites only sees the active identity's queue, so a
+ * check after sign-out would see the next identity's empty queue and
+ * report "clean" while the departing user's writes are still pending.
+ * This helper alone cannot know which identity is departing — it trusts
+ * the caller to call it while the departing user is still signed in.
+ *
  * Known limits (by design, not bugs):
  * - If another tab holds the database open (web multi-tab manager),
  *   terminate/clear can fail — the cache is then kept and logout still
