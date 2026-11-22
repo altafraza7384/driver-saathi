@@ -1,15 +1,18 @@
 import { describe, expect, it } from "vitest";
-import {retimeForMode, SCHEDULE_KEYS, schedulePreset, 
+import {retimeForMode, SCHEDULE_KEYS, schedulePreset,
   DEFAULT_MILESTONES,
   DEFAULT_SCHEDULE,
   buildDailyNotifications,
   buildDailyReportText,
   computeStreak,
+  habitLogId,
+  isHabitDone,
   mergeMilestones,
   mergeSchedule,
   milestoneForNow,
   minutesOf,
   parseTime,
+  planHabitToggle,
   routineNotificationId,
   incomeEarnedBy,
 } from "@/lib/routine";
@@ -270,5 +273,70 @@ describe("retimeForMode", () => {
     const backToDay = retimeForMode(night, "night", "day");
     expect(backToDay.find((i) => i.key === "wake")?.time).toBe("07:00");
     expect(backToDay.find((i) => i.key === "cp1")?.time).toBe("11:15");
+  });
+});
+
+describe("habitLogId / planHabitToggle / isHabitDone", () => {
+  type Row = { id: string; habit_id: string; date: string; done: boolean };
+
+  // In-memory stand-in for the habit_logs collection: a Map keyed by doc
+  // id mirrors setDoc-with-id (a repeat write overwrites) and deleteDoc.
+  // The page executes exactly the plan computed here.
+  const applyPlan = (store: Map<string, Row>, plan: ReturnType<typeof planHabitToggle>, habitId: string, date: string, done: boolean) => {
+    if (plan.writeId) store.set(plan.writeId, { id: plan.writeId, habit_id: habitId, date, done });
+    for (const id of plan.deleteIds) store.delete(id);
+  };
+  const toggle = (store: Map<string, Row>, habitId: string, date: string, done: boolean) =>
+    applyPlan(store, planHabitToggle([...store.values()], habitId, date, done), habitId, date, done);
+
+  it("gives one stable id per habit+date", () => {
+    expect(habitLogId("h1", "2026-11-22")).toBe("h1_2026-11-22");
+    expect(habitLogId("h1", "2026-11-22")).toBe(habitLogId("h1", "2026-11-22"));
+    expect(habitLogId("h1", "2026-11-22")).not.toBe(habitLogId("h2", "2026-11-22"));
+    expect(habitLogId("h1", "2026-11-22")).not.toBe(habitLogId("h1", "2026-11-23"));
+  });
+
+  it("double check-toggle creates exactly one log", () => {
+    const store = new Map<string, Row>();
+    // Both taps read the same not-yet-refreshed cache (no log yet), so
+    // both plans are computed from the empty state — as in the real race.
+    const plan1 = planHabitToggle([], "h1", "2026-11-22", true);
+    const plan2 = planHabitToggle([], "h1", "2026-11-22", true);
+    applyPlan(store, plan1, "h1", "2026-11-22", true);
+    applyPlan(store, plan2, "h1", "2026-11-22", true);
+    expect(store.size).toBe(1);
+    expect(isHabitDone([...store.values()], "h1", "2026-11-22")).toBe(true);
+  });
+
+  it("uncheck removes the log and the habit reads unchecked", () => {
+    const store = new Map<string, Row>();
+    toggle(store, "h1", "2026-11-22", true);
+    toggle(store, "h1", "2026-11-22", false);
+    expect(store.size).toBe(0);
+    expect(isHabitDone([...store.values()], "h1", "2026-11-22")).toBe(false);
+  });
+
+  it("uncheck also removes legacy duplicate logs, so the habit cannot stay checked", () => {
+    // Two docs for the same habit+date, as the old race created them: the
+    // deterministic doc plus one with a random id.
+    const store = new Map<string, Row>([
+      ["h1_2026-11-22", { id: "h1_2026-11-22", habit_id: "h1", date: "2026-11-22", done: true }],
+      ["legacy-random-id", { id: "legacy-random-id", habit_id: "h1", date: "2026-11-22", done: true }],
+    ]);
+    toggle(store, "h1", "2026-11-22", false);
+    expect(store.size).toBe(0);
+    expect(isHabitDone([...store.values()], "h1", "2026-11-22")).toBe(false);
+  });
+
+  it("leaves other habits and dates alone", () => {
+    const store = new Map<string, Row>();
+    toggle(store, "h1", "2026-11-22", true);
+    toggle(store, "h2", "2026-11-22", true);
+    toggle(store, "h1", "2026-11-21", true);
+    toggle(store, "h1", "2026-11-22", false);
+    expect(store.size).toBe(2);
+    expect(isHabitDone([...store.values()], "h1", "2026-11-22")).toBe(false);
+    expect(isHabitDone([...store.values()], "h2", "2026-11-22")).toBe(true);
+    expect(isHabitDone([...store.values()], "h1", "2026-11-21")).toBe(true);
   });
 });

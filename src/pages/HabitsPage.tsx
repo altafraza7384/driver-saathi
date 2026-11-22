@@ -8,7 +8,7 @@ import { friendlyErrorMessage } from "@/lib/errors";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
 import { localToday } from "@/lib/budgets";
-import { computeStreak } from "@/lib/routine";
+import { computeStreak, isHabitDone, planHabitToggle } from "@/lib/routine";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -84,12 +84,19 @@ export default function HabitsPage() {
 
   const toggleMutation = useMutation({
     mutationFn: async ({ habitId, done }: { habitId: string; done: boolean }) => {
-      const existing = (logs as any[]).find((l) => l.habit_id === habitId && l.date === today);
-      if (existing) {
-        const { error } = await db.from("habit_logs").update({ done }).eq("id", existing.id);
+      // Deterministic doc id per habit+date (see habitLogId): a second
+      // create overwrites the same doc instead of duplicating it, so two
+      // rapid taps can no longer leave two completed logs behind. The
+      // deleteIds sweep removes any legacy duplicates from the old race.
+      const plan = planHabitToggle(logs as any[], habitId, today, done);
+      if (plan.writeId) {
+        const { error } = await db
+          .from("habit_logs")
+          .insert({ id: plan.writeId, user_id: user!.id, habit_id: habitId, date: today, done });
         if (error) throw error;
-      } else {
-        const { error } = await db.from("habit_logs").insert({ user_id: user!.id, habit_id: habitId, date: today, done });
+      }
+      for (const id of plan.deleteIds) {
+        const { error } = await db.from("habit_logs").delete().eq("id", id);
         if (error) throw error;
       }
     },
@@ -112,7 +119,7 @@ export default function HabitsPage() {
     onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
 
-  const isDone = (habitId: string) => (logs as any[]).some((l) => l.habit_id === habitId && l.date === today && l.done);
+  const isDone = (habitId: string) => isHabitDone(logs as any[], habitId, today);
   const streakFor = (habitId: string) =>
     computeStreak((logs as any[]).filter((l) => l.habit_id === habitId && l.done).map((l) => l.date), today);
 
@@ -158,6 +165,10 @@ export default function HabitsPage() {
                       className="flex flex-1 items-center gap-3 text-left"
                       onClick={() => toggleMutation.mutate({ habitId: habit.id, done: !done })}
                       aria-pressed={done}
+                      // While this habit's toggle is in flight the button is
+                      // disabled, so a rapid double-tap cannot fire a second
+                      // toggle off the same stale state.
+                      disabled={toggleMutation.isPending && toggleMutation.variables?.habitId === habit.id}
                     >
                       <div className={`flex h-8 w-8 items-center justify-center rounded-full ${done ? "bg-success text-success-foreground" : "bg-muted text-muted-foreground"}`}>
                         <Check className="h-4 w-4" />
