@@ -10,6 +10,7 @@ import {retimeForMode, SCHEDULE_KEYS, schedulePreset,
   formatCheckpointLabel,
   habitLogId,
   isHabitDone,
+  findSettingRow,
   mergeMilestones,
   mergeSchedule,
   milestoneForNow,
@@ -17,6 +18,7 @@ import {retimeForMode, SCHEDULE_KEYS, schedulePreset,
   parseTime,
   planHabitToggle,
   routineNotificationId,
+  routineSettingId,
   summarizeRoutineSave,
   validateMilestone,
   incomeEarnedBy,
@@ -84,6 +86,65 @@ describe("buildDailyNotifications", () => {
     expect(notes[0].schedule.on).toEqual({ hour: 7, minute: 0 });
     expect(notes[0].schedule.every).toBe("day");
     expect(notes[0].title).toBe("title-wake");
+  });
+});
+
+describe("routineSettingId / findSettingRow (idempotent settings upsert)", () => {
+  it("gives one stable id per kind+key, and a legal Firestore doc id", () => {
+    expect(routineSettingId("schedule", "cp1")).toBe("schedule_cp1");
+    expect(routineSettingId("schedule", "cp1")).toBe(routineSettingId("schedule", "cp1"));
+    expect(routineSettingId("schedule", "cp1")).not.toBe(routineSettingId("milestone", "cp1"));
+    expect(routineSettingId("schedule", "cp1")).not.toBe(routineSettingId("schedule", "cp2"));
+    for (const kind of ["schedule", "milestone", "shift"]) {
+      for (const key of ["wake", "cp1", "mode"]) {
+        expect(routineSettingId(kind, key)).not.toContain("/");
+      }
+    }
+  });
+
+  it("prefers the stable-id row over a legacy random-id row for the same kind+key", () => {
+    const rows = [
+      { id: "legacy-random", kind: "schedule", key: "cp1", time: "10:30", enabled: true, message: "old" },
+      { id: "schedule_cp1", kind: "schedule", key: "cp1", time: "11:15", enabled: true, message: "new" },
+    ];
+    expect(findSettingRow(rows, "schedule", "cp1")?.id).toBe("schedule_cp1");
+  });
+
+  it("falls back to the legacy row when no stable-id row exists yet", () => {
+    const rows = [{ id: "legacy-random", kind: "schedule", key: "cp1", time: "10:30", enabled: true, message: "old" }];
+    expect(findSettingRow(rows, "schedule", "cp1")?.id).toBe("legacy-random");
+  });
+
+  it("returns undefined when the setting was never stored", () => {
+    expect(findSettingRow([], "schedule", "cp1")).toBeUndefined();
+    expect(findSettingRow([{ id: "x", kind: "schedule", key: "cp2" }], "schedule", "cp1")).toBeUndefined();
+  });
+
+  it("merge prefers the stable-id row, so a legacy duplicate cannot resurrect stale values", () => {
+    const merged = mergeSchedule([
+      { id: "legacy-random", kind: "schedule", key: "cp1", time: "10:30", enabled: true, message: "old" },
+      { id: "schedule_cp1", kind: "schedule", key: "cp1", time: "11:15", enabled: true, message: "new" },
+    ]);
+    expect(merged.find((s) => s.key === "cp1")?.time).toBe("11:15");
+    const ms = mergeMilestones([
+      { id: "legacy-m", kind: "milestone", key: "cp1", min: 500, max: 700 },
+      { id: "milestone_cp1", kind: "milestone", key: "cp1", min: 600, max: 800 },
+    ]);
+    expect(ms.find((m) => m.key === "cp1")).toEqual({ key: "cp1", min: 600, max: 800 });
+  });
+
+  it("a repeat write to the same stable id overwrites instead of duplicating (store model)", () => {
+    // In-memory stand-in for setDoc-with-id: a Map keyed by doc id.
+    const store = new Map<string, { id: string; kind: string; key: string; time: string }>();
+    const upsert = (kind: string, key: string, time: string) =>
+      store.set(routineSettingId(kind, key), { id: routineSettingId(kind, key), kind, key, time });
+    // Two saves that both see an empty cache (refetch unavailable).
+    for (let i = 0; i < 2; i++) {
+      for (const k of ["wake", "depart", "cp1", "cp2", "cp3", "cp4", "day_end"]) upsert("schedule", k, "07:00");
+      for (const k of ["cp1", "cp2", "cp3", "cp4", "day_end"]) upsert("milestone", k, "07:00");
+      upsert("shift", "mode", "07:00");
+    }
+    expect(store.size).toBe(13);
   });
 });
 

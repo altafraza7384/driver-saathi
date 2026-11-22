@@ -23,16 +23,30 @@ import {
   ShiftMode,
   ScheduleOutcome,
   RoutineSaveResult,
+  RoutineSettingPayload,
+  findSettingRow,
   mergeSchedule,
   mergeMilestones,
   buildDailyNotifications,
   routineNotificationId,
+  routineSettingId,
   schedulePreset,
   retimeForMode,
   summarizeRoutineSave,
   validateMilestone,
   SCHEDULE_KEYS,
 } from "@/lib/routine";
+
+/** Intended values of the rows whose last save failed. The settings
+ *  effect overlays these on top of whatever the refetch returns, so a
+ *  failed edit (e.g. cp1 500 -> 600) survives until the retry succeeds
+ *  instead of being clobbered by the old stored value. Cleared on a
+ *  fully successful save. Kept in sync by every local edit below. */
+interface PendingFailedEdits {
+  schedule: ScheduleItem[];
+  milestones: Milestone[];
+  shiftMode: ShiftMode | null;
+}
 
 /** Stable empty rows for the routine_settings query default (see below). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -48,6 +62,7 @@ export default function RoutinePage() {
   const [shiftMode, setShiftMode] = useState<ShiftMode>("day");
   const [milestones, setMilestones] = useState<Milestone[]>(() => mergeMilestones([]));
   const [notifStatus, setNotifStatus] = useState<string>("");
+  const [pendingFailedEdits, setPendingFailedEdits] = useState<PendingFailedEdits | null>(null);
 
   // Module-level empty rows: `data: settings = []` would hand the
   // useEffect below a FRESH array on every render while the query is
@@ -65,25 +80,56 @@ export default function RoutinePage() {
   });
 
   useEffect(() => {
-    setSchedule(mergeSchedule((settings as any[]).filter((r) => r.kind === "schedule")));
+    const mergedSchedule = mergeSchedule((settings as any[]).filter((r) => r.kind === "schedule"));
+    const mergedMilestones = mergeMilestones(
+      (settings as any[])
+        .filter((r) => r.kind === "milestone")
+        .map((r) => ({ key: r.key, min: Number(r.min_amount) || 0, max: Number(r.max_amount) || 0 })),
+    );
+    // A failed edit is still the driver's intent: overlay it on top of
+    // the refetched (old) values, or the next Save would write the old
+    // value while reporting success. Applies on every settings change,
+    // including the refetch a partial save triggers.
+    if (pendingFailedEdits) {
+      for (const item of pendingFailedEdits.schedule) {
+        const idx = mergedSchedule.findIndex((s) => s.key === item.key);
+        if (idx >= 0) mergedSchedule[idx] = item;
+      }
+      for (const m of pendingFailedEdits.milestones) {
+        const idx = mergedMilestones.findIndex((x) => x.key === m.key);
+        if (idx >= 0) mergedMilestones[idx] = m;
+      }
+    }
+    setSchedule(mergedSchedule);
     const modeRow = (settings as any[]).find((r) => r.kind === "shift" && r.key === "mode");
     if (modeRow?.message === "night") setShiftMode("night");
-    setMilestones(
-      mergeMilestones(
-        (settings as any[])
-          .filter((r) => r.kind === "milestone")
-          .map((r) => ({ key: r.key, min: Number(r.min_amount) || 0, max: Number(r.max_amount) || 0 })),
-      ),
-    );
-  }, [settings]);
+    else if (modeRow?.message === "day") setShiftMode("day");
+    else if (pendingFailedEdits?.shiftMode) setShiftMode(pendingFailedEdits.shiftMode);
+    setMilestones(mergedMilestones);
+  }, [settings, pendingFailedEdits]);
 
   const titleFor = (key: string) => t(`routine.item.${key}`);
 
   /** Switching Day/Night loads that preset into the editable fields only.
    *  Times stay fully editable and nothing saves until सहेजें/Save. The
-   *  toggle changes reminder timings only - never accounting or dates. */
+   *  toggle changes reminder timings only - never accounting or dates.
+   *  A pending failed edit is retimed by the same rule, so it cannot
+   *  resurrect pre-toggle times on the next refetch. */
   const applyShiftMode = (mode: ShiftMode) => {
     setSchedule((current) => retimeForMode(current, shiftMode, mode));
+    setPendingFailedEdits((prev) =>
+      prev
+        ? {
+            ...prev,
+            schedule: prev.schedule.map((item) => {
+              const fromTime = schedulePreset(shiftMode).find((f) => f.key === item.key)?.time;
+              const toTime = schedulePreset(mode).find((f) => f.key === item.key)?.time;
+              return { ...item, time: fromTime === item.time && toTime ? toTime : item.time };
+            }),
+            shiftMode: mode,
+          }
+        : prev,
+    );
     setShiftMode(mode);
   };
 
@@ -113,9 +159,12 @@ export default function RoutinePage() {
   const saveMutation = useMutation({
     // Every row is attempted even when an earlier one fails, so one bad
     // row cannot silently drop the rest; failures are collected by key
-    // and reported as partial, with Save-again as the retry (every row
-    // write is an idempotent upsert). Scheduling runs only when every
-    // row saved — the scheduled reminders must match what is stored.
+    // and reported as partial, with Save-again as the retry. Each row
+    // write is an idempotent upsert (stable kind/key doc id): a retry
+    // that cannot see the rows it just wrote overwrites the same docs
+    // instead of duplicating them, and a legacy random-id row is updated
+    // in place. Scheduling runs only when every row saved — the
+    // scheduled reminders must match what is stored.
     mutationFn: async (): Promise<RoutineSaveResult> => {
       const failedKeys: string[] = [];
       const attempt = async (key: string, work: () => Promise<void>) => {
@@ -126,36 +175,42 @@ export default function RoutinePage() {
         }
       };
       const rows = settings as any[];
+      // The values the driver intended at save time, kept so the failed
+      // rows can be preserved (and retried) after the refetch.
+      const intendedSchedule = schedule;
+      const intendedMilestones = milestones;
+      const intendedMode = shiftMode;
+      const upsertRow = async (kind: "schedule" | "milestone" | "shift", key: string, payload: RoutineSettingPayload) => {
+        const existing = findSettingRow(rows, kind, key);
+        if (existing) {
+          const { error } = await db.from("routine_settings").update(payload).eq("id", existing.id);
+          if (error) throw error;
+        } else {
+          const { error } = await db.from("routine_settings").insert({ ...payload, id: routineSettingId(kind, key), user_id: user!.id });
+          if (error) throw error;
+        }
+      };
       for (const item of schedule) {
         await attempt(`schedule:${item.key}`, async () => {
-          const existing = rows.find((r) => r.kind === "schedule" && r.key === item.key);
-          const payload = { kind: "schedule", key: item.key, time: item.time, enabled: item.enabled, message: item.message };
-          const { error } = existing
-            ? await db.from("routine_settings").update(payload).eq("id", existing.id)
-            : await db.from("routine_settings").insert({ ...payload, user_id: user!.id });
-          if (error) throw error;
+          await upsertRow("schedule", item.key, { kind: "schedule", key: item.key, time: item.time, enabled: item.enabled, message: item.message });
         });
       }
       for (const m of milestones) {
         await attempt(`milestone:${m.key}`, async () => {
-          const existing = rows.find((r) => r.kind === "milestone" && r.key === m.key);
-          const payload = { kind: "milestone", key: m.key, min_amount: m.min, max_amount: m.max };
-          const { error } = existing
-            ? await db.from("routine_settings").update(payload).eq("id", existing.id)
-            : await db.from("routine_settings").insert({ ...payload, user_id: user!.id });
-          if (error) throw error;
+          await upsertRow("milestone", m.key, { kind: "milestone", key: m.key, min_amount: m.min, max_amount: m.max });
         });
       }
       await attempt("shift:mode", async () => {
-        const modeRow = (settings as any[]).find((r) => r.kind === "shift" && r.key === "mode");
-        const modePayload = { kind: "shift", key: "mode", message: shiftMode };
-        const { error } = modeRow
-          ? await db.from("routine_settings").update(modePayload).eq("id", modeRow.id)
-          : await db.from("routine_settings").insert({ ...modePayload, user_id: user!.id });
-        if (error) throw error;
+        await upsertRow("shift", "mode", { kind: "shift", key: "mode", message: shiftMode });
       });
       const scheduleOutcome = failedKeys.length === 0 ? await reschedule(schedule) : null;
-      return { failedKeys, schedule: scheduleOutcome };
+      return {
+        failedKeys,
+        schedule: scheduleOutcome,
+        failedSchedule: intendedSchedule.filter((item) => failedKeys.includes(`schedule:${item.key}`)),
+        failedMilestones: intendedMilestones.filter((m) => failedKeys.includes(`milestone:${m.key}`)),
+        failedShiftMode: failedKeys.includes("shift:mode") ? intendedMode : null,
+      };
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["routine_settings"] });
@@ -165,6 +220,19 @@ export default function RoutinePage() {
       // save result, and a partial save never hides behind "saved".
       const total = schedule.length + milestones.length + 1;
       const status = summarizeRoutineSave(result.failedKeys.length, total);
+      // Keep the failed rows' intended values, on partial AND on full
+      // failure: the invalidation above refetches the OLD stored values,
+      // and without this the page would show (and the next Save would
+      // write) the old values instead of the driver's edits.
+      if (result.failedKeys.length > 0) {
+        setPendingFailedEdits({
+          schedule: result.failedSchedule,
+          milestones: result.failedMilestones,
+          shiftMode: result.failedShiftMode,
+        });
+      } else {
+        setPendingFailedEdits(null);
+      }
       if (status === "failed") {
         toast.error(t("routine.saveFailed"));
         return;
@@ -219,10 +287,20 @@ export default function RoutinePage() {
     }
   };
 
-  const updateItem = (key: string, patch: Partial<ScheduleItem>) =>
+  const updateItem = (key: string, patch: Partial<ScheduleItem>) => {
     setSchedule((prev) => prev.map((s) => (s.key === key ? { ...s, ...patch } : s)));
-  const updateMilestone = (key: string, patch: Partial<Milestone>) =>
+    // A later manual edit of a failed row replaces the preserved intent
+    // with the new value, so a refetch cannot resurrect the stale one.
+    setPendingFailedEdits((prev) =>
+      prev ? { ...prev, schedule: prev.schedule.map((s) => (s.key === key ? { ...s, ...patch } : s)) } : prev,
+    );
+  };
+  const updateMilestone = (key: string, patch: Partial<Milestone>) => {
     setMilestones((prev) => prev.map((m) => (m.key === key ? { ...m, ...patch } : m)));
+    setPendingFailedEdits((prev) =>
+      prev ? { ...prev, milestones: prev.milestones.map((m) => (m.key === key ? { ...m, ...patch } : m)) } : prev,
+    );
+  };
 
   const milestoneFor = (key: string) => milestones.find((m) => m.key === key);
 
