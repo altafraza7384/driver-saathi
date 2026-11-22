@@ -28,14 +28,28 @@
 import { describe, it, expect, vi } from "vitest";
 import { performSignOut, type SignOutFlowDeps } from "./signOutFlow";
 import type { FirestoreCacheApi } from "./logoutCache";
+import { preservedWritesLedger } from "./preservedWrites";
 import type { Firestore } from "firebase/firestore";
 
 /** Minimal in-test model of one Firestore client + its IndexedDB store. */
 class FakeFirestore {
   uid: string | null = null;
   terminated = false;
-  store = new Map<string, unknown>();
-  pending = new Map<string, Set<string>>();
+  store: Map<string, unknown>;
+  pending: Map<string, Set<string>>;
+
+  /**
+   * A reload creates a fresh client over the SAME IndexedDB store: pass
+   * the shared maps to model it (the store and the pending queues
+   * survive; only the client instance is new).
+   */
+  constructor(shared?: {
+    store: Map<string, unknown>;
+    pending: Map<string, Set<string>>;
+  }) {
+    this.store = shared?.store ?? new Map<string, unknown>();
+    this.pending = shared?.pending ?? new Map<string, Set<string>>();
+  }
   gate = { closed: false };
   calls: string[] = [];
   /** Hook run inside waitForPendingWrites, after the snapshot decision. */
@@ -127,6 +141,7 @@ class FakeFirestore {
 function makeDeps(
   fake: FakeFirestore,
   overrides: Partial<SignOutFlowDeps> = {},
+  departingUid?: string | null,
 ): { deps: SignOutFlowDeps; reload: ReturnType<typeof vi.fn> } {
   const reload = vi.fn();
   const deps: SignOutFlowDeps = {
@@ -134,6 +149,7 @@ function makeDeps(
       db: fake as unknown as Firestore,
       api: fake.asApi(),
       timeoutMs: 50,
+      departingUid,
     },
     signOutAuth: async () => {
       fake.signOut();
@@ -260,5 +276,86 @@ describe("performSignOut — recovery when the clear fails after terminate (fix 
     expect(fake.read("tx-1")).toEqual({ amount: 500 });
     expect(result.signedOut).toBe(true);
     expect(reload).not.toHaveBeenCalled();
+  });
+});
+
+describe("performSignOut — older retained identity's pending writes (round 2)", () => {
+  // These tests use the REAL default preserved-writes ledger
+  // (localStorage-backed, shared across the logins in each test) so
+  // they prove the production wiring, not just an injected fake. Each
+  // test resolves its entries in a finally, so no state leaks into
+  // other tests in this file.
+  it("preserves user A's unsynced write when user B logs out with a clean queue (cross-login)", async () => {
+    const fake = new FakeFirestore();
+    try {
+      // A logs out with an offline write pending: cache preserved.
+      fake.signIn("user-A");
+      fake.write("user-A", "tx-A1", { amount: 500 });
+      const { deps: depsA } = makeDeps(fake, {}, "user-A");
+      const resultA = await performSignOut(depsA);
+      expect(resultA.cache?.reason).toBe("pending-writes-preserved");
+      expect(fake.clearCalls).toBe(0);
+      expect(fake.store.get("tx-A1")).toEqual({ amount: 500 });
+
+      // B signs in on the same device and logs out with a clean queue.
+      // B's active-user check is clean — but that is NOT a whole-cache
+      // safety proof: A's write is still pending in the retained cache.
+      fake.signIn("user-B");
+      const { deps: depsB } = makeDeps(fake, {}, "user-B");
+      const resultB = await performSignOut(depsB);
+      expect(resultB.cache?.cleared).toBe(false);
+      expect(resultB.cache?.reason).toBe("pending-writes-preserved");
+      expect(fake.clearCalls).toBe(0);
+      // A's write survived B's logout — it was NOT silently discarded.
+      expect(fake.store.get("tx-A1")).toEqual({ amount: 500 });
+      expect(fake.pending.get("user-A")?.has("tx-A1")).toBe(true);
+      expect(resultB.signedOut).toBe(true);
+
+      // A returns, comes back online, syncs, and logs out clean — only
+      // now is the whole-cache clear allowed.
+      fake.signIn("user-A");
+      fake.syncAll();
+      const { deps: depsA2 } = makeDeps(fake, {}, "user-A");
+      const resultA2 = await performSignOut(depsA2);
+      expect(resultA2.cache?.cleared).toBe(true);
+      expect(fake.store.has("tx-A1")).toBe(false);
+    } finally {
+      preservedWritesLedger.resolve("user-A");
+      preservedWritesLedger.resolve("user-B");
+    }
+  });
+
+  it("preserves user A's unsynced write across a reload when user B logs out (reload)", async () => {
+    // One IndexedDB store shared across the reload; the ledger is the
+    // same durable localStorage store the production code uses.
+    const shared = {
+      store: new Map<string, unknown>(),
+      pending: new Map<string, Set<string>>(),
+    };
+    const before = new FakeFirestore(shared);
+    try {
+      before.signIn("user-A");
+      before.write("user-A", "tx-A1", { amount: 500 });
+      const { deps: depsA } = makeDeps(before, {}, "user-A");
+      const resultA = await performSignOut(depsA);
+      expect(resultA.cache?.reason).toBe("pending-writes-preserved");
+      expect(before.clearCalls).toBe(0);
+
+      // Reload: a fresh client over the same store. B signs in and out.
+      const after = new FakeFirestore(shared);
+      after.signIn("user-B");
+      const { deps: depsB } = makeDeps(after, {}, "user-B");
+      const resultB = await performSignOut(depsB);
+      expect(resultB.cache?.cleared).toBe(false);
+      expect(resultB.cache?.reason).toBe("pending-writes-preserved");
+      expect(after.clearCalls).toBe(0);
+      // A's write is still there after the reload + B's logout.
+      expect(after.store.get("tx-A1")).toEqual({ amount: 500 });
+      expect(after.pending.get("user-A")?.has("tx-A1")).toBe(true);
+      expect(resultB.signedOut).toBe(true);
+    } finally {
+      preservedWritesLedger.resolve("user-A");
+      preservedWritesLedger.resolve("user-B");
+    }
   });
 });

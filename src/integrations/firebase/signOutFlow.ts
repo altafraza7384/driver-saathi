@@ -15,6 +15,14 @@
  *    sees the next (empty) identity's queue and reports "clean" while
  *    the departing user's offline writes are still unsynced — the old
  *    order destroyed those writes. Checking first preserves them.
+ *    A clean check for the departing user is still NOT a whole-cache
+ *    safety proof: unsynced writes of an EARLIER identity may still
+ *    sit in this retained cache (round 2). The clear is therefore
+ *    also gated on the preserved-writes ledger — the helper records
+ *    the departing user when their writes are pending, resolves them
+ *    when their queue proves clean, and refuses the clear while any
+ *    earlier identity's entry is unresolved. The flow passes
+ *    departingUid so the helper can attribute the record.
  * 4. Reopen the write gate (finally — the window is over either way).
  * 5. THEN sign out of Auth. Only now does the identity change.
  * 6. Reload ONLY once signed out: the clear terminates the Firestore
@@ -25,17 +33,20 @@
  *
  * SHARED / TRUSTED-DEVICE POLICY (explicit): on a shared device, logout
  * clears the previous user's offline cache ONLY when that user has no
- * unsynced writes. If writes are pending (offline), the cache is KEPT —
- * privacy yields to data safety, because clearing would destroy data the
- * user created offline. The data stays on the device until the user is
- * back online and logs out again after it syncs. The kept-cache case is
- * logged (onCacheKept); there is no silent loss either way.
+ * unsynced writes AND no earlier identity has unresolved preserved
+ * writes (preserved-writes ledger, round 2). If writes are pending
+ * (offline), the cache is KEPT — privacy yields to data safety, because
+ * clearing would destroy data the user created offline. The data stays
+ * on the device until the user is back online and logs out again after
+ * it syncs. The kept-cache case is logged (onCacheKept); there is no
+ * silent loss either way.
  */
 import {
   clearFirestoreCacheOnLogout,
   type FirestoreCacheApi,
   type LogoutCacheResult,
 } from "./logoutCache";
+import type { PreservedWritesLedger } from "./preservedWrites";
 import {
   closeLogoutWriteGate,
   openLogoutWriteGate,
@@ -49,6 +60,16 @@ export type SignOutFlowDeps = {
     db: Firestore;
     api?: FirestoreCacheApi;
     timeoutMs?: number;
+    /**
+     * Uid of the departing user, for the preserved-writes ledger:
+     * recorded when their writes are pending, resolved when their
+     * queue proves clean. Null/omitted when unknown — the ledger
+     * check for OTHER identities still applies, and nothing is
+     * recorded for this logout.
+     */
+    departingUid?: string | null;
+    /** Ledger override (tests); defaults to the shared localStorage ledger. */
+    preservedWrites?: PreservedWritesLedger;
   } | null;
   /** Auth sign-out (full). Must run AFTER the cache step. */
   signOutAuth: () => Promise<void>;
@@ -91,6 +112,8 @@ export async function performSignOut(
       cache = await clearFirestoreCacheOnLogout(deps.firestore.db, {
         timeoutMs: deps.firestore.timeoutMs,
         api: deps.firestore.api,
+        preservedWrites: deps.firestore.preservedWrites,
+        departingUid: deps.firestore.departingUid,
       });
     } finally {
       openGate();

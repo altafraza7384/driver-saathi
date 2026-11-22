@@ -103,11 +103,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // or waitForPendingWrites sees the next identity's empty queue and
     // the cache clear destroys unsynced data. performSignOut owns that
     // order (cancel → gate → check/clear → sign out → reload); useAuth
-    // only supplies the real dependencies.
+    // only supplies the real dependencies. departingUid lets the
+    // preserved-writes ledger (round 2) record the departing user when
+    // their writes are pending, so a later user's clean logout cannot
+    // clear the cache while those writes are still unsynced.
     await performSignOut({
       firestore:
         BACKEND === "firebase"
-          ? { db: firebaseDb }
+          ? { db: firebaseDb, departingUid: user?.id ?? null }
           : null,
       signOutAuth: async () => {
         await db.auth.signOut();
