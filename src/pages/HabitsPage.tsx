@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Check, Flame, Plus, Trash2 } from "lucide-react";
@@ -8,7 +8,7 @@ import { friendlyErrorMessage } from "@/lib/errors";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/lib/i18n";
 import { localToday } from "@/lib/budgets";
-import { computeStreak } from "@/lib/routine";
+import { computeStreak, isHabitDone, planHabitToggle } from "@/lib/routine";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -82,20 +82,62 @@ export default function HabitsPage() {
     onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
 
+  // Per-habit in-flight guard: the set of habit ids whose toggle save is
+  // currently running. The old guard read toggleMutation.isPending /
+  // variables, which track only the LATEST mutation call — pressing habit
+  // B while A's save was in flight re-enabled A's button. Each habit's
+  // toggle is now disabled only while its OWN save runs, so another
+  // habit's toggle can never re-enable it. (Per-habit, not disable-all:
+  // other habits stay usable during a save.)
+  // The ref updates synchronously, so a second same-tick click on the
+  // same habit sees the id already present and is a no-op — React state
+  // alone would not catch it, because the re-render happens after the
+  // tick. The state copy drives the disabled rendering.
+  const pendingRef = useRef<Set<string>>(new Set());
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
+  const freeHabit = (habitId: string) => {
+    pendingRef.current.delete(habitId);
+    setPendingIds(new Set(pendingRef.current));
+  };
+
   const toggleMutation = useMutation({
     mutationFn: async ({ habitId, done }: { habitId: string; done: boolean }) => {
-      const existing = (logs as any[]).find((l) => l.habit_id === habitId && l.date === today);
-      if (existing) {
-        const { error } = await db.from("habit_logs").update({ done }).eq("id", existing.id);
-        if (error) throw error;
-      } else {
-        const { error } = await db.from("habit_logs").insert({ user_id: user!.id, habit_id: habitId, date: today, done });
-        if (error) throw error;
+      try {
+        // Deterministic doc id per habit+date (see habitLogId): a second
+        // create overwrites the same doc instead of duplicating it, so two
+        // rapid taps can no longer leave two completed logs behind. The
+        // deleteIds sweep removes any legacy duplicates from the old race.
+        const plan = planHabitToggle(logs as any[], habitId, today, done);
+        if (plan.writeId) {
+          const { error } = await db
+            .from("habit_logs")
+            .insert({ id: plan.writeId, user_id: user!.id, habit_id: habitId, date: today, done });
+          if (error) throw error;
+        }
+        for (const id of plan.deleteIds) {
+          const { error } = await db.from("habit_logs").delete().eq("id", id);
+          if (error) throw error;
+        }
+      } finally {
+        // Runs whether the save succeeded or failed: this habit's toggle
+        // is freed exactly when ITS save settles. (Settled in the
+        // mutationFn, not in a per-call mutate() onSettled — one
+        // useMutation tracks only the latest call, so a second mutate()
+        // clobbers the first call's onSettled and the first habit would
+        // stay disabled forever.)
+        freeHabit(habitId);
       }
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["habit_logs"] }),
     onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
+
+  const toggleHabit = (habitId: string, done: boolean) => {
+    if (pendingRef.current.has(habitId)) return;
+    pendingRef.current.add(habitId);
+    setPendingIds(new Set(pendingRef.current));
+    toggleMutation.mutate({ habitId, done });
+  };
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -112,7 +154,7 @@ export default function HabitsPage() {
     onError: (e: Error) => toast.error(friendlyErrorMessage(e)),
   });
 
-  const isDone = (habitId: string) => (logs as any[]).some((l) => l.habit_id === habitId && l.date === today && l.done);
+  const isDone = (habitId: string) => isHabitDone(logs as any[], habitId, today);
   const streakFor = (habitId: string) =>
     computeStreak((logs as any[]).filter((l) => l.habit_id === habitId && l.done).map((l) => l.date), today);
 
@@ -156,8 +198,14 @@ export default function HabitsPage() {
                   <div className="flex items-center justify-between gap-2">
                     <button
                       className="flex flex-1 items-center gap-3 text-left"
-                      onClick={() => toggleMutation.mutate({ habitId: habit.id, done: !done })}
+                      onClick={() => toggleHabit(habit.id, !done)}
                       aria-pressed={done}
+                      // Disabled only while THIS habit's toggle save is in
+                      // flight (per-habit set in toggleHabit): another
+                      // habit's save never re-enables it, and a rapid
+                      // double-tap cannot fire a second toggle off the
+                      // same stale state.
+                      disabled={pendingIds.has(habit.id)}
                     >
                       <div className={`flex h-8 w-8 items-center justify-center rounded-full ${done ? "bg-success text-success-foreground" : "bg-muted text-muted-foreground"}`}>
                         <Check className="h-4 w-4" />

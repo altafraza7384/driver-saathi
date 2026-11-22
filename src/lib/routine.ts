@@ -228,6 +228,69 @@ export function computeStreak(doneDates: string[], today: string): number {
   return streak;
 }
 
+export interface HabitLogLike {
+  id: string;
+  habit_id: string;
+  date: string; // "YYYY-MM-DD" local
+  done: boolean;
+}
+
+/**
+ * Deterministic habit-log doc id: one doc per habit per day.
+ *
+ * The old toggle inserted a log with an adapter-generated random id, so two
+ * rapid taps (both reading the same not-yet-refreshed log cache) created
+ * two docs for the same habit+date; a later uncheck updated only the first
+ * one it found and the habit stayed checked. Writing with this id makes a
+ * second create overwrite the same doc instead of duplicating it (the
+ * adapter's insert maps a payload `id` to the Firestore doc id — the same
+ * pattern as Car SOS request ids).
+ *
+ * Habit ids are adapter-generated Firestore ids (alphanumeric) and dates
+ * are "YYYY-MM-DD", so the joined id never contains "/" (illegal in a doc
+ * id).
+ */
+export function habitLogId(habitId: string, date: string): string {
+  return `${habitId}_${date}`;
+}
+
+/** True when any log marks this habit done on this date. */
+export function isHabitDone(logs: HabitLogLike[], habitId: string, date: string): boolean {
+  return logs.some((l) => l.habit_id === habitId && l.date === date && l.done);
+}
+
+export interface HabitTogglePlan {
+  /** Doc id to write (insert with this id) when checking; null when unchecking. */
+  writeId: string | null;
+  /** Doc ids to delete: the deterministic doc when unchecking, plus any
+   *  legacy duplicate logs for the same habit+date. */
+  deleteIds: string[];
+}
+
+/**
+ * Pure toggle plan for one habit on one day. The caller executes writeId
+ * (insert with that id) and deleteIds (delete by id) — the plan itself
+ * never touches the backend, so it is unit-testable.
+ *
+ * Checking writes exactly one doc (a repeat write overwrites the same id);
+ * unchecking deletes the deterministic doc and every legacy duplicate, so
+ * a habit duplicated by the old race can never stay checked after uncheck.
+ */
+export function planHabitToggle(
+  logs: HabitLogLike[],
+  habitId: string,
+  date: string,
+  done: boolean,
+): HabitTogglePlan {
+  const logId = habitLogId(habitId, date);
+  const strays = logs
+    .filter((l) => l.habit_id === habitId && l.date === date && l.id !== logId)
+    .map((l) => l.id);
+  return done
+    ? { writeId: logId, deleteIds: strays }
+    : { writeId: null, deleteIds: [logId, ...strays] };
+}
+
 export interface ReportCheckpoint {
   label: string;
   // true = target covered by income entries LOGGED by the checkpoint time
@@ -237,6 +300,17 @@ export interface ReportCheckpoint {
   met: boolean | null;
   // true = nothing was logged by the checkpoint time at all.
   noData?: boolean;
+}
+
+/**
+ * Share is only safe once every load has settled successfully: sharing
+ * while loading or errored would send a ₹0 report built from data that
+ * has not arrived (or failed to arrive). The Share button is disabled in
+ * those states AND the handler checks this same predicate, so a
+ * programmatic/queued invocation is a no-op too.
+ */
+export function canShareDailyReport(isLoading: boolean, hasError: boolean): boolean {
+  return !isLoading && !hasError;
 }
 
 /** Plain-text WhatsApp summary, Romanized Hinglish, no auto-send. */
