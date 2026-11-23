@@ -188,6 +188,26 @@ list are likewise preserved.
   range, not a count bound. The quoted old claim inside C2's own entry is a
   quote of the withdrawn claim, not a live statement.
 
+### C7 — Backlog/headroom unmeasured: cost stays conditional
+
+- **Old claim (exact quote, §2 scenario B):** "Backfill: one read per
+  existing `aiUsage` doc at $0.03/100K; nightly cleanup: one delete per
+  stale bucket at $0.01/100K; storage: index size × $0.10–0.18/GiB/month —
+  small in absolute terms at any measured backlog, but NOT ₹0 by assertion".
+- **Contradicting evidence:** "at any measured backlog" assumes a measured
+  backlog, but the backlog is unmeasured — cleanup has been failing daily
+  (F1) and no scan was run to count it (C1). Free-tier headroom is likewise
+  unmeasured (P2), and the free tier is shared with the whole app (C1), so
+  no absolute size ("small") can be asserted for this index's cost. The
+  960-doc illustration that previously anchored an absolute size was
+  withdrawn by C6.
+- **Correction:** scenario B now states the cost scales with the backlog,
+  which is unmeasured, so no absolute figure is stated. An explicit line is
+  added in §2: backlog size and free-tier headroom are both unmeasured, so
+  cost stays conditional — the scenarios are the whole cost statement, no
+  total, not even an illustrative one, is confirmed. No confirmed cost
+  figure is reintroduced anywhere.
+
 ---
 
 ## 1. Database, billing, usage — what the repo/config can say
@@ -301,7 +321,7 @@ Conditional scenarios (each is conditional on the PENDING items above):
 | Scenario | Condition | Cost of this index |
 |---|---|---|
 | A — usage well inside free tier | Console usage (P2) shows the app well inside the daily free tier, with headroom for the backfill reads + nightly deletes | ₹0 for this index (no charge arises) |
-| B — usage at/over free tier | Usage is at or over the free tier, so marginal reads/writes/deletes are billed | Backfill: one read per existing `aiUsage` doc at $0.03/100K; nightly cleanup: one delete per stale bucket at $0.01/100K; storage: index size × $0.10–0.18/GiB/month — small in absolute terms at any measured backlog, but NOT ₹0 by assertion |
+| B — usage at/over free tier | Usage is at or over the free tier, so marginal reads/writes/deletes are billed | Backfill: one read per existing `aiUsage` doc at $0.03/100K; nightly cleanup: one delete per stale bucket at $0.01/100K; storage: index size × $0.10–0.18/GiB/month — the cost scales with the backlog, which is unmeasured, so no absolute figure is stated, and it is NOT ₹0 by assertion |
 | C — backlog unknown | Backlog never measured | The cost of the first resumed cleanup run cannot be stated until the backlog is counted (console usage page, P2, or a read-only count) |
 
 No backlog total is stated. The 960-doc figure used before is withdrawn: it
@@ -312,6 +332,9 @@ correction, C2). Do not use 960 as a backlog figure — the backlog can only
 be stated after a count (console usage page, P2, or a read-only count).
 
 **Cost is not proven to be a blocker, and not proven to be zero either.**
+Backlog size and free-tier headroom are both unmeasured (P2), so cost stays
+conditional: the scenarios above are the whole cost statement — no total,
+not even an illustrative one, is confirmed.
 The blocker remains approval — plus the PENDING console checks P1/P2 that
 would turn these scenarios into a number.
 
