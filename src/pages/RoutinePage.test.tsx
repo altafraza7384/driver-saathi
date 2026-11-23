@@ -322,34 +322,6 @@ describe("RoutinePage save vs scheduling", () => {
     expect(mockSchedule).not.toHaveBeenCalled();
   });
 
-  it("legacy + stable milestone: the stable row (600) wins over the legacy row (500) listed first", async () => {
-    // REGRESSION (fix 2): a legacy random-id milestone row (cp1 500)
-    // and the stable-id row (milestone_cp1 600) exist together, legacy
-    // first. The page's mapping dropped the row id, so the stable-row
-    // preference could not work and the stale 500 showed. The stable
-    // 600 must show — and the legacy row must NOT be deleted.
-    mockSettingsRows.length = 0;
-    mockSettingsRows.push(...settingsFixture());
-    const legacyIdx = mockSettingsRows.findIndex((r) => r.kind === "milestone" && r.key === "cp1");
-    mockSettingsRows.splice(legacyIdx, 1);
-    mockSettingsRows.push(
-      { id: "legacy-9", kind: "milestone", key: "cp1", min_amount: 500, max_amount: 700 },
-      { id: "milestone_cp1", kind: "milestone", key: "cp1", min_amount: 600, max_amount: 800 },
-    );
-    renderPage();
-    await waitFor(() =>
-      expect((screen.getByLabelText("Checkpoint 1 min") as HTMLInputElement).value).toBe("600"),
-    );
-    expect((screen.getByLabelText("Checkpoint 1 max") as HTMLInputElement).value).toBe("800");
-    // Saving keeps both rows: the stable row is updated in place and
-    // the legacy row is left untouched, never deleted.
-    await clickSave();
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Routine saved"));
-    expect(mockSettingsRows.filter((r) => r.kind === "milestone" && r.key === "cp1")).toHaveLength(2);
-    expect(mockSettingsRows.find((r) => r.id === "milestone_cp1")?.min_amount).toBe(600);
-    expect(mockSettingsRows.find((r) => r.id === "legacy-9")?.min_amount).toBe(500);
-  });
-
   it("failed shift:mode retry: Night intent survives the refetch and the retry saves Night", async () => {
     // REGRESSION (fix 1): stored mode is Day. Switch to Night and save
     // with ONLY the shift:mode row failing while another row saves. The

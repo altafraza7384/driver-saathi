@@ -174,28 +174,6 @@ export function mergeMilestones(
 }
 
 /**
- * Raw routine_settings rows as stored (min/max_amount) → the shape
- * mergeMilestones reads. The row `id` MUST be preserved: the merge
- * prefers the stable-id row over a legacy random-id row for the same
- * kind+key, and it can only do that when it can see the id. Call sites
- * that hand-mapped `{key, min, max}` dropped the id, so a legacy row
- * listed first won and a stale value showed (cp1 500 over the stable
- * 600). Every milestone read must go through this helper, never a
- * hand-rolled map.
- */
-export function milestoneRows(
-  rows: { id?: string; kind?: string; key: string; min_amount?: number | string; max_amount?: number | string }[],
-): { id?: string; kind?: string; key: string; min: number; max: number }[] {
-  return rows.map((r) => ({
-    id: r.id,
-    kind: r.kind,
-    key: r.key,
-    min: Number(r.min_amount) || 0,
-    max: Number(r.max_amount) || 0,
-  }));
-}
-
-/**
  * Stable Firestore doc id for one routine_settings row.
  *
  * A save that cannot see the rows it just wrote (empty cache, failed

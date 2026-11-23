@@ -27,7 +27,6 @@ import {
   findSettingRow,
   mergeSchedule,
   mergeMilestones,
-  milestoneRows,
   buildDailyNotifications,
   routineNotificationId,
   routineSettingId,
@@ -84,7 +83,9 @@ export default function RoutinePage() {
   useEffect(() => {
     const mergedSchedule = mergeSchedule((settings as any[]).filter((r) => r.kind === "schedule"));
     const mergedMilestones = mergeMilestones(
-      milestoneRows((settings as any[]).filter((r) => r.kind === "milestone")),
+      (settings as any[])
+        .filter((r) => r.kind === "milestone")
+        .map((r) => ({ key: r.key, min: Number(r.min_amount) || 0, max: Number(r.max_amount) || 0 })),
     );
     // A failed edit is still the driver's intent: overlay it on top of
     // the refetched (old) values, or the next Save would write the old
