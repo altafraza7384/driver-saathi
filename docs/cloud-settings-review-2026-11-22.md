@@ -332,8 +332,8 @@ list are likewise preserved.
   one-field-only (C3/C8). The quoted "Add index" / "verified route"
   wording inside the C3 and C8 entries is superseded wording, not a live
   statement.
-- **Console-label proof — browser-task brief (read-only, NOT run here;
-  coordinator to hand to a browser-capable agent):** sign in as
+- **Console-label proof — browser-task brief (read-only; RAN 2026-11-23 —
+  see status note below):** sign in as
   `altafraza7384@gmail.com` (the GitHub/Google account — NOT
   `razakhan.chino@proton.me`, the Lovable account) on project
   `driver-saathi-app`, database `(default)`. Go to Firebase console →
@@ -352,6 +352,60 @@ list are likewise preserved.
   created, (d) confirmation the dialog was closed unsaved and nothing was
   applied. Stop and report if sign-in fails or the console UI differs
   from this brief — do not improvise a different route.
+- **Status 2026-11-23:** this check RAN (read-only; dialog closed with
+  Cancel, nothing applied) — observed labels/defaults/outcomes recorded
+  in C11 below.
+
+### Round 4 — 2026-11-23 (console proof C11)
+
+### C11 — Console proof: Add Exemption observed (read-only), aiUsage index still HOLD
+
+- **What ran:** the read-only console check briefed in C10, observed
+  2026-11-23 on project `driver-saathi-app`, database `(default)`,
+  Firebase console → Firestore → Indexes → **Automatic** (single-field)
+  tab. Nothing was applied: the dialog was closed with Cancel and no
+  entry was created. This entry records what was observed; it changes no
+  live setting and no repo code — docs only.
+- **Automatic tab settings observed:** three rows — Ascending, Descending,
+  Arrays — each with Collection scope **Enabled** and Collection group
+  scope **Disabled** for all three.
+- **Baseline exemptions before the check:** 4 entries, list showing
+  "1–4 of 4" — `car_documents / notify_at`, `chat_messages /
+  created_at`, `reminders / notify_at`, `transactions /
+  transaction_date` — each Collection Group Scope "✓ Ascending" + "+ 2
+  unchanged". No `aiUsage` entry. This matches the report's earlier live
+  inventory (§4 reconciliation table: 8 manual composite indexes + 4
+  single-field exemptions).
+- **Step 1 — "Add exemption" dialog (verbatim labels):** title "Add
+  exemption"; steps "1 Choose a field to exempt from automatic
+  settings" and "2 Select index settings for this field"; fields
+  "Collection ID" (required, placeholder "Example: Artists") and "Field
+  path" (required, placeholder "Example: Playcount"); "Query scope"
+  checkboxes "Collection" / "Collection group"; footer "Cancel" + "Next"
+  (Next's accessible name is "Save"; disabled until Collection ID +
+  Field path + a scope are given). NO Ascending/Descending options on
+  step 1.
+- **Step 2 — "Select index settings for this field":** summary
+  "Collection ID aiUsage | Field path bucket_start | Query scope
+  Collection group"; table headers "Indexes" / "Collection group
+  scope"; rows are SWITCHES — Ascending / Descending / Arrays, ALL
+  Disabled by default for a collection-group exemption; a warning text
+  about disabling indexes/storage; footer "Cancel" + "Save". Turning
+  Ascending on (in-dialog only) showed "Enabled" while Descending and
+  Arrays stayed Disabled — matching the existing exemptions' pattern
+  (CG Ascending, others unchanged).
+- **Outcome:** dialog closed with Cancel. After closing, the list still
+  showed "1–4 of 4", and a page search for "aiUsage" returned nothing —
+  NO `aiUsage` entry was created. The route is therefore
+  console-observed (labels + defaults + preview), NOT applied.
+- **Status:** the `aiUsage` index remains **HOLD** — not applied, needs
+  the user's approval. The 8 manual composite indexes and 4 exemptions
+  observed match the report's earlier live inventory. C10's "until that
+  proof exists" condition is now met for labels/defaults/preview — the
+  route's console wording is observed — but the route itself is still
+  unapplied, and §4's "NOT done here" stands. No screenshot references
+  are included here; screenshots of this console proof are captured
+  separately by the coordinator.
 
 ---
 
@@ -774,10 +828,11 @@ ground — every repo index exists live:
 | fieldOverride aiUsage.bucket_start (NEW, this branch) | **Missing live — this is the gap** |
 
 **To apply later (after cost/effects approval — NOT done here) — one route
-(console labels/preview NOT yet verified; see C10):**
+(console labels/defaults/preview observed 2026-11-23, read-only, nothing
+applied — see C11):**
 
 - **Narrow route (the route for this one-field change — console
-  labels/preview NOT yet verified; see C10):** Firebase console →
+  labels/defaults/preview observed 2026-11-23, see C11):** Firebase console →
   Firestore → Indexes → **Automatic** tab → **Add Exemption**, Collection
   ID `aiUsage`, Field path `bucket_start`, COLLECTION_GROUP Ascending,
   preserving existing settings (the collection-scope Ascending /
@@ -787,8 +842,8 @@ ground — every repo index exists live:
   rests on the reconciliation table above (live holds 8 manual composite
   indexes, all Enabled, + 4 single-field exemptions) and on the exemption
   mechanism (an exemption overrides automatic settings for that field
-  only); the console's own labels/preview for this path are NOT yet
-  verified — that needs the read-only browser-task proof (C10). #3, #8
+  only); the console's own labels/defaults/preview for this path were
+  observed read-only on 2026-11-23 (see C11) — nothing was applied. #3, #8
   and #10 stay single-field exemptions and are NOT converted to
   composites. No code change, no deploy, no TTL, no manual cleanup run.
   This is NOT the Manual-tab composite "Add Index" / "Create Index"
@@ -831,7 +886,7 @@ the deploy output alone.
 
 | # | Proposed change | Cost | Status |
 |---|---|---|---|
-| 1 | Add `aiUsage`/`bucket_start` COLLECTION_GROUP ASC index (fieldOverrides patch in this branch) | Conditional — see §2 (no confirmed figure; pending P1/P2) | **Patch ready, NOT applied** — needs cost/effects approval |
+| 1 | Add `aiUsage`/`bucket_start` COLLECTION_GROUP ASC index (fieldOverrides patch in this branch) | Conditional — see §2 (no confirmed figure; pending P1/P2) | **Patch ready, NOT applied** — needs cost/effects approval (console labels/defaults/preview observed 2026-11-23 — see C11; index still HOLD) |
 | 2 | Harden `cleanupTransactions` (per-query try/catch + log + retryCount, F6) | $0 | Proposed for a later bundle — not in this branch |
 | 3 | Harden `earningsNudge` send (per-batch error logging, F6) | $0 | Proposed for a later bundle — not in this branch |
 | 4 | Restrict web API key in console (APIs + referrers, F3) | $0 | Proposed, console-only — verify on installed app after |
