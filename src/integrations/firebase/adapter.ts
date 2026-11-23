@@ -1074,6 +1074,39 @@ const functionsAdapter = {
 /* ------------------------- debt payment transaction ------------------------ */
 
 /**
+ * Read the payment doc for one Pay attempt, if it was recorded.
+ * This is the reconcile read (round 4): before minting a fresh attempt
+ * id for a payment whose earlier attempt is still pending, the caller
+ * checks whether that earlier attempt actually landed. A found doc
+ * means the attempt committed — the caller must say so plainly and
+ * must NOT mint a fresh id silently or claim a new success. A missing
+ * doc means the attempt never landed (or is still in flight in another
+ * tab), so a fresh id is safe. A read failure throws: the caller aborts
+ * visibly rather than guessing.
+ */
+export async function getDebtPaymentByAttempt(args: {
+  userId: string;
+  debtId: string;
+  attemptKey: string;
+}): Promise<{ amount: number; created_at: string } | null> {
+  const { userId, debtId, attemptKey } = args;
+  const paymentRef = doc(
+    firebaseDb,
+    "users",
+    userId,
+    "debt_payments",
+    debtPaymentId(debtId, attemptKey),
+  );
+  const snap = await getDoc(paymentRef);
+  if (!snap.exists()) return null;
+  const data = snap.data() as Record<string, unknown>;
+  return {
+    amount: toAmount(data.amount),
+    created_at: typeof data.created_at === "string" ? data.created_at : "",
+  };
+}
+
+/**
  * Record one EMI payment AND update the loan balance in a SINGLE
  * Firestore client transaction — or roll both back together.
  *

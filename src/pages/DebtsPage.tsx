@@ -17,11 +17,14 @@ import { useToast } from "@/hooks/use-toast";
 import { localToday } from "@/lib/budgets";
 import {
   clearPendingPaymentAttempt,
-  loadPendingPaymentAttempt,
+  loadPendingPaymentAttempts,
   newPaymentAttemptKey,
   savePendingPaymentAttempt,
 } from "@/lib/debts";
-import { recordDebtPaymentInTransaction } from "@/integrations/firebase/adapter";
+import {
+  getDebtPaymentByAttempt,
+  recordDebtPaymentInTransaction,
+} from "@/integrations/firebase/adapter";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, ArrowLeft, CreditCard, Trash2, Pencil, Banknote } from "lucide-react";
 import { motion } from "framer-motion";
@@ -93,15 +96,32 @@ export default function DebtsPage() {
   const [payDebtId, setPayDebtId] = useState<string | null>(null);
   const [payAmount, setPayAmount] = useState("");
   const [paying, setPaying] = useState(false);
-  // Idempotency for one Pay attempt (see src/lib/debts.ts): the attempt
-  // key is stored DURABLY in localStorage (keyed by user + debt) before
-  // the transaction starts, and cleared only when the whole payment
-  // succeeds — so a retry after navigation, unmount, or reload reuses
-  // the same key and the same payment doc instead of inserting a second
-  // row. payingRef is the synchronous rapid-repeat guard — React state
+  // Idempotency for one Pay attempt (see src/lib/debts.ts): every Pay
+  // INTENTION gets its own durable attempt id in localStorage (keyed by
+  // user + debt + attempt), written before the transaction starts and
+  // cleared only when the whole payment succeeds. paySessionRef is this
+  // form session's id — fresh on every form open, so two open pages
+  // never share an attempt id and a pending attempt is only ever
+  // reused by the session that created it. A retry after navigation,
+  // unmount, or reload reconciles the pending attempt against the
+  // payment doc first (see handlePayEMI) instead of silently reusing
+  // or minting an id. noticeConfirmedRef remembers that the user
+  // already saw the "Already recorded" notice for an attempt and
+  // tapped Pay again — that second tap is a confirmed NEW payment.
+  // payingRef is the synchronous rapid-repeat guard — React state
   // alone would not catch two taps in the same tick, before the
   // re-render disables the button.
   const payingRef = useRef(false);
+  const paySessionRef = useRef<string | null>(null);
+  const noticeConfirmedRef = useRef<string | null>(null);
+
+  const closePayForm = () => {
+    setPayDebtId(null);
+    setPayAmount("");
+    setPayError("");
+    paySessionRef.current = null;
+    noticeConfirmedRef.current = null;
+  };
 
   // Form-sheet pattern (Phase 6, presentation only): validation messages
   // are shown directly beneath their field, in addition to the existing
@@ -280,22 +300,55 @@ export default function DebtsPage() {
     payingRef.current = true;
     setPaying(true);
     try {
-      // Durable attempt key (see src/lib/debts.ts): retrying the SAME
-      // amount reuses the stored key, so a retry after an intermediate
-      // failure, an uncertain result, navigation, or reload hits the
-      // same payment doc. A different amount is a new attempt with a
-      // fresh key. If the key cannot be saved — or the stored state
-      // cannot be read — the payment is ABORTED visibly and the
-      // transaction never runs: proceeding with a fresh in-memory key
-      // could double-record after an uncertain failure.
+      // Durable per-attempt id (see src/lib/debts.ts). Each Pay
+      // INTENTION gets a fresh id; a retry of the SAME intention
+      // reuses its id; a NEW intention always gets a fresh id:
+      // - My own unresolved attempt, same form session, same amount:
+      //   reuse its id — the transaction finds the already-recorded
+      //   doc instead of writing a second row.
+      // - A pending attempt for the same amount that is NOT mine
+      //   (another tab, or this tab before a reload): reconcile it
+      //   against the payment doc FIRST. If the doc exists, the
+      //   attempt already committed — say so plainly and require an
+      //   explicit second tap for a NEW payment; never silently mint
+      //   a fresh id past it, and never give a stale-key success.
+      //   If the doc does not exist, the attempt never landed (or is
+      //   still in flight elsewhere) — a fresh id is safe, because
+      //   the old attempt can only ever land under its own id.
+      // - A different amount is a new attempt with a fresh id; the
+      //   unresolved old attempt stays pending under its own id.
+      // If the id cannot be saved — or the stored state cannot be
+      // read, or the reconcile read fails — the payment is ABORTED
+      // visibly and the transaction never runs.
+      if (!paySessionRef.current) paySessionRef.current = newPaymentAttemptKey();
       let attemptKey: string;
       try {
-        const pending = loadPendingPaymentAttempt(user.id, payDebtId);
-        if (pending && pending.amount === amount) {
-          attemptKey = pending.key;
+        const pending = loadPendingPaymentAttempts(user.id, payDebtId);
+        const own = pending.find(
+          (p) => p.sessionId === paySessionRef.current && p.amount === amount,
+        );
+        if (own) {
+          attemptKey = own.key;
         } else {
+          for (const other of pending.filter((p) => p.amount === amount)) {
+            if (noticeConfirmedRef.current === other.key) continue;
+            const existing = await getDebtPaymentByAttempt({
+              userId: user.id,
+              debtId: payDebtId,
+              attemptKey: other.key,
+            });
+            if (existing) {
+              clearPendingPaymentAttempt(user.id, payDebtId, other.key);
+              noticeConfirmedRef.current = other.key;
+              toast({
+                title: "Already recorded",
+                description: `A ₹${amount} payment for this loan was already recorded. Tap Pay again to record another ₹${amount} payment.`,
+              });
+              return;
+            }
+          }
           attemptKey = newPaymentAttemptKey();
-          if (!savePendingPaymentAttempt(user.id, payDebtId, attemptKey, amount)) {
+          if (!savePendingPaymentAttempt(user.id, payDebtId, attemptKey, amount, paySessionRef.current)) {
             throw new Error("Could not save this payment safely. Please try again.");
           }
         }
@@ -310,8 +363,9 @@ export default function DebtsPage() {
       // back. No success is shown unless this resolves: a failed or
       // offline transaction leaves no record and no balance move.
       let isFullyPaid: boolean;
+      let alreadyRecorded: boolean;
       try {
-        ({ isFullyPaid } = await recordDebtPaymentInTransaction({
+        ({ isFullyPaid, alreadyRecorded } = await recordDebtPaymentInTransaction({
           userId: user.id,
           debtId: payDebtId,
           attemptKey,
@@ -326,11 +380,16 @@ export default function DebtsPage() {
         return;
       }
 
-      clearPendingPaymentAttempt(user.id, payDebtId);
-      toast({ title: isFullyPaid ? "🎉 Loan fully paid!" : `₹${payAmount} payment recorded!` });
-      setPayDebtId(null);
-      setPayAmount("");
-      setPayError("");
+      clearPendingPaymentAttempt(user.id, payDebtId, attemptKey);
+      if (alreadyRecorded) {
+        // The retry found the payment already there (an earlier try
+        // committed while its result was lost). Say so plainly — this
+        // tap created nothing, so it must not claim "payment recorded".
+        toast({ title: "Already recorded", description: `A ₹${payAmount} payment for this loan was already recorded.` });
+      } else {
+        toast({ title: isFullyPaid ? "🎉 Loan fully paid!" : `₹${payAmount} payment recorded!` });
+      }
+      closePayForm();
       invalidateDebtReaders();
       fetchDebts();
     } finally {
@@ -531,13 +590,19 @@ export default function DebtsPage() {
                                 aria-describedby="debt-pay-amount-error"
                               />
                               <Button size="sm" onClick={handlePayEMI} disabled={paying}>{paying ? t("common.saving") : t("common.pay")}</Button>
-                              <Button size="sm" variant="ghost" onClick={() => { setPayDebtId(null); setPayAmount(""); setPayError(""); }}>✕</Button>
+                              <Button size="sm" variant="ghost" onClick={closePayForm}>✕</Button>
                             </div>
                             <p id="debt-pay-amount-error" className="min-h-5 text-sm text-destructive">{payError}</p>
                           </div>
                         ) : (
                           <Button size="sm" variant="outline" className="w-full" onClick={() => {
                             setPayDebtId(debt.id);
+                            // A new form session gets a fresh id: a Pay
+                            // tap from this form is a new intention
+                            // unless it resumes this session's own
+                            // unresolved attempt (see handlePayEMI).
+                            paySessionRef.current = newPaymentAttemptKey();
+                            noticeConfirmedRef.current = null;
                             // Reopen a pending attempt at its own amount:
                             // the retry must be for the same amount to
                             // reuse the stored key (a different amount is
@@ -546,8 +611,8 @@ export default function DebtsPage() {
                             // itself aborts visibly if storage is broken.
                             let pendingAmount: number | null = null;
                             try {
-                              const pending = user ? loadPendingPaymentAttempt(user.id, debt.id) : null;
-                              pendingAmount = pending ? pending.amount : null;
+                              const pending = user ? loadPendingPaymentAttempts(user.id, debt.id) : null;
+                              pendingAmount = pending && pending.length > 0 ? pending[pending.length - 1].amount : null;
                             } catch {
                               pendingAmount = null;
                             }

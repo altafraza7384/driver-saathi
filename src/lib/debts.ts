@@ -18,34 +18,63 @@ import { toAmount } from "@/lib/currency";
  *   returns the stored outcome WITHOUT writing again, so a same-attempt
  *   retry never increments the balance a second time.
  *
- * The attempt key is DURABLE: it lives in localStorage, keyed by user +
- * debt, written BEFORE the transaction starts and cleared ONLY when the
- * transaction has fully succeeded. A page unmount, navigation, or reload
- * therefore cannot lose it — the retry after coming back reuses the same
- * key and the same payment doc. A new payment after success gets a fresh
- * key, so genuine repeat payments still get their own rows.
+ * The attempt key is DURABLE and PER-ATTEMPT: every Pay intention gets
+ * its own localStorage entry, keyed by user + debt + attempt id and
+ * written BEFORE the transaction starts. A retry of the SAME intention
+ * (same form session, or the same amount after a reload) reuses its
+ * id; a NEW intention always gets a fresh id. This replaces the old
+ * single-slot design (`ds:pay-attempt:<user>:<debt>`), which had two
+ * silent-drop bugs (round 4):
+ *
+ * (a) Failed cleanup dropped genuine payments. The first ₹100 recorded
+ *     fine, but localStorage.removeItem (cleanup) failed, so the slot
+ *     kept the stale attempt id. The next genuine ₹100 reused it, the
+ *     transaction found the already-recorded doc and no-op'd — while
+ *     the UI still said "payment recorded". Total stayed 100, expected
+ *     200. Now each attempt has its OWN entry, so a failed cleanup
+ *     strands at most that one attempt's entry; the next payment mints
+ *     a fresh id. And when a pending attempt for the same amount IS
+ *     found, the page reconciles it against the payment doc first
+ *     (`getDebtPaymentByAttempt`): if the doc exists the user is told
+ *     plainly ("Already recorded") and a NEW payment needs an explicit
+ *     second tap — never a silent fresh id, never a stale-key success.
+ *
+ * (b) Two open web pages shared the one slot, so two genuine same-amount
+ *     Pay actions reused one key — two success messages, one ₹100
+ *     entry. Now each form session mints its own id (recorded with the
+ *     session that created it), and a pending attempt is only ever
+ *     reused by the session that created it. A foreign pending attempt
+ *     is reconciled, never reused: if its doc does not exist yet it may
+ *     still be in flight in the other tab, so the new tap mints a fresh
+ *     id and both payments count.
+ *
+ * A changed amount never overwrites an unresolved old attempt: the old
+ * attempt stays pending in the registry under its own id, and the new
+ * amount gets a fresh id.
  *
  * If the key cannot be SAVED, the payment is aborted visibly and the
  * transaction never runs: proceeding with a fresh in-memory key would
  * risk double-recording after an uncertain failure. Likewise a storage
  * READ failure surfaces instead of silently pretending no attempt
- * exists. The only residual gap is a caller that deliberately changes
- * the amount mid-attempt (a new key is minted for the new amount);
- * re-paying the OLD amount afterwards would be a new payment, which is
- * why the pay form prefills the pending attempt's amount.
+ * exists. A failed/offline transaction shows an error only — never
+ * success — and leaves no record and no balance move.
  *
  * No UI side effects happen inside the transaction callback (Firestore
  * may run it several times); toasts and query invalidation run only
- * after it resolves. A failed/offline transaction shows an error only —
- * never success — and leaves no record and no balance move.
+ * after it resolves.
  *
- * Boundary: two tabs paying the SAME debt the SAME amount at the same
- * instant share one localStorage slot, so the second tab reuses the
- * first tab's key and the two taps are treated as ONE attempt (one row,
- * counted once) rather than two payments. Different amounts, different
- * debts, and different devices (separate storage) always get separate
- * keys and both count. That needs a server-side reconciliation, not a
- * client key.
+ * Boundaries (honest limits of client-side idempotency, no server lock):
+ * - A retry from a DIFFERENT tab while the first tab's transaction is
+ *   still in flight cannot be told apart from a genuine second
+ *   payment: the reconcile read finds no doc yet, so the second tap
+ *   mints a fresh id and both taps count. Each tap was an explicit
+ *   user action, so both counting is the safe side; a same-tab retry
+ *   after the first tab reports its result is always deduped.
+ * - Entries older than 24h are pruned on load: a dead tab's attempt is
+ *   not retried a day later, and a stale entry never blocks a new
+ *   payment. The payment doc itself stays the source of truth.
+ * - The round-3 single-slot key is still READ (never written): an
+ *   attempt left pending by that version is reconciled, not lost.
  */
 
 /** Deterministic payment doc id for one Pay attempt. */
@@ -69,34 +98,46 @@ export function planDebtPayment(
   return { newTotalPaid, isFullyPaid: newTotalPaid >= toAmount(debt.principal) };
 }
 
-/* --------------------- durable pending-payment attempt --------------------- */
+/* --------------------- durable per-attempt payment registry --------------------- */
 
-/** One unfinished Pay attempt, as stored durably. */
-export type PendingPaymentAttempt = { key: string; amount: number };
+/** One unfinished Pay attempt, as stored durably. `sessionId` is the
+ *  form session that created it (fresh per form open); only that
+ *  session may reuse it. `createdAt` is a local epoch-ms timestamp. */
+export type PendingPaymentAttempt = {
+  key: string;
+  amount: number;
+  sessionId: string;
+  createdAt: number;
+};
 
-/** localStorage slot for the unfinished Pay attempt on one debt. */
-export function paymentAttemptStorageKey(userId: string, debtId: string): string {
-  return `ds:pay-attempt:${userId}:${debtId}`;
+/** Entries older than this are pruned on load (dead tabs, stale
+ *  attempts from a previous day). */
+export const PENDING_ATTEMPT_MAX_AGE_MS = 24 * 3600 * 1000;
+
+/**
+ * localStorage key for one attempt — or, without an attempt key, the
+ * shared prefix / legacy round-3 single-slot key
+ * (`ds:pay-attempt:<user>:<debt>`). Each attempt gets its own key, so
+ * two tabs saving concurrently never clobber each other's entry the
+ * way a single shared slot did.
+ */
+export function paymentAttemptStorageKey(
+  userId: string,
+  debtId: string,
+  attemptKey?: string,
+): string {
+  const base = `ds:pay-attempt:${userId}:${debtId}`;
+  return attemptKey ? `${base}:${attemptKey}` : base;
 }
 
 function hasStorage(): boolean {
   return typeof localStorage !== "undefined";
 }
 
-/**
- * Read the unfinished Pay attempt for this debt, if one was saved.
- * Returns null when there is none, or when the stored value is corrupt
- * (a corrupt slot must never crash the pay flow). THROWS when storage
- * itself cannot be read — the caller must abort visibly then, not
- * silently pretend no attempt exists and mint a fresh key.
- */
-export function loadPendingPaymentAttempt(
-  userId: string,
-  debtId: string,
+function parseStoredAttempt(
+  key: string,
+  raw: string,
 ): PendingPaymentAttempt | null {
-  if (!hasStorage()) return null;
-  const raw = localStorage.getItem(paymentAttemptStorageKey(userId, debtId));
-  if (!raw) return null;
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -104,28 +145,104 @@ export function loadPendingPaymentAttempt(
     return null;
   }
   if (typeof parsed !== "object" || parsed === null) return null;
-  const { key, amount } = parsed as { key?: unknown; amount?: unknown };
-  if (typeof key !== "string" || key.length === 0) return null;
+  const { amount, sessionId, createdAt } = parsed as {
+    amount?: unknown;
+    sessionId?: unknown;
+    createdAt?: unknown;
+  };
   if (typeof amount !== "number" || !Number.isFinite(amount)) return null;
-  return { key, amount };
+  if (sessionId !== undefined && typeof sessionId !== "string") return null;
+  if (createdAt !== undefined && typeof createdAt !== "number") return null;
+  return {
+    key,
+    amount,
+    sessionId: typeof sessionId === "string" ? sessionId : "",
+    createdAt: typeof createdAt === "number" ? createdAt : 0,
+  };
 }
 
 /**
- * Persist the attempt BEFORE the transaction starts. Returns false
- * when storage throws (quota / unavailable) — the caller must abort
- * the payment visibly then, never proceed with an unsaved key.
+ * Read ALL unfinished Pay attempts for this debt, oldest first.
+ * A corrupt entry is skipped (it must never crash the pay flow).
+ * Entries older than 24h are pruned (best-effort removal). The legacy
+ * round-3 single-slot value, if present, is surfaced as an attempt
+ * with an unknown session, so it gets reconciled rather than lost.
+ * THROWS when storage itself cannot be read — the caller must abort
+ * visibly then, not silently pretend no attempt exists and mint a
+ * fresh key.
+ */
+export function loadPendingPaymentAttempts(
+  userId: string,
+  debtId: string,
+): PendingPaymentAttempt[] {
+  if (!hasStorage()) return [];
+  const prefix = `${paymentAttemptStorageKey(userId, debtId)}:`;
+  const out: PendingPaymentAttempt[] = [];
+  const staleKeys: string[] = [];
+  const now = Date.now();
+  for (let i = 0; i < localStorage.length; i++) {
+    const storageKey = localStorage.key(i);
+    if (!storageKey || !storageKey.startsWith(prefix)) continue;
+    const attemptKey = storageKey.slice(prefix.length);
+    if (!attemptKey) continue;
+    // A read throw propagates: the caller aborts visibly.
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) continue;
+    const attempt = parseStoredAttempt(attemptKey, raw);
+    if (!attempt) continue;
+    if (attempt.createdAt > 0 && now - attempt.createdAt > PENDING_ATTEMPT_MAX_AGE_MS) {
+      staleKeys.push(storageKey);
+      continue;
+    }
+    out.push(attempt);
+  }
+  // Legacy round-3 single slot (never written by this version).
+  const legacyRaw = localStorage.getItem(paymentAttemptStorageKey(userId, debtId));
+  if (legacyRaw) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(legacyRaw);
+    } catch {
+      parsed = null;
+    }
+    if (typeof parsed === "object" && parsed !== null) {
+      const { key, amount } = parsed as { key?: unknown; amount?: unknown };
+      if (typeof key === "string" && key.length > 0 && typeof amount === "number" && Number.isFinite(amount)) {
+        if (!out.some((a) => a.key === key)) {
+          out.push({ key, amount, sessionId: "", createdAt: 0 });
+        }
+      }
+    }
+  }
+  for (const staleKey of staleKeys) {
+    try {
+      localStorage.removeItem(staleKey);
+    } catch {
+      // Best-effort pruning: a leftover stale entry is simply
+      // excluded from the result and pruned again next load.
+    }
+  }
+  return out.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+/**
+ * Persist one attempt BEFORE its transaction starts, under its own
+ * key — never overwriting another attempt. Returns false when storage
+ * throws (quota / unavailable) — the caller must abort the payment
+ * visibly then, never proceed with an unsaved key.
  */
 export function savePendingPaymentAttempt(
   userId: string,
   debtId: string,
   key: string,
   amount: number,
+  sessionId = "",
 ): boolean {
   if (!hasStorage()) return false;
   try {
     localStorage.setItem(
-      paymentAttemptStorageKey(userId, debtId),
-      JSON.stringify({ key, amount }),
+      paymentAttemptStorageKey(userId, debtId, key),
+      JSON.stringify({ amount, sessionId, createdAt: Date.now() }),
     );
     return true;
   } catch {
@@ -134,17 +251,29 @@ export function savePendingPaymentAttempt(
 }
 
 /**
- * Clear the stored attempt — only once the transaction has fully
- * succeeded. Best-effort: a clear failure never fails the payment.
+ * Clear ONE stored attempt — only once its transaction has fully
+ * succeeded, or once its payment doc has been reconciled as recorded.
+ * Best-effort: a clear failure never fails the payment. The entry
+ * simply stays pending, and the next Pay tap reconciles it again
+ * instead of silently reusing or dropping it.
  */
-export function clearPendingPaymentAttempt(userId: string, debtId: string): void {
+export function clearPendingPaymentAttempt(userId: string, debtId: string, key: string): void {
   if (!hasStorage()) return;
   try {
-    localStorage.removeItem(paymentAttemptStorageKey(userId, debtId));
+    localStorage.removeItem(paymentAttemptStorageKey(userId, debtId, key));
   } catch {
-    // The payment already succeeded; a leftover slot only means a later
-    // Pay tap for the same amount would reuse the key — and the
-    // transaction would then find the already-recorded payment and
-    // no-op, so this is safe to ignore.
+    // See the header: a leftover entry is reconciled on the next tap.
+  }
+  try {
+    // A legacy single-slot entry for the same attempt id goes too.
+    const legacyRaw = localStorage.getItem(paymentAttemptStorageKey(userId, debtId));
+    if (legacyRaw) {
+      const parsed = JSON.parse(legacyRaw) as { key?: unknown };
+      if (parsed?.key === key) {
+        localStorage.removeItem(paymentAttemptStorageKey(userId, debtId));
+      }
+    }
+  } catch {
+    // Best-effort, same as above.
   }
 }
