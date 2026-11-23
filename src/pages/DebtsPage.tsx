@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { db } from "@/lib/backend";
@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { localToday } from "@/lib/budgets";
+import { debtPaymentId, newPaymentAttemptKey, planDebtPayment } from "@/lib/debts";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, ArrowLeft, CreditCard, Trash2, Pencil, Banknote } from "lucide-react";
 import { motion } from "framer-motion";
@@ -86,6 +87,15 @@ export default function DebtsPage() {
   const [payDebtId, setPayDebtId] = useState<string | null>(null);
   const [payAmount, setPayAmount] = useState("");
   const [paying, setPaying] = useState(false);
+  // Idempotency for one Pay attempt (see src/lib/debts.ts): the key is
+  // created on the first Pay tap and REUSED on retry after an
+  // intermediate failure, so the retry overwrites the same payment doc
+  // instead of inserting a second row. Cleared only when the whole
+  // payment (record + balance) succeeds. payingRef is the synchronous
+  // rapid-repeat guard — React state alone would not catch two taps in
+  // the same tick, before the re-render disables the button.
+  const payingRef = useRef(false);
+  const payAttemptRef = useRef<{ debtId: string; key: string } | null>(null);
 
   // Form-sheet pattern (Phase 6, presentation only): validation messages
   // are shown directly beneath their field, in addition to the existing
@@ -257,40 +267,60 @@ export default function DebtsPage() {
       setPayError(`Payment is more than the remaining amount (${formatINR(remaining)}).`);
       return;
     }
+    // Rapid-repeat guard: a second tap in the same tick must be a
+    // no-op — the `paying` state alone cannot catch it, because the
+    // re-render that disables the button happens after the tick.
+    if (payingRef.current) return;
+    payingRef.current = true;
     setPaying(true);
-    const newTotalPaid = toAmount(debt.total_paid) + amount;
-    const isFullyPaid = newTotalPaid >= toAmount(debt.principal);
+    try {
+      // One Pay attempt, one payment doc: the attempt key is created on
+      // the first tap and reused on retry, so a retry after the balance
+      // update failed overwrites the same doc (deterministic id) instead
+      // of inserting a second payment row. A new key is minted only for
+      // a different debt, or after the previous attempt fully succeeded.
+      if (!payAttemptRef.current || payAttemptRef.current.debtId !== payDebtId) {
+        payAttemptRef.current = { debtId: payDebtId, key: newPaymentAttemptKey() };
+      }
+      const attemptKey = payAttemptRef.current.key;
+      const { newTotalPaid, isFullyPaid } = planDebtPayment(debt, amount);
 
-    // Record payment
-    const { error: paymentError } = await db.from("debt_payments").insert({
-      user_id: user.id,
-      debt_id: payDebtId,
-      amount,
-    });
-    if (paymentError) {
-      toast({ title: "Error", description: friendlyErrorMessage(paymentError), variant: "destructive" });
+      // Record payment (deterministic id: retry overwrites, never duplicates)
+      const { error: paymentError } = await db.from("debt_payments").insert({
+        id: debtPaymentId(payDebtId, attemptKey),
+        user_id: user.id,
+        debt_id: payDebtId,
+        amount,
+      });
+      if (paymentError) {
+        toast({ title: "Error", description: friendlyErrorMessage(paymentError), variant: "destructive" });
+        return;
+      }
+
+      // Update debt
+      const { error: updateError } = await db.from("debts").update({
+        total_paid: newTotalPaid,
+        is_active: !isFullyPaid,
+      }).eq("id", payDebtId);
+      if (updateError) {
+        // The payment record is already stored; the attempt key is KEPT
+        // on purpose, so the retry reuses the same payment doc and the
+        // balance lands once. Clearing it here would duplicate the row.
+        toast({ title: "Error", description: friendlyErrorMessage(updateError), variant: "destructive" });
+        return;
+      }
+
+      payAttemptRef.current = null;
+      toast({ title: isFullyPaid ? "🎉 Loan fully paid!" : `₹${payAmount} payment recorded!` });
+      setPayDebtId(null);
+      setPayAmount("");
+      setPayError("");
+      invalidateDebtReaders();
+      fetchDebts();
+    } finally {
+      payingRef.current = false;
       setPaying(false);
-      return;
     }
-
-    // Update debt
-    const { error: updateError } = await db.from("debts").update({
-      total_paid: newTotalPaid,
-      is_active: !isFullyPaid,
-    }).eq("id", payDebtId);
-    if (updateError) {
-      toast({ title: "Error", description: friendlyErrorMessage(updateError), variant: "destructive" });
-      setPaying(false);
-      return;
-    }
-
-    toast({ title: isFullyPaid ? "🎉 Loan fully paid!" : `₹${payAmount} payment recorded!` });
-    setPaying(false);
-    setPayDebtId(null);
-    setPayAmount("");
-    setPayError("");
-    invalidateDebtReaders();
-    fetchDebts();
   };
 
   const handleDelete = async (id: string) => {
