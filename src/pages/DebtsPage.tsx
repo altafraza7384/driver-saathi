@@ -15,7 +15,13 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { localToday } from "@/lib/budgets";
-import { debtPaymentId, newPaymentAttemptKey, planDebtPayment } from "@/lib/debts";
+import {
+  clearPendingPaymentAttempt,
+  loadPendingPaymentAttempt,
+  newPaymentAttemptKey,
+  savePendingPaymentAttempt,
+} from "@/lib/debts";
+import { recordDebtPaymentInTransaction } from "@/integrations/firebase/adapter";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, ArrowLeft, CreditCard, Trash2, Pencil, Banknote } from "lucide-react";
 import { motion } from "framer-motion";
@@ -87,15 +93,15 @@ export default function DebtsPage() {
   const [payDebtId, setPayDebtId] = useState<string | null>(null);
   const [payAmount, setPayAmount] = useState("");
   const [paying, setPaying] = useState(false);
-  // Idempotency for one Pay attempt (see src/lib/debts.ts): the key is
-  // created on the first Pay tap and REUSED on retry after an
-  // intermediate failure, so the retry overwrites the same payment doc
-  // instead of inserting a second row. Cleared only when the whole
-  // payment (record + balance) succeeds. payingRef is the synchronous
-  // rapid-repeat guard — React state alone would not catch two taps in
-  // the same tick, before the re-render disables the button.
+  // Idempotency for one Pay attempt (see src/lib/debts.ts): the attempt
+  // key is stored DURABLY in localStorage (keyed by user + debt) before
+  // the transaction starts, and cleared only when the whole payment
+  // succeeds — so a retry after navigation, unmount, or reload reuses
+  // the same key and the same payment doc instead of inserting a second
+  // row. payingRef is the synchronous rapid-repeat guard — React state
+  // alone would not catch two taps in the same tick, before the
+  // re-render disables the button.
   const payingRef = useRef(false);
-  const payAttemptRef = useRef<{ debtId: string; key: string } | null>(null);
 
   // Form-sheet pattern (Phase 6, presentation only): validation messages
   // are shown directly beneath their field, in addition to the existing
@@ -274,43 +280,53 @@ export default function DebtsPage() {
     payingRef.current = true;
     setPaying(true);
     try {
-      // One Pay attempt, one payment doc: the attempt key is created on
-      // the first tap and reused on retry, so a retry after the balance
-      // update failed overwrites the same doc (deterministic id) instead
-      // of inserting a second payment row. A new key is minted only for
-      // a different debt, or after the previous attempt fully succeeded.
-      if (!payAttemptRef.current || payAttemptRef.current.debtId !== payDebtId) {
-        payAttemptRef.current = { debtId: payDebtId, key: newPaymentAttemptKey() };
-      }
-      const attemptKey = payAttemptRef.current.key;
-      const { newTotalPaid, isFullyPaid } = planDebtPayment(debt, amount);
-
-      // Record payment (deterministic id: retry overwrites, never duplicates)
-      const { error: paymentError } = await db.from("debt_payments").insert({
-        id: debtPaymentId(payDebtId, attemptKey),
-        user_id: user.id,
-        debt_id: payDebtId,
-        amount,
-      });
-      if (paymentError) {
-        toast({ title: "Error", description: friendlyErrorMessage(paymentError), variant: "destructive" });
+      // Durable attempt key (see src/lib/debts.ts): retrying the SAME
+      // amount reuses the stored key, so a retry after an intermediate
+      // failure, an uncertain result, navigation, or reload hits the
+      // same payment doc. A different amount is a new attempt with a
+      // fresh key. If the key cannot be saved — or the stored state
+      // cannot be read — the payment is ABORTED visibly and the
+      // transaction never runs: proceeding with a fresh in-memory key
+      // could double-record after an uncertain failure.
+      let attemptKey: string;
+      try {
+        const pending = loadPendingPaymentAttempt(user.id, payDebtId);
+        if (pending && pending.amount === amount) {
+          attemptKey = pending.key;
+        } else {
+          attemptKey = newPaymentAttemptKey();
+          if (!savePendingPaymentAttempt(user.id, payDebtId, attemptKey, amount)) {
+            throw new Error("Could not save this payment safely. Please try again.");
+          }
+        }
+      } catch (e) {
+        toast({ title: "Error", description: friendlyErrorMessage(e), variant: "destructive" });
         return;
       }
 
-      // Update debt
-      const { error: updateError } = await db.from("debts").update({
-        total_paid: newTotalPaid,
-        is_active: !isFullyPaid,
-      }).eq("id", payDebtId);
-      if (updateError) {
-        // The payment record is already stored; the attempt key is KEPT
-        // on purpose, so the retry reuses the same payment doc and the
-        // balance lands once. Clearing it here would duplicate the row.
-        toast({ title: "Error", description: friendlyErrorMessage(updateError), variant: "destructive" });
+      // ONE Firestore transaction: it re-reads the latest balance and
+      // checks for a previous payment with this attempt key, then writes
+      // the payment record and the new balance together — or rolls both
+      // back. No success is shown unless this resolves: a failed or
+      // offline transaction leaves no record and no balance move.
+      let isFullyPaid: boolean;
+      try {
+        ({ isFullyPaid } = await recordDebtPaymentInTransaction({
+          userId: user.id,
+          debtId: payDebtId,
+          attemptKey,
+          amount,
+        }));
+      } catch (e) {
+        // The attempt key is KEPT on purpose: the transaction may have
+        // committed while the result was lost, so the retry must reuse
+        // this key and find the previous payment instead of recording a
+        // second one. Clearing it here would duplicate the row.
+        toast({ title: "Error", description: friendlyErrorMessage(e), variant: "destructive" });
         return;
       }
 
-      payAttemptRef.current = null;
+      clearPendingPaymentAttempt(user.id, payDebtId);
       toast({ title: isFullyPaid ? "🎉 Loan fully paid!" : `₹${payAmount} payment recorded!` });
       setPayDebtId(null);
       setPayAmount("");
@@ -520,7 +536,24 @@ export default function DebtsPage() {
                             <p id="debt-pay-amount-error" className="min-h-5 text-sm text-destructive">{payError}</p>
                           </div>
                         ) : (
-                          <Button size="sm" variant="outline" className="w-full" onClick={() => { setPayDebtId(debt.id); setPayAmount(String(debt.emi_amount || "")); setPayError(""); }}>
+                          <Button size="sm" variant="outline" className="w-full" onClick={() => {
+                            setPayDebtId(debt.id);
+                            // Reopen a pending attempt at its own amount:
+                            // the retry must be for the same amount to
+                            // reuse the stored key (a different amount is
+                            // a new attempt). A storage read failure here
+                            // just falls back to the EMI — the Pay tap
+                            // itself aborts visibly if storage is broken.
+                            let pendingAmount: number | null = null;
+                            try {
+                              const pending = user ? loadPendingPaymentAttempt(user.id, debt.id) : null;
+                              pendingAmount = pending ? pending.amount : null;
+                            } catch {
+                              pendingAmount = null;
+                            }
+                            setPayAmount(String(pendingAmount ?? (debt.emi_amount || "")));
+                            setPayError("");
+                          }}>
                             <Banknote className="h-4 w-4 mr-1" /> {t("debt.recordPayment")}
                           </Button>
                         )}
