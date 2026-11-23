@@ -28,8 +28,47 @@
 import { describe, it, expect, vi } from "vitest";
 import { performSignOut, type SignOutFlowDeps } from "./signOutFlow";
 import type { FirestoreCacheApi } from "./logoutCache";
-import { preservedWritesLedger } from "./preservedWrites";
+import {
+  createPreservedWritesLedger,
+  preservedWritesLedger,
+  type PreservedWritesStorage,
+} from "./preservedWrites";
 import type { Firestore } from "firebase/firestore";
+
+/** In-memory async store shared across ledger instances (a "reload"). */
+function memoryAsyncStore(initial?: string | null): {
+  store: PreservedWritesStorage;
+  get raw(): string | null;
+} {
+  let value: string | null = initial ?? null;
+  return {
+    store: {
+      read: async () => value,
+      write: async (v: string) => {
+        value = v;
+      },
+      remove: async () => {
+        value = null;
+      },
+    },
+    get raw() {
+      return value;
+    },
+  };
+}
+
+/** Write-only failure: READ returns null but WRITE throws. */
+function failingAsyncStore(): PreservedWritesStorage {
+  return {
+    read: async () => null,
+    write: async () => {
+      throw new Error("QuotaExceededError: setItem failed");
+    },
+    remove: async () => {
+      throw new Error("denied");
+    },
+  };
+}
 
 /** Minimal in-test model of one Firestore client + its IndexedDB store. */
 class FakeFirestore {
@@ -320,8 +359,8 @@ describe("performSignOut — older retained identity's pending writes (round 2)"
       expect(resultA2.cache?.cleared).toBe(true);
       expect(fake.store.has("tx-A1")).toBe(false);
     } finally {
-      preservedWritesLedger.resolve("user-A");
-      preservedWritesLedger.resolve("user-B");
+      await preservedWritesLedger.resolve("user-A");
+      await preservedWritesLedger.resolve("user-B");
     }
   });
 
@@ -354,8 +393,94 @@ describe("performSignOut — older retained identity's pending writes (round 2)"
       expect(after.pending.get("user-A")?.has("tx-A1")).toBe(true);
       expect(resultB.signedOut).toBe(true);
     } finally {
-      preservedWritesLedger.resolve("user-A");
-      preservedWritesLedger.resolve("user-B");
+      await preservedWritesLedger.resolve("user-A");
+      await preservedWritesLedger.resolve("user-B");
     }
+  });
+});
+
+describe("performSignOut — failed ledger store across a reload (round 3)", () => {
+  it("preserves user A's unsynced write across a reload when the localStorage mirror fails, and clears only after A returns clean", async () => {
+    // The mirror (localStorage role) refuses writes — setItem throws,
+    // getItem returns null — while the primary (IndexedDB role) works.
+    // The record itself must land durably, so a fresh client after
+    // the reload still refuses B's whole-cache clear. No flag, no
+    // memory marker: the proof is the record in the surviving store.
+    const primaryBacking = memoryAsyncStore();
+    const mirror = failingAsyncStore();
+    const shared = {
+      store: new Map<string, unknown>(),
+      pending: new Map<string, Set<string>>(),
+    };
+    const before = new FakeFirestore(shared);
+
+    // A logs out with an offline write pending: cache preserved.
+    before.signIn("user-A");
+    before.write("user-A", "tx-A1", { amount: 500 });
+    const ledgerA = createPreservedWritesLedger(
+      primaryBacking.store,
+      mirror,
+    );
+    const { deps: depsA } = makeDeps(before, {
+      firestore: {
+        db: before as unknown as Firestore,
+        api: before.asApi(),
+        timeoutMs: 50,
+        departingUid: "user-A",
+        preservedWrites: ledgerA,
+      },
+    });
+    const resultA = await performSignOut(depsA);
+    expect(resultA.cache?.reason).toBe("pending-writes-preserved");
+    expect(resultA.cache?.cleared).toBe(false);
+    expect(before.clearCalls).toBe(0);
+    expect(before.store.get("tx-A1")).toEqual({ amount: 500 });
+
+    // Reload: a fresh client over the same store, and a FRESH ledger
+    // instance over the same stores. B signs in and out clean.
+    const after = new FakeFirestore(shared);
+    const ledgerB = createPreservedWritesLedger(
+      primaryBacking.store,
+      mirror,
+    );
+    after.signIn("user-B");
+    const { deps: depsB } = makeDeps(after, {
+      firestore: {
+        db: after as unknown as Firestore,
+        api: after.asApi(),
+        timeoutMs: 50,
+        departingUid: "user-B",
+        preservedWrites: ledgerB,
+      },
+    });
+    const resultB = await performSignOut(depsB);
+    expect(resultB.cache?.cleared).toBe(false);
+    expect(resultB.cache?.reason).toBe("pending-writes-preserved");
+    expect(after.clearCalls).toBe(0);
+    // A's write survived B's logout — it was NOT silently discarded.
+    expect(after.store.get("tx-A1")).toEqual({ amount: 500 });
+    expect(after.pending.get("user-A")?.has("tx-A1")).toBe(true);
+    expect(resultB.signedOut).toBe(true);
+
+    // A returns, comes back online, syncs, and logs out clean — only
+    // now is the whole-cache clear allowed (the owner resolved it).
+    after.signIn("user-A");
+    after.syncAll();
+    const ledgerA2 = createPreservedWritesLedger(
+      primaryBacking.store,
+      mirror,
+    );
+    const { deps: depsA2 } = makeDeps(after, {
+      firestore: {
+        db: after as unknown as Firestore,
+        api: after.asApi(),
+        timeoutMs: 50,
+        departingUid: "user-A",
+        preservedWrites: ledgerA2,
+      },
+    });
+    const resultA2 = await performSignOut(depsA2);
+    expect(resultA2.cache?.cleared).toBe(true);
+    expect(after.store.has("tx-A1")).toBe(false);
   });
 });

@@ -7,6 +7,7 @@ import {
 import {
   createPreservedWritesLedger,
   type PreservedWritesLedger,
+  type PreservedWritesStorage,
 } from "./preservedWrites";
 import type { Firestore } from "firebase/firestore";
 
@@ -14,14 +15,53 @@ import type { Firestore } from "firebase/firestore";
 function memoryLedger(): PreservedWritesLedger {
   let value: string | null = null;
   return createPreservedWritesLedger({
-    read: () => value,
-    write: (v: string) => {
+    read: async () => value,
+    write: async (v: string) => {
       value = v;
     },
-    remove: () => {
+    remove: async () => {
       value = null;
     },
   });
+}
+
+/** In-memory store shared across ledger instances (a "reload"). */
+function memoryAsyncStore(initial?: string | null): {
+  store: PreservedWritesStorage;
+  get raw(): string | null;
+} {
+  let value: string | null = initial ?? null;
+  return {
+    store: {
+      read: async () => value,
+      write: async (v: string) => {
+        value = v;
+      },
+      remove: async () => {
+        value = null;
+      },
+    },
+    get raw() {
+      return value;
+    },
+  };
+}
+
+/**
+ * Write-only failure (round 3): READ returns null but WRITE throws
+ * (localStorage quota/error). The finding: the old ledger swallowed
+ * the failed record, so a later clean logout cleared the cache.
+ */
+function failingAsyncStore(): PreservedWritesStorage {
+  return {
+    read: async () => null,
+    write: async () => {
+      throw new Error("QuotaExceededError: setItem failed");
+    },
+    remove: async () => {
+      throw new Error("denied");
+    },
+  };
 }
 
 const fakeDb = {} as Firestore;
@@ -185,7 +225,7 @@ describe("clearFirestoreCacheOnLogout — older retained identities (round 2)", 
   it("does NOT clear when another identity's preserved writes are unresolved, even with a clean active queue", async () => {
     const { api, calls } = apiWith({});
     const ledger = memoryLedger();
-    ledger.record("user-A"); // A logged out earlier with pending writes.
+    await ledger.record("user-A"); // A logged out earlier with pending writes.
     const result = await clearFirestoreCacheOnLogout(fakeDb, {
       timeoutMs: 50,
       api,
@@ -199,13 +239,13 @@ describe("clearFirestoreCacheOnLogout — older retained identities (round 2)", 
     expect(result.reason).toBe("pending-writes-preserved");
     expect(result.detail).toMatch(/user-A|earlier|retained/i);
     expect(calls).toEqual(["waitForPendingWrites"]);
-    expect(ledger.list()).toEqual(["user-A"]);
+    expect(await ledger.list()).toEqual(["user-A"]);
   });
 
   it("clears when the only ledger entry is the departing user's own, and resolves it", async () => {
     const { api, calls } = apiWith({});
     const ledger = memoryLedger();
-    ledger.record("user-A"); // A returns and logs out again, now clean.
+    await ledger.record("user-A"); // A returns and logs out again, now clean.
     const result = await clearFirestoreCacheOnLogout(fakeDb, {
       timeoutMs: 50,
       api,
@@ -220,7 +260,7 @@ describe("clearFirestoreCacheOnLogout — older retained identities (round 2)", 
       "terminate",
       "clearIndexedDbPersistence",
     ]);
-    expect(ledger.list()).toEqual([]);
+    expect(await ledger.list()).toEqual([]);
   });
 
   it("records the departing user in the ledger when their own writes are pending", async () => {
@@ -238,14 +278,14 @@ describe("clearFirestoreCacheOnLogout — older retained identities (round 2)", 
     expect(result.reason).toBe("pending-writes-preserved");
     expect(calls).toEqual(["waitForPendingWrites"]);
     // A later logout by another identity must see this entry.
-    expect(ledger.list()).toEqual(["user-A"]);
-    expect(ledger.hasUnresolved()).toBe(true);
+    expect(await ledger.list()).toEqual(["user-A"]);
+    expect(await ledger.hasUnresolved()).toBe(true);
   });
 
   it("does NOT clear when the departing identity is unknown and the ledger is non-empty", async () => {
     const { api, calls } = apiWith({});
     const ledger = memoryLedger();
-    ledger.record("user-A");
+    await ledger.record("user-A");
     const result = await clearFirestoreCacheOnLogout(fakeDb, {
       timeoutMs: 50,
       api,
@@ -255,5 +295,129 @@ describe("clearFirestoreCacheOnLogout — older retained identities (round 2)", 
     expect(result.cleared).toBe(false);
     expect(result.reason).toBe("pending-writes-preserved");
     expect(calls).toEqual(["waitForPendingWrites"]);
+  });
+});
+
+describe("clearFirestoreCacheOnLogout — failed ledger record blocks later clears (round 3)", () => {
+  it("(1) write-only storage failure: the failed record still blocks the next clear", async () => {
+    // The mirror (localStorage role) refuses writes — setItem throws,
+    // getItem returns null — while the primary (IndexedDB role) works.
+    // This is the original finding: the old single-store ledger
+    // swallowed the failed record and B's clean logout cleared.
+    const { store: primary } = memoryAsyncStore();
+    const ledger = createPreservedWritesLedger(primary, failingAsyncStore());
+    const { api: pendingApi } = apiWith({
+      waitForPendingWrites: () => new Promise<void>(() => {}),
+    });
+    const resultA = await clearFirestoreCacheOnLogout(fakeDb, {
+      timeoutMs: 10,
+      api: pendingApi,
+      preservedWrites: ledger,
+      departingUid: "user-A",
+    });
+    expect(resultA.cleared).toBe(false);
+    expect(resultA.reason).toBe("pending-writes-preserved");
+    // The record itself landed durably in the surviving store.
+    expect(await ledger.hasUnresolved()).toBe(true);
+    expect(await ledger.list()).toEqual(["user-A"]);
+
+    // B logs out with a clean queue on the same client: still no clear.
+    const { api: cleanApi } = apiWith({});
+    const resultB = await clearFirestoreCacheOnLogout(fakeDb, {
+      timeoutMs: 50,
+      api: cleanApi,
+      preservedWrites: ledger,
+      departingUid: "user-B",
+    });
+    expect(resultB.cleared).toBe(false);
+    expect(resultB.reason).toBe("pending-writes-preserved");
+  });
+
+  it("(2) fresh-client/reload after a failed record: still no clear", async () => {
+    const failing = failingAsyncStore();
+    const { store: mirror } = memoryAsyncStore();
+    // The primary refuses the write at record time; the record lands
+    // durably in the mirror.
+    const first = createPreservedWritesLedger(failing, mirror);
+    const { api: pendingApi } = apiWith({
+      waitForPendingWrites: () => new Promise<void>(() => {}),
+    });
+    const resultA = await clearFirestoreCacheOnLogout(fakeDb, {
+      timeoutMs: 10,
+      api: pendingApi,
+      preservedWrites: first,
+      departingUid: "user-A",
+    });
+    expect(resultA.cleared).toBe(false);
+
+    // Reload: a fresh ledger instance over the SAME stores. B logs
+    // out clean — the whole-cache clear must still be refused: there
+    // is no proof A's pending writes are safe.
+    const second = createPreservedWritesLedger(failing, mirror);
+    expect(await second.list()).toEqual(["user-A"]);
+    const { api: cleanApi } = apiWith({});
+    const resultB = await clearFirestoreCacheOnLogout(fakeDb, {
+      timeoutMs: 50,
+      api: cleanApi,
+      preservedWrites: second,
+      departingUid: "user-B",
+    });
+    expect(resultB.cleared).toBe(false);
+    expect(resultB.reason).toBe("pending-writes-preserved");
+  });
+
+  it("(3) later clean-user logout: still no clear while the record is unresolved", async () => {
+    // Symmetric to (1): the primary fails, the mirror holds the record.
+    const { store: mirror } = memoryAsyncStore();
+    const ledger = createPreservedWritesLedger(
+      failingAsyncStore(),
+      mirror,
+    );
+    const { api: pendingApi } = apiWith({
+      waitForPendingWrites: () => new Promise<void>(() => {}),
+    });
+    const resultA = await clearFirestoreCacheOnLogout(fakeDb, {
+      timeoutMs: 10,
+      api: pendingApi,
+      preservedWrites: ledger,
+      departingUid: "user-A",
+    });
+    expect(resultA.cleared).toBe(false);
+    expect(await ledger.hasUnresolved()).toBe(true);
+
+    // A later logout by a clean user must NOT clear while A's entry
+    // is unresolved — the active-user check is not a whole-cache proof.
+    const { api: cleanApi } = apiWith({});
+    const resultB = await clearFirestoreCacheOnLogout(fakeDb, {
+      timeoutMs: 50,
+      api: cleanApi,
+      preservedWrites: ledger,
+      departingUid: "user-B",
+    });
+    expect(resultB.cleared).toBe(false);
+    expect(resultB.reason).toBe("pending-writes-preserved");
+    expect(await ledger.list()).toEqual(["user-A"]);
+  });
+
+  it("a record that lands nowhere is reported in the result, not swallowed", async () => {
+    // Both stores down at once: the current logout still preserves
+    // the cache, but the detail must say the record could not be
+    // written durably — the failure is visible to the caller.
+    const ledger = createPreservedWritesLedger(
+      failingAsyncStore(),
+      failingAsyncStore(),
+    );
+    const { api: pendingApi } = apiWith({
+      waitForPendingWrites: () => new Promise<void>(() => {}),
+    });
+    const resultA = await clearFirestoreCacheOnLogout(fakeDb, {
+      timeoutMs: 10,
+      api: pendingApi,
+      preservedWrites: ledger,
+      departingUid: "user-A",
+    });
+    expect(resultA.cleared).toBe(false);
+    expect(resultA.reason).toBe("pending-writes-preserved");
+    expect(resultA.detail).toMatch(/could not be written durably/);
   });
 });

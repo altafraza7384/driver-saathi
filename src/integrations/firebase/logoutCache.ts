@@ -24,7 +24,8 @@ import {
  * no unsynced offline writes (waitForPendingWrites, checked while
  * they are still signed in), AND (b) no EARLIER identity has
  * unresolved preserved writes recorded in the preserved-writes ledger
- * (see preservedWrites.ts). Clearing with pending writes would
+ * (see preservedWrites.ts: the record itself, in its own IndexedDB
+ * database mirrored to localStorage). Clearing with pending writes would
  * silently destroy data the user created while offline (e.g. a
  * transaction saved with no network that has not synced yet), so
  * pending writes are always preserved and the cache is left in place.
@@ -167,13 +168,21 @@ export async function clearFirestoreCacheOnLogout(
     // Record the departing identity, so a LATER logout by another
     // identity cannot clear the cache while these writes are still
     // pending. Without this record the next user's clean check would
-    // authorise a clear that destroys them.
-    if (departingUid) ledger.record(departingUid);
+    // authorise a clear that destroys them. record() reports whether
+    // the record landed durably — a false return is surfaced in the
+    // detail (not swallowed): the CURRENT logout still preserves the
+    // cache, but no durable proof exists for a later logout, so the
+    // failure must be visible in logs.
+    let recorded = true;
+    if (departingUid) recorded = await ledger.record(departingUid);
     return {
       cleared: false,
       reason: "pending-writes-preserved",
       detail:
-        "Pending offline writes may exist (or the sync check timed out); cache kept so no unsynced data is lost.",
+        "Pending offline writes may exist (or the sync check timed out); cache kept so no unsynced data is lost." +
+        (recorded
+          ? ""
+          : " WARNING: the preserved-writes record could not be written durably, so a later logout cannot be proven unsafe from the ledger alone."),
     };
   }
 
@@ -181,7 +190,7 @@ export async function clearFirestoreCacheOnLogout(
   // entry from an earlier logout, it is stale now — resolve it before
   // checking what remains, so their own old entry cannot block a
   // clear that is now safe for them.
-  if (departingUid) ledger.resolve(departingUid);
+  if (departingUid) await ledger.resolve(departingUid);
 
   // waitForPendingWrites only sees the ACTIVE identity's queue: the
   // clean result above proves nothing about unsynced writes of an
@@ -190,7 +199,7 @@ export async function clearFirestoreCacheOnLogout(
   // clear would destroy that identity's pending writes, so keep the
   // cache instead. The data stays until that identity returns, syncs,
   // and logs out clean.
-  if (ledger.hasUnresolved()) {
+  if (await ledger.hasUnresolved()) {
     return {
       cleared: false,
       reason: "pending-writes-preserved",
