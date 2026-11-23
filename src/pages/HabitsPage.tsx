@@ -32,7 +32,7 @@ export default function HabitsPage() {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
 
-  const { data: habits = [], isLoading } = useQuery({
+  const { data: habits = [], isLoading, isError: habitsError, refetch: refetchHabits } = useQuery({
     queryKey: ["habits"],
     queryFn: async () => {
       const { data, error } = await db.from("habits").select("*").eq("active", true).order("sort_order", { ascending: true });
@@ -48,7 +48,7 @@ export default function HabitsPage() {
   since.setDate(since.getDate() - 90);
   const sinceKey = `${since.getFullYear()}-${String(since.getMonth() + 1).padStart(2, "0")}-${String(since.getDate()).padStart(2, "0")}`;
 
-  const { data: logs = [] } = useQuery({
+  const { data: logs = [], isError: logsError, refetch: refetchLogs } = useQuery({
     queryKey: ["habit_logs", sinceKey],
     queryFn: async () => {
       const { data, error } = await db.from("habit_logs").select("*").gte("date", sinceKey);
@@ -58,9 +58,24 @@ export default function HabitsPage() {
     enabled: !!user,
   });
 
+  // A failed read is NOT "no habits yet": on the live rules the habits /
+  // habit_logs collections can be permission-denied, so the queries error
+  // while the defaults stay []. Showing the genuine-empty state (and its
+  // seed button) would invite writing into collections the app cannot
+  // even read. While any read has failed the page shows the error state
+  // with a retry, and seed / add / toggle are all blocked.
+  const readFailed = habitsError || logsError;
+  const retryReads = () => {
+    void refetchHabits();
+    void refetchLogs();
+  };
+
   // Seed defaults once, only when the user has no habits at all.
+  // Never runs while a read has failed (see readFailed above): the
+  // button is hidden then, and this guard covers a queued call.
   const seedMutation = useMutation({
     mutationFn: async () => {
+      if (readFailed) throw new Error(t("home.loadError"));
       const rows = DEFAULT_HABITS.map((habitName, i) => ({ user_id: user!.id, name: habitName, sort_order: i + 1, active: true }));
       const { error } = await db.from("habits").insert(rows);
       if (error) throw error;
@@ -70,6 +85,7 @@ export default function HabitsPage() {
 
   const addMutation = useMutation({
     mutationFn: async () => {
+      if (readFailed) throw new Error(t("home.loadError"));
       const { error } = await db.from("habits").insert({ user_id: user!.id, name: name.trim(), sort_order: habits.length + 1, active: true });
       if (error) throw error;
     },
@@ -133,6 +149,7 @@ export default function HabitsPage() {
   });
 
   const toggleHabit = (habitId: string, done: boolean) => {
+    if (readFailed) return;
     if (pendingRef.current.has(habitId)) return;
     pendingRef.current.add(habitId);
     setPendingIds(new Set(pendingRef.current));
@@ -164,7 +181,7 @@ export default function HabitsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{t("habits.title")}</h1>
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild><Button size="sm" className="gap-1"><Plus className="h-4 w-4" /> {t("common.add")}</Button></DialogTrigger>
+          <DialogTrigger asChild><Button size="sm" className="gap-1" disabled={readFailed}><Plus className="h-4 w-4" /> {t("common.add")}</Button></DialogTrigger>
           <DialogContent>
             <DialogHeader><DialogTitle>{t("habits.addTitle")}</DialogTitle></DialogHeader>
             <div className="space-y-3">
@@ -182,6 +199,16 @@ export default function HabitsPage() {
 
       {isLoading ? (
         <div className="flex justify-center py-10"><div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>
+      ) : readFailed ? (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm">
+          <p className="font-medium">{t("home.loadError")}</p>
+          <button
+            className="mt-1 font-medium text-primary underline"
+            onClick={retryReads}
+          >
+            {t("common.retry")}
+          </button>
+        </div>
       ) : habits.length === 0 ? (
         <Card><CardContent className="p-6 text-center space-y-3">
           <p className="text-muted-foreground">{t("habits.empty")}</p>
