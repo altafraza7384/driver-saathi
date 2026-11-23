@@ -208,6 +208,37 @@ list are likewise preserved.
   total, not even an illustrative one, is confirmed. No confirmed cost
   figure is reintroduced anywhere.
 
+### C8 — Single-field route only: whole-file deploy is NOT the route
+
+- **Old claims (exact quotes):** F1 — "Applying it later is either the
+  narrow console route (one index only) or a whole-file `firebase deploy
+  --only firestore:indexes` — see §4; the whole-file deploy is NOT a
+  one-field-only change."; §4 — "**To apply later … — two routes, not
+  one:**" and "Use it only if the whole-file state is what is wanted; do
+  not describe it as one-field-only."
+- **Contradicting evidence:** the live ↔ repo reconciliation from round 1
+  (proof note, console 2026-11-22 ~13:54 IST): live holds 8 manual
+  composite indexes, all Enabled, + 4 single-field exemptions
+  (`car_documents / notify_at`, `chat_messages / created_at`,
+  `reminders / notify_at`, `transactions / transaction_date`); the repo
+  file lists 11 indexes + 1 override (+1 new in this branch). Three repo
+  entries (#3 `transactions / transaction_date` CG, #8 `car_documents /
+  notify_at` CG, #10 `chat_messages / created_at` CG) exist live ONLY as
+  single-field exemptions. A whole-file deploy re-asserts all 11 indexes +
+  both overrides and adds composite-index entries for those three — a
+  representation change to existing live settings, not a one-field change —
+  so presenting it as a co-equal apply route contradicts the "leaves every
+  existing setting untouched" requirement for this one-field change. The
+  narrow console route creates exactly one index and touches nothing else.
+- **Correction:** §4 now has ONE verified route — the narrow console
+  Add-index — with an explicit preservation sentence naming the 8 manual
+  indexes + 4 exemptions it leaves untouched (#3, #8, #10 stay exemptions,
+  NOT converted to composites). The whole-file deploy is demoted from an
+  alternative to an explicit do-NOT-use for this change; F1 now says
+  narrow-route-only. No TTL, no manual cleanup run, no blanket indexes
+  deploy. C3's scope statement (whole-file deploy = full-file scope) is
+  preserved as the reason it is not the route.
+
 ---
 
 ## 1. Database, billing, usage — what the repo/config can say
@@ -387,11 +418,10 @@ accumulated backlog in one run — not a normal night's worth:
   `fieldOverrides` entry for `aiUsage` / `bucket_start` to
   `firebase/firestore.indexes.json` (see §4). **Cost: conditional — see §2;
   no confirmed ₹0 figure (pending P1/P2).**
-  Applying it later is either the narrow console route (one index only) or
-  a whole-file `firebase deploy --only firestore:indexes` — see §4; the
-  whole-file deploy is NOT a one-field-only change. Either way it is an
-  index deploy, not a rules deploy, and does not touch the rules HOLD. No
-  TTL, no manual cleanup run.
+  Applying it later is the narrow console route only (one index, §4). A
+  whole-file `firebase deploy --only firestore:indexes` is NOT the route
+  for this change (see §4). It is an index deploy, not a rules deploy, and
+  does not touch the rules HOLD. No TTL, no manual cleanup run.
 
 ### F2 — App Check: not configured in code; enforcement state is console-only
 
@@ -618,24 +648,29 @@ ground — every repo index exists live:
 | fieldOverride reminders.notify_at (4 entries) | Single-field exemption `reminders / notify_at` (CG Ascending) |
 | fieldOverride aiUsage.bucket_start (NEW, this branch) | **Missing live — this is the gap** |
 
-**To apply later (after cost/effects approval — NOT done here) — two routes,
-not one:**
+**To apply later (after cost/effects approval — NOT done here) — one verified
+route:**
 
-- **Narrow route (recommended for a one-field-only change):** Firebase
+- **Narrow route (the verified route for this one-field change):** Firebase
   console → Firestore → Indexes → Add index, collection group `aiUsage`,
   `bucket_start` Ascending, collection-group scope. Creates exactly this
-  one index and leaves every existing setting untouched. No code change,
-  no deploy, no TTL, no manual cleanup run.
-- **Whole-file route:** `firebase deploy --only firestore:indexes` from
-  `firebase/` (index deploy only; does not touch rules). This deploys the
-  ENTIRE file — all 11 indexes + both fieldOverrides — it is NOT a
-  one-field-only change. It also re-asserts the three entries live currently
-  covers only via single-field exemptions (#3, #8, #10), adding composite
-  index entries for them — a representation change to existing settings
-  (same query coverage, different console form). Use it only if the
-  whole-file state is what is wanted; do not describe it as one-field-only.
+  one index and leaves every existing setting untouched — verified against
+  the reconciliation table above: live holds 8 manual composite indexes
+  (all Enabled) + 4 single-field exemptions, and the console Add-index
+  touches none of them; #3, #8 and #10 stay single-field exemptions and
+  are NOT converted to composites. No code change, no deploy, no TTL, no
+  manual cleanup run.
+- **Do NOT use the whole-file route for this change:**
+  `firebase deploy --only firestore:indexes` from `firebase/` (index
+  deploy only; does not touch rules) deploys the ENTIRE file — all 11
+  indexes + both fieldOverrides — it is NOT a one-field-only change. It
+  also re-asserts the three entries live currently covers only via
+  single-field exemptions (#3, #8, #10), adding composite index entries
+  for them — a representation change to existing settings (same query
+  coverage, different console form). It is not the verified route for
+  adding this one index.
 
-Either way, the next `cleanupTransactions` run (03:00 IST) should then
+The next `cleanupTransactions` run (03:00 IST) should then
 succeed — verify from the Scheduler job status + Functions logs, not from
 the deploy output alone.
 
