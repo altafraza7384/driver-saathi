@@ -9,6 +9,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+  createIndexedDbStore,
   createPreservedWritesLedger,
   type PreservedWritesLedger,
   type PreservedWritesStorage,
@@ -192,5 +193,336 @@ describe("preserved-writes ledger — failed record is not a safety proof (round
     await ledger.resolve("user-A");
     expect(await ledger.hasUnresolved()).toBe(false);
     expect(await ledger.list()).toEqual([]);
+  });
+});
+
+describe("preserved-writes ledger — liveness proof (round 4b)", () => {
+  it("verifyLive is true when the stores accept and return the ledger content", async () => {
+    const { storage } = memoryStorage();
+    const ledger = createPreservedWritesLedger(storage);
+    expect(await ledger.verifyLive()).toBe(true);
+    await ledger.record("user-A");
+    // A non-empty ledger round-trips too.
+    expect(await ledger.verifyLive()).toBe(true);
+    expect(await ledger.list()).toEqual(["user-A"]);
+  });
+
+  it("verifyLive is false when both stores refuse writes", async () => {
+    // Reads return empty (readable) but no write lands: an empty read
+    // from these stores proves nothing, and verifyLive must say so.
+    const ledger = createPreservedWritesLedger(
+      failingStorage(),
+      failingStorage(),
+    );
+    expect(await ledger.list()).toEqual([]);
+    expect(await ledger.hasUnresolved()).toBe(false);
+    expect(await ledger.verifyLive()).toBe(false);
+  });
+
+  it("verifyLive is true when one store works", async () => {
+    const { storage } = memoryStorage();
+    const ledger = createPreservedWritesLedger(storage, failingStorage());
+    expect(await ledger.verifyLive()).toBe(true);
+    const other = createPreservedWritesLedger(failingStorage(), storage);
+    expect(await other.verifyLive()).toBe(true);
+  });
+
+  it("verifyLive is false when the ledger is unreadable or corrupt", async () => {
+    const corrupt = createPreservedWritesLedger(
+      memoryStorage("not-json{{{").storage,
+    );
+    expect(await corrupt.verifyLive()).toBe(false);
+    const throwing: PreservedWritesStorage = {
+      read: async () => {
+        throw new Error("denied");
+      },
+      write: async () => {
+        throw new Error("denied");
+      },
+      remove: async () => {
+        throw new Error("denied");
+      },
+    };
+    expect(
+      await createPreservedWritesLedger(throwing).verifyLive(),
+    ).toBe(false);
+  });
+});
+
+/**
+ * Minimal fake IndexedDB factory with transaction completion/abort
+ * semantics (round 4a). It models only what the production store
+ * uses — open(), transaction(), objectStore(), get/put/delete — but
+ * it models the commit boundary faithfully: a put/delete stages in
+ * the transaction and lands in the committed maps ONLY when the
+ * transaction completes. A request reports success first; the
+ * transaction then either completes (commit) or aborts (rollback).
+ * `abortNextWriteTransaction` injects an abort right after the next
+ * write request succeeds, which is exactly the gap the old code had:
+ * it resolved on request success and never saw the abort.
+ */
+const DELETED = Symbol("deleted");
+
+type FakeDbData = {
+  stores: Map<string, Map<string, unknown>>;
+};
+
+class FakeIndexedDbTransaction {
+  oncomplete: ((ev: Event) => void) | null = null;
+  onabort: ((ev: Event) => void) | null = null;
+  onerror: ((ev: Event) => void) | null = null;
+  error: Error | null = null;
+  private staged = new Map<string, Map<string, unknown | typeof DELETED>>();
+  private pending = 0;
+  private settled = false;
+
+  constructor(
+    private factory: FakeIndexedDbFactory,
+    private data: FakeDbData,
+    private mode: IDBTransactionMode,
+  ) {}
+
+  objectStore(name: string) {
+    const tx = this;
+    const store: Record<string, unknown> = {
+      get(key: string) {
+        const req: Record<string, unknown> = {
+          result: undefined,
+          error: null,
+          onsuccess: null,
+          onerror: null,
+        };
+        tx.pending++;
+        setTimeout(() => {
+          req.result = tx.read(name, key);
+          (req.onsuccess as ((ev: Event) => void) | null)?.(
+            new Event("success"),
+          );
+          tx.requestSettled();
+        }, 0);
+        return req;
+      },
+      put(value: unknown, key: string) {
+        const req: Record<string, unknown> = {
+          result: undefined,
+          error: null,
+          onsuccess: null,
+          onerror: null,
+        };
+        tx.pending++;
+        tx.stage(name, key, value);
+        setTimeout(() => {
+          req.result = key;
+          (req.onsuccess as ((ev: Event) => void) | null)?.(
+            new Event("success"),
+          );
+          tx.afterWriteRequest();
+        }, 0);
+        return req;
+      },
+      delete(key: string) {
+        const req: Record<string, unknown> = {
+          result: undefined,
+          error: null,
+          onsuccess: null,
+          onerror: null,
+        };
+        tx.pending++;
+        tx.stage(name, key, DELETED);
+        setTimeout(() => {
+          req.result = undefined;
+          (req.onsuccess as ((ev: Event) => void) | null)?.(
+            new Event("success"),
+          );
+          tx.afterWriteRequest();
+        }, 0);
+        return req;
+      },
+    };
+    return store;
+  }
+
+  private read(name: string, key: string): unknown {
+    const stagedStore = this.staged.get(name);
+    if (stagedStore?.has(key)) {
+      const v = stagedStore.get(key);
+      return v === DELETED ? undefined : v;
+    }
+    return this.data.stores.get(name)?.get(key);
+  }
+
+  private stage(name: string, key: string, value: unknown | typeof DELETED) {
+    let stagedStore = this.staged.get(name);
+    if (!stagedStore) {
+      stagedStore = new Map();
+      this.staged.set(name, stagedStore);
+    }
+    stagedStore.set(key, value);
+  }
+
+  private requestSettled() {
+    this.pending--;
+    if (this.pending === 0 && !this.settled) {
+      this.settled = true;
+      setTimeout(() => {
+        this.commit();
+        this.oncomplete?.(new Event("complete"));
+      }, 0);
+    }
+  }
+
+  /** After a write request succeeds: abort if injected, else settle. */
+  private afterWriteRequest() {
+    if (this.factory.abortNextWriteTransaction) {
+      this.factory.abortNextWriteTransaction = false;
+      this.abort();
+      return;
+    }
+    this.requestSettled();
+  }
+
+  abort() {
+    if (this.settled) return;
+    this.settled = true;
+    this.staged.clear();
+    this.error = new Error("Transaction aborted");
+    setTimeout(() => {
+      this.onabort?.(new Event("abort"));
+    }, 0);
+  }
+
+  private commit() {
+    for (const [name, stagedStore] of this.staged) {
+      let committed = this.data.stores.get(name);
+      if (!committed) {
+        committed = new Map();
+        this.data.stores.set(name, committed);
+      }
+      for (const [key, value] of stagedStore) {
+        if (value === DELETED) committed.delete(key);
+        else committed.set(key, value);
+      }
+    }
+    this.staged.clear();
+  }
+}
+
+class FakeIndexedDbFactory {
+  private databases = new Map<string, FakeDbData>();
+  /**
+   * When true, the next write transaction aborts right after its
+   * first put/delete request reports success. Consumed on use.
+   */
+  abortNextWriteTransaction = false;
+
+  open(name: string, _version?: number) {
+    const req: Record<string, unknown> = {
+      result: undefined,
+      error: null,
+      onupgradeneeded: null,
+      onsuccess: null,
+      onerror: null,
+      onblocked: null,
+    };
+    setTimeout(() => {
+      let data = this.databases.get(name);
+      const isNew = !data;
+      if (!data) {
+        data = { stores: new Map() };
+        this.databases.set(name, data);
+      }
+      const db = this.makeDb(data);
+      req.result = db;
+      if (isNew) {
+        (req.onupgradeneeded as ((ev: Event) => void) | null)?.(
+          new Event("upgradeneeded"),
+        );
+      }
+      (req.onsuccess as ((ev: Event) => void) | null)?.(
+        new Event("success"),
+      );
+    }, 0);
+    return req as unknown as IDBOpenDBRequest;
+  }
+
+  private makeDb(data: FakeDbData) {
+    const factory = this;
+    const db: Record<string, unknown> = {
+      objectStoreNames: {
+        contains: (storeName: string) => data.stores.has(storeName),
+      },
+      createObjectStore(storeName: string) {
+        if (!data.stores.has(storeName)) {
+          data.stores.set(storeName, new Map());
+        }
+        return {};
+      },
+      transaction(
+        storeNames: string | string[],
+        mode?: IDBTransactionMode,
+      ) {
+        return new FakeIndexedDbTransaction(
+          factory,
+          data,
+          mode ?? "readonly",
+        );
+      },
+    };
+    return db as unknown as IDBDatabase;
+  }
+}
+
+describe("preserved-writes ledger — IndexedDB transaction completion (round 4a)", () => {
+  it("records durably when the put succeeds and the transaction completes, and survives reload", async () => {
+    const idb = new FakeIndexedDbFactory();
+    const store = createIndexedDbStore(idb as unknown as IDBFactory);
+    const ledger = createPreservedWritesLedger(store, failingStorage());
+    expect(await ledger.record("user-A")).toBe(true);
+    // Reload: a fresh store + fresh ledger over the same fake database.
+    const reloaded = createPreservedWritesLedger(
+      createIndexedDbStore(idb as unknown as IDBFactory),
+      failingStorage(),
+    );
+    expect(await reloaded.list()).toEqual(["user-A"]);
+    expect(await reloaded.hasUnresolved()).toBe(true);
+  });
+
+  it("record() returns false when the transaction aborts right after the put succeeds (mirror also fails)", async () => {
+    // REGRESSION (round 4a): the put request succeeds, then the
+    // transaction aborts and rolls the write back. The old code
+    // resolved on request success, so record() wrongly returned true
+    // even though nothing landed — and a reload then showed an empty
+    // ledger (unresolved=false) with no trace of the record.
+    const idb = new FakeIndexedDbFactory();
+    idb.abortNextWriteTransaction = true;
+    const store = createIndexedDbStore(idb as unknown as IDBFactory);
+    const ledger = createPreservedWritesLedger(store, failingStorage());
+    expect(await ledger.record("user-A")).toBe(false);
+    // The aborted put rolled back: a reload sees an empty ledger.
+    const reloaded = createPreservedWritesLedger(
+      createIndexedDbStore(idb as unknown as IDBFactory),
+      failingStorage(),
+    );
+    expect(await reloaded.list()).toEqual([]);
+    expect(await reloaded.hasUnresolved()).toBe(false);
+  });
+
+  it("an aborted IndexedDB put still records durably in the healthy mirror", async () => {
+    const idb = new FakeIndexedDbFactory();
+    idb.abortNextWriteTransaction = true;
+    const { storage: mirror } = memoryStorage();
+    const ledger = createPreservedWritesLedger(
+      createIndexedDbStore(idb as unknown as IDBFactory),
+      mirror,
+    );
+    // The IndexedDB write rolled back, but the record itself landed
+    // durably in the mirror — record() honestly reports the mirror.
+    expect(await ledger.record("user-A")).toBe(true);
+    const reloaded = createPreservedWritesLedger(
+      createIndexedDbStore(idb as unknown as IDBFactory),
+      mirror,
+    );
+    expect(await reloaded.list()).toEqual(["user-A"]);
+    expect(await reloaded.hasUnresolved()).toBe(true);
   });
 });

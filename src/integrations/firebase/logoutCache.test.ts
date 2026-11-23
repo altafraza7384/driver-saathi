@@ -421,3 +421,82 @@ describe("clearFirestoreCacheOnLogout — failed ledger record blocks later clea
     expect(resultA.detail).toMatch(/could not be written durably/);
   });
 });
+
+describe("clearFirestoreCacheOnLogout — both ledger stores fail, fresh client (round 4)", () => {
+  it("refuses a later clean logout on a fresh client when both ledger writes failed", async () => {
+    // REGRESSION (round 4b): both ledger stores refuse writes, but
+    // reads return empty (readable). A's pending writes therefore
+    // leave NO durable trace — yet they are still in Firestore's
+    // pending cache. A fresh client after a reload reads an empty
+    // ledger, so ledger-emptiness alone must NOT authorise B's
+    // whole-cache clear: a destructive clear needs POSITIVE proof
+    // that no pending writes exist, and an empty read from dead
+    // stores is not that proof. No real cache deletion happens in
+    // this test: the refusal is asserted from the result + call list.
+    const failingPrimary = failingAsyncStore();
+    const failingMirror = failingAsyncStore();
+    const first = createPreservedWritesLedger(
+      failingPrimary,
+      failingMirror,
+    );
+    const { api: pendingApi } = apiWith({
+      waitForPendingWrites: () => new Promise<void>(() => {}),
+    });
+    const resultA = await clearFirestoreCacheOnLogout(fakeDb, {
+      timeoutMs: 10,
+      api: pendingApi,
+      preservedWrites: first,
+      departingUid: "user-A",
+    });
+    expect(resultA.cleared).toBe(false);
+    expect(resultA.reason).toBe("pending-writes-preserved");
+    expect(resultA.detail).toMatch(/could not be written durably/);
+    // The ledger itself holds nothing after the failed record.
+    expect(await first.list()).toEqual([]);
+    expect(await first.hasUnresolved()).toBe(false);
+
+    // Reload: a fresh ledger instance over the SAME (still failing)
+    // stores. B logs out with a clean active queue — that clean check
+    // is scoped to B and proves nothing about A's retained writes.
+    const second = createPreservedWritesLedger(
+      failingPrimary,
+      failingMirror,
+    );
+    expect(await second.list()).toEqual([]);
+    const { api: cleanApi, calls } = apiWith({});
+    const resultB = await clearFirestoreCacheOnLogout(fakeDb, {
+      timeoutMs: 50,
+      api: cleanApi,
+      preservedWrites: second,
+      departingUid: "user-B",
+    });
+    expect(resultB.cleared).toBe(false);
+    expect(resultB.reason).toBe("pending-writes-preserved");
+    expect(resultB.detail).toMatch(/could not (be )?prov|positive|live/i);
+    // terminate() and clearIndexedDbPersistence() were never called:
+    // nothing was destroyed.
+    expect(calls).toEqual(["waitForPendingWrites"]);
+  });
+
+  it("still clears when the ledger channel is live and the ledger is empty", async () => {
+    // The refusal above is about an unprovable clear, not about
+    // never clearing: healthy stores + empty ledger + clean active
+    // queue still clears. (Guards the probe against refusing every
+    // healthy logout.)
+    const { store } = memoryAsyncStore();
+    const ledger = createPreservedWritesLedger(store);
+    const { api, calls } = apiWith({});
+    const result = await clearFirestoreCacheOnLogout(fakeDb, {
+      timeoutMs: 50,
+      api,
+      preservedWrites: ledger,
+      departingUid: "user-B",
+    });
+    expect(result).toEqual({ cleared: true, reason: "cleared" });
+    expect(calls).toEqual([
+      "waitForPendingWrites",
+      "terminate",
+      "clearIndexedDbPersistence",
+    ]);
+  });
+});

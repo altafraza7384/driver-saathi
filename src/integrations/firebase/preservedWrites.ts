@@ -51,19 +51,35 @@
  * record, so a later clear cannot be proven safe for that identity's
  * writes. The privacy draft states this limit; do not claim more.
  *
- * RESIDUAL LIMIT (round 3, stated plainly): if EVERY durable store
- * fails at once — the IndexedDB write AND the localStorage write both
- * throw — the record cannot be written anywhere, and a fresh client
- * after a reload has no durable trace of it. No honest mechanism can
- * inform a client that has nothing to read: a memory-only flag dies
- * with the reload, and a marker in a third store would be exactly the
- * kind of non-record proof this ledger refuses to rely on. In that
- * case record() returns false (the failure is visible, and the
- * CURRENT logout still preserves the cache), but a later clear cannot
- * be proven unsafe from the ledger alone. This needs all durable
- * storage on the device to be broken at once; the single-store
- * failure the regressions cover — localStorage quota/error while
- * IndexedDB works, or vice versa — is handled by the mirror.
+ * RESIDUAL LIMIT (round 3, narrowed in round 4b): if EVERY durable
+ * store fails at once — the IndexedDB write AND the localStorage write
+ * both throw — the record cannot be written anywhere. record() returns
+ * false (the failure is visible, and the CURRENT logout still preserves
+ * the cache). A later logout no longer trusts an empty ledger read on
+ * its own: before clearing it must PROVE the ledger channel live
+ * (verifyLive: round-trip the current content through the stores). When
+ * the stores are STILL down at that later logout, the probe fails and
+ * the clear is refused — the persistent-failure case is closed. What
+ * remains unprovable is the transient window: a record lost while ALL
+ * stores were down, where the stores recover before the next logout.
+ * Then the probe passes, the ledger reads empty, and the clear cannot
+ * be proven unsafe. No client-side mechanism can resurrect a record
+ * that was never written anywhere — a memory-only flag dies with the
+ * reload, a marker in a third store would be exactly the kind of
+ * non-record proof this ledger refuses to rely on, and no public
+ * Firestore API enumerates another identity's pending writes
+ * (waitForPendingWrites is scoped to the ACTIVE user, per Firebase's
+ * own docs), so Firestore cannot close that window either. The
+ * single-store failure the regressions cover — localStorage quota/error
+ * while IndexedDB works, or vice versa — is handled by the mirror, and
+ * the both-stores-down case is refused while the stores stay down.
+ *
+ * TRANSACTION DURABILITY (round 4a): an IndexedDB write is durable
+ * only when its TRANSACTION completes. A put request can report
+ * success and the transaction can still abort afterwards, rolling the
+ * write back — so every IndexedDB request here resolves only on
+ * tx.oncomplete and rejects on tx.onabort / tx.onerror, never on
+ * req.onsuccess alone.
  */
 
 /** localStorage key. Value: JSON array of user ids. */
@@ -109,6 +125,20 @@ export type PreservedWritesLedger = {
   hasUnresolved(exceptUid?: string | null): Promise<boolean>;
   /** Recorded uids (empty when unreadable — never throws). */
   list(): Promise<string[]>;
+  /**
+   * POSITIVE proof that the ledger channel is live (round 4b): writes
+   * the current ledger content back to every store and reads it back,
+   * and returns true only when the round-trip succeeds in at least one
+   * store and the read-back equals what was written. An empty read is
+   * trustworthy ONLY when this passes: a read of null/empty from dead
+   * stores looks identical to a genuinely empty ledger, and only a
+   * live round-trip tells them apart. This writes NO new value, flag,
+   * or marker — it re-writes the ledger's own current content (or
+   * removes the key when empty) and verifies it. False when the
+   * ledger is unreadable, when no store accepts the write, or when
+   * the read-back differs. Never throws.
+   */
+  verifyLive(): Promise<boolean>;
 };
 
 function localStorageStore(): PreservedWritesStorage {
@@ -131,14 +161,28 @@ function localStorageStore(): PreservedWritesStorage {
  * database is lazy (first use) and the open promise is cached; a
  * failed open is forgotten so a later call retries instead of
  * reusing a rejected promise forever.
+ *
+ * A request is NOT durable until its TRANSACTION completes: a put
+ * request can report success and the transaction can still abort
+ * afterwards, rolling the write back (round 4a). Every request
+ * therefore resolves only on tx.oncomplete and rejects on
+ * tx.onabort / tx.onerror / req.onerror — never on req.onsuccess
+ * alone. The factory is injectable so tests can drive this store
+ * with a fake IndexedDB that models completion/abort semantics.
  */
-function indexedDbStore(): PreservedWritesStorage {
+export function createIndexedDbStore(
+  factory?: IDBFactory,
+): PreservedWritesStorage {
+  const idb =
+    factory ??
+    (typeof indexedDB !== "undefined" ? indexedDB : undefined);
+  if (!idb) throw new Error("IndexedDB is not available");
   let dbPromise: Promise<IDBDatabase> | null = null;
 
   const openDb = (): Promise<IDBDatabase> => {
     if (!dbPromise) {
       dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
-        const request = indexedDB.open(PRESERVED_WRITES_DB_NAME, 1);
+        const request = idb.open(PRESERVED_WRITES_DB_NAME, 1);
         request.onupgradeneeded = () => {
           if (
             !request.result.objectStoreNames.contains(
@@ -171,7 +215,27 @@ function indexedDbStore(): PreservedWritesStorage {
         new Promise<T>((resolve, reject) => {
           const tx = db.transaction(PRESERVED_WRITES_IDB_STORE, mode);
           const req = fn(tx.objectStore(PRESERVED_WRITES_IDB_STORE));
-          req.onsuccess = () => resolve(req.result);
+          // A request's success is NOT durability: the put request can
+          // succeed and the transaction can still abort afterwards,
+          // rolling the write back. Resolve ONLY on tx.oncomplete and
+          // reject on tx.onabort / tx.onerror / req.onerror — never on
+          // req.onsuccess alone. A Promise settles on its first call,
+          // so a late event after the transaction has settled cannot
+          // re-settle it. req.result is read at completion time, when
+          // the request has necessarily finished.
+          tx.oncomplete = () => resolve(req.result);
+          tx.onabort = () =>
+            reject(
+              tx.error ??
+                req.error ??
+                new Error("IndexedDB transaction aborted"),
+            );
+          tx.onerror = () =>
+            reject(
+              tx.error ??
+                req.error ??
+                new Error("IndexedDB transaction failed"),
+            );
           req.onerror = () =>
             reject(req.error ?? new Error("IndexedDB request failed"));
         }),
@@ -199,6 +263,10 @@ function indexedDbStore(): PreservedWritesStorage {
       );
     },
   };
+}
+
+function indexedDbStore(): PreservedWritesStorage {
+  return createIndexedDbStore();
 }
 
 function parseUids(raw: string | null): string[] | null {
@@ -303,6 +371,22 @@ export function createPreservedWritesLedger(
     },
     async list() {
       return (await readUids()) ?? [];
+    },
+    async verifyLive() {
+      const uids = await readUids();
+      // Unreadable/corrupt: nothing can be proven — fail closed.
+      if (uids === null) return false;
+      // Re-write the ledger's own current content (no new value, no
+      // flag, no marker) and read it back. A store that refuses the
+      // write, or a read-back that differs, means the channel cannot
+      // be proven live — an empty read from such stores is not proof
+      // that no record exists.
+      if (!(await writeUids(uids))) return false;
+      const back = await readUids();
+      if (back === null) return false;
+      return (
+        back.length === uids.length && uids.every((u) => back.includes(u))
+      );
     },
   };
 }

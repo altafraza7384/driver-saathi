@@ -25,7 +25,9 @@ import {
  * they are still signed in), AND (b) no EARLIER identity has
  * unresolved preserved writes recorded in the preserved-writes ledger
  * (see preservedWrites.ts: the record itself, in its own IndexedDB
- * database mirrored to localStorage). Clearing with pending writes would
+ * database mirrored to localStorage), AND (c) the ledger channel
+ * itself is proven live (verifyLive: the current ledger content
+ * round-trips through the stores). Clearing with pending writes would
  * silently destroy data the user created while offline (e.g. a
  * transaction saved with no network that has not synced yet), so
  * pending writes are always preserved and the cache is left in place.
@@ -144,11 +146,16 @@ export async function hasNoPendingWrites(
  * pending offline writes. Returns whether the cache was cleared.
  * Never throws: every failure path returns a result instead.
  *
- * Safety is TWO checks, not one: the departing user's own queue must
+ * Safety is THREE checks, not one: the departing user's own queue must
  * be clean (waitForPendingWrites, while they are still signed in)
  * AND the preserved-writes ledger must hold no unresolved entry for
- * any earlier identity. A clean active queue alone never authorises
- * a whole-cache clear.
+ * any earlier identity AND the ledger channel must prove live
+ * (verifyLive). A clean active queue alone never authorises a
+ * whole-cache clear — and neither does an empty ledger read on its
+ * own: reads from dead stores return empty exactly like a genuinely
+ * empty ledger, so without the liveness proof a record lost when both
+ * stores were down would be invisible to the next logout. Only a live
+ * round-trip makes "empty" mean "no record exists".
  */
 export async function clearFirestoreCacheOnLogout(
   db: Firestore,
@@ -205,6 +212,28 @@ export async function clearFirestoreCacheOnLogout(
       reason: "pending-writes-preserved",
       detail:
         "Unsynced writes of an earlier signed-in user may still be in the cache (recorded when their logout preserved them); cache kept so no unsynced data is lost.",
+    };
+  }
+
+  // POSITIVE proof (round 4b): ledger-emptiness alone is NOT proof
+  // that no pending writes exist. Both ledger stores can refuse
+  // writes while still reading empty — an earlier identity's record
+  // can then be lost with no durable trace, while its writes are
+  // still sitting in Firestore's pending cache (waitForPendingWrites
+  // is scoped to the ACTIVE user, so the clean check above cannot see
+  // them, and no public Firestore API enumerates another identity's
+  // pending writes). A destructive whole-cache clear therefore needs
+  // the ledger channel proven live: only a successful round-trip of
+  // the current ledger content makes "empty" mean "no record exists"
+  // rather than "the stores are dead". If that proof fails, refuse
+  // the clear — never clear on doubt. This writes no flag or marker;
+  // the proof is the ledger record itself round-tripping.
+  if (!(await ledger.verifyLive())) {
+    return {
+      cleared: false,
+      reason: "pending-writes-preserved",
+      detail:
+        "The preserved-writes ledger could not be proven live (its stores would not accept and return the ledger record), so an empty ledger is not positive proof that no unsynced writes exist; cache kept so no unsynced data is lost.",
     };
   }
 

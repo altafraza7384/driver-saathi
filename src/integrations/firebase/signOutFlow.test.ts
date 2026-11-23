@@ -484,3 +484,79 @@ describe("performSignOut — failed ledger store across a reload (round 3)", () 
     expect(after.store.has("tx-A1")).toBe(false);
   });
 });
+
+describe("performSignOut — both ledger stores fail across a reload (round 4b)", () => {
+  it("refuses B's clean logout on a fresh client when both ledger writes failed, and A's write survives", async () => {
+    // REGRESSION (round 4b): BOTH ledger stores refuse writes, but
+    // reads return empty (readable). A's pending write therefore
+    // leaves no durable ledger trace — yet it is still in Firestore's
+    // pending cache. A fresh client after a reload reads an empty
+    // ledger, so ledger-emptiness alone must NOT authorise B's
+    // whole-cache clear: the clear needs POSITIVE proof (the ledger
+    // channel proving live), and with both stores still down that
+    // proof fails. No real cache deletion happens in this test: the
+    // refusal is asserted from the result and clearCalls staying 0.
+    // No flag, no memory marker: the proof is the ledger record
+    // itself round-tripping, and here it cannot.
+    const failingPrimary = failingAsyncStore();
+    const failingMirror = failingAsyncStore();
+    const shared = {
+      store: new Map<string, unknown>(),
+      pending: new Map<string, Set<string>>(),
+    };
+    const before = new FakeFirestore(shared);
+
+    // A logs out with an offline write pending: cache preserved, and
+    // the record could not be written durably anywhere.
+    before.signIn("user-A");
+    before.write("user-A", "tx-A1", { amount: 500 });
+    const ledgerA = createPreservedWritesLedger(
+      failingPrimary,
+      failingMirror,
+    );
+    const { deps: depsA } = makeDeps(before, {
+      firestore: {
+        db: before as unknown as Firestore,
+        api: before.asApi(),
+        timeoutMs: 50,
+        departingUid: "user-A",
+        preservedWrites: ledgerA,
+      },
+    });
+    const resultA = await performSignOut(depsA);
+    expect(resultA.cache?.reason).toBe("pending-writes-preserved");
+    expect(resultA.cache?.cleared).toBe(false);
+    expect(resultA.cache?.detail).toMatch(/could not be written durably/);
+    expect(before.clearCalls).toBe(0);
+    expect(before.store.get("tx-A1")).toEqual({ amount: 500 });
+
+    // Reload: a fresh client over the same store, and a FRESH ledger
+    // instance over the same (still failing) stores. B signs in and
+    // out with a clean queue — that clean check is scoped to B and
+    // proves nothing about A's retained writes.
+    const after = new FakeFirestore(shared);
+    const ledgerB = createPreservedWritesLedger(
+      failingPrimary,
+      failingMirror,
+    );
+    expect(await ledgerB.list()).toEqual([]);
+    after.signIn("user-B");
+    const { deps: depsB } = makeDeps(after, {
+      firestore: {
+        db: after as unknown as Firestore,
+        api: after.asApi(),
+        timeoutMs: 50,
+        departingUid: "user-B",
+        preservedWrites: ledgerB,
+      },
+    });
+    const resultB = await performSignOut(depsB);
+    expect(resultB.cache?.cleared).toBe(false);
+    expect(resultB.cache?.reason).toBe("pending-writes-preserved");
+    expect(after.clearCalls).toBe(0);
+    // A's write survived B's logout — it was NOT silently discarded.
+    expect(after.store.get("tx-A1")).toEqual({ amount: 500 });
+    expect(after.pending.get("user-A")?.has("tx-A1")).toBe(true);
+    expect(resultB.signedOut).toBe(true);
+  });
+});

@@ -21,8 +21,12 @@
  *    also gated on the preserved-writes ledger — the helper records
  *    the departing user when their writes are pending, resolves them
  *    when their queue proves clean, and refuses the clear while any
- *    earlier identity's entry is unresolved. The flow passes
- *    departingUid so the helper can attribute the record.
+ *    earlier identity's entry is unresolved — AND on the ledger
+ *    channel proving live (round 4b): an empty ledger read from dead
+ *    stores is not positive proof that no pending writes exist, so
+ *    the clear is refused while the ledger cannot round-trip its own
+ *    content. The flow passes departingUid so the helper can
+ *    attribute the record.
  * 4. Reopen the write gate (finally — the window is over either way).
  * 5. THEN sign out of Auth. Only now does the identity change.
  * 6. Reload ONLY once signed out: the clear terminates the Firestore
