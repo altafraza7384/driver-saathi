@@ -21,6 +21,7 @@ import {
   RoutineSettingPayload,
   mergeSchedule,
   mergeMilestones,
+  milestoneRows,
   buildDailyNotifications,
   findSettingRow,
   retimeForMode,
@@ -108,7 +109,7 @@ export default function SettingsPage() {
       let scheduleFailed = false;
       try {
         const milestones = mergeMilestones(
-          routineRows.filter((r) => r.kind === "milestone").map((r) => ({ key: r.key, min: Number(r.min_amount) || 0, max: Number(r.max_amount) || 0 })),
+          milestoneRows(routineRows.filter((r) => r.kind === "milestone")),
         );
         const perm = await LocalNotifications.checkPermissions();
         if (perm.display === "granted") {

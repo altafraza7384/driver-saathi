@@ -17,6 +17,7 @@ import {
   mergeSchedule,
   milestoneForNow,
   milestoneIsUnset,
+  milestoneRows,
   minutesOf,
   incomeEarnedBy,
   ReportCheckpoint,
@@ -95,9 +96,7 @@ export default function DailyReportPage() {
 
   const schedule = mergeSchedule((settings as any[]).filter((r) => r.kind === "schedule"));
   const milestones = mergeMilestones(
-    (settings as any[])
-      .filter((r) => r.kind === "milestone")
-      .map((r) => ({ key: r.key, min: Number(r.min_amount) || 0, max: Number(r.max_amount) || 0 })),
+    milestoneRows((settings as any[]).filter((r) => r.kind === "milestone")),
   ).filter((m) => !milestoneIsUnset(m));
   const timeForKey = (key: string) => schedule.find((s) => s.key === key)?.time ?? "00:00";
   const now = new Date();
