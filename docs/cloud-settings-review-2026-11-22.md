@@ -159,6 +159,35 @@ list are likewise preserved.
   `asia-south1` rates as checked — they apply only if P8 confirms both).
   P8 now asks for both as UNKNOWN items.
 
+### C6 — At-most-~48-buckets bound removed
+
+- **Old claims (exact quotes, §2):** "So the \"at most ~48 buckets per user
+  per feature\" bound holds only while cleanup runs successfully every
+  night — it does not hold today."; "the live collection would be at most a
+  few hundred docs *if cleanup were healthy*"; "At the generous upper bound
+  used for illustration only (10 users × 2 features × 48 buckets = 960
+  docs), data is **< 200 KiB** … Total < 0.5 MiB — about 0.05% of the 1 GiB
+  free storage tier"; and "at the generous upper bound used before (10 users
+  × 2 features × 48 buckets = 960 docs), the backfill is 960 reads and the
+  index is < 0.5 MiB".
+- **Contradicting evidence:** the corrected retention range in C2 itself —
+  a bucket created just after the 03:00 run lives up to nearly 72h under a
+  healthy daily run, i.e. up to nearly 72 hourly buckets per user per
+  feature, not ~48. The ~48 figure was the 48h **cutoff**, not the
+  retention: a bucket first becomes eligible ~48h after creation and is
+  only deleted at the next run after that. And today cleanup is broken, so
+  the count grows without bound — no healthy-night bound applies at all.
+  The 960-doc total and the < 0.5 MiB size were arithmetic on the false
+  bound plus an unmeasured 10-user base (user count is an inference, not a
+  measured count — see C1).
+- **Correction:** every at-most-~48-buckets statement is removed; no
+  per-user bucket-count bound is stated. The 960-doc illustration and its
+  size totals are withdrawn; the live count and total size are stated as
+  unmeasured until the backlog is counted (P2 or a read-only count). The
+  ~48h-to-just-under-72h retention range (C2) is kept — it is a lifetime
+  range, not a count bound. The quoted old claim inside C2's own entry is a
+  quote of the withdrawn claim, not a live statement.
+
 ---
 
 ## 1. Database, billing, usage — what the repo/config can say
@@ -218,19 +247,13 @@ but 48h is a **cutoff, not a retention guarantee** (see C2 above): while the
 job is broken the backlog grows without bound, and even with a healthy daily
 03:00 IST run a bucket lives **~48h to just under 72h** before deletion (a
 bucket created just after 03:00 is only deleted at the third run after its
-creation; the same arithmetic gives chat messages ~24h to ~48h). So the
-"at most ~48 buckets per user per feature" bound holds only while cleanup
-runs successfully every night — it does not hold today. With a test-only
-user base (single-digit accounts — an inference, not a measured count), the
-live collection would be at most a few hundred docs *if cleanup were
-healthy*; with cleanup failing, the actual count is unknown and larger.
-Each doc is ~100–200 bytes including Firestore overhead. At the generous
-upper bound used for illustration only (10 users × 2 features × 48 buckets
-= 960 docs), data is **< 200 KiB** and the index itself (one entry per doc:
-collection ID + timestamp + doc name, ~100–150 bytes each) is **< 200 KiB**.
-Total < 0.5 MiB — about 0.05% of the 1 GiB free storage tier — *if* the
-collection were at that bound; the real size is unmeasured until the backlog
-is counted.
+creation; the same arithmetic gives chat messages ~24h to ~48h). No
+per-user bucket-count bound is stated: the live count is unmeasured —
+cleanup has been failing daily, so the backlog is unknown and larger than a
+healthy nightly run would leave, and the user count is an inference
+(single-digit test accounts), not a measured count. Each doc is ~100–200
+bytes including Firestore overhead (from the data model: 3 small fields per
+doc), but without a counted backlog no total size is stated.
 
 ### Public pricing used (Firestore, Standard edition, Mumbai `asia-south1` — both conditional until P8; see C5)
 
@@ -281,13 +304,12 @@ Conditional scenarios (each is conditional on the PENDING items above):
 | B — usage at/over free tier | Usage is at or over the free tier, so marginal reads/writes/deletes are billed | Backfill: one read per existing `aiUsage` doc at $0.03/100K; nightly cleanup: one delete per stale bucket at $0.01/100K; storage: index size × $0.10–0.18/GiB/month — small in absolute terms at any measured backlog, but NOT ₹0 by assertion |
 | C — backlog unknown | Backlog never measured | The cost of the first resumed cleanup run cannot be stated until the backlog is counted (console usage page, P2, or a read-only count) |
 
-Illustrative arithmetic only (public rates, NOT a measured estimate): at the
-generous upper bound used before (10 users × 2 features × 48 buckets = 960
-docs), the backfill is 960 reads and the index is < 0.5 MiB — but 960 docs
-assumes healthy 48h retention and a 10-user base, neither of which is
-measured, and the backlog after days of failed cleanup is by definition
-larger than the healthy bound (see the retention correction, C2). Do not
-use 960 as a backlog figure.
+No backlog total is stated. The 960-doc figure used before is withdrawn: it
+was built on the ~48-bucket bound (withdrawn above) and a 10-user base that
+is unmeasured, and the backlog after days of failed cleanup is by definition
+larger than what a healthy nightly run would leave (see the retention
+correction, C2). Do not use 960 as a backlog figure — the backlog can only
+be stated after a count (console usage page, P2, or a read-only count).
 
 **Cost is not proven to be a blocker, and not proven to be zero either.**
 The blocker remains approval — plus the PENDING console checks P1/P2 that
