@@ -239,6 +239,120 @@ list are likewise preserved.
   deploy. C3's scope statement (whole-file deploy = full-file scope) is
   preserved as the reason it is not the route.
 
+### Round 3 — 2026-11-23 (post-review corrections C9–C10)
+
+### C9 — BulkWriter: "chat deletes never flushed" is withdrawn — chat-delete completion is UNKNOWN
+
+- **Old claims (exact quotes):** F6 — "threw mid-run, before
+  `writer.close()`, so queued deletes never flushed"; F1 — "because the
+  throw happens before `writer.close()`, the chat-message deletes queued
+  earlier in the same run may never flush — so stale chat messages
+  accumulate too"; §2 ("First resumed run") — "(the chat deletes queued
+  before the throw never flushed either, so stale chat messages have been
+  accumulating too)"; C2's evidence — "so no deletes flush while the index
+  is missing".
+- **Contradicting evidence — code order:** `firebase/functions/src/index.ts:345-362`
+  (`cleanupTransactions`): the `chat_messages` collection-group query runs
+  and its `writer.delete()` calls are enqueued FIRST; the `aiUsage` query
+  runs SECOND and throws `FAILED_PRECONDITION` before its own `forEach`,
+  so no `aiUsage` delete is ever enqueued. Zero `aiUsage` deletes is
+  sound — the query fails before any delete is scheduled. The chat
+  deletes, by contrast, ARE enqueued before the throw, so their fate
+  cannot be read off the throw.
+- **Contradicting evidence — BulkWriter behaviour:** BulkWriter schedules
+  sends as soon as full batches enqueue — `close()` is not the gate for
+  already-enqueued batches. The Node.js BulkWriter reference states
+  `close()` "Commits all enqueued writes and marks the BulkWriter
+  instance as closed" and "Calling this method will send all requests" —
+  i.e. `close()` flushes the REMAINING buffered operations; it does not
+  decide whether already-enqueued batches were sent. Local SDK probe
+  (supplied 2026-11-23, installed `@google-cloud/firestore` 7.11.6,
+  locked in `firebase/functions/package-lock.json`): 20 fake deletes
+  scheduled one batch without `close()`; the send was intercepted before
+  the network — the batch was dispatched with `close()` never called.
+- **Correction:** a failed cleanup run does NOT let you infer actual chat
+  deletions or a chat backlog. Chat-delete completion, count, and backlog
+  are UNKNOWN until logs/count evidence exists — no manual cleanup, no new
+  paid scan. What stays KNOWN: the `aiUsage` query fails with
+  `FAILED_PRECONDITION` on every 03:00 IST run (proven 2026-11-22 03:00
+  IST, F1); no `aiUsage` delete is ever enqueued, so `aiUsage` buckets
+  accumulate without bound; the `aiUsage` backlog size is unmeasured. §2
+  ("First resumed run"), F1, and F6 now state the chat side as UNKNOWN.
+  C2's sentence ("so no deletes flush while the index is missing") is
+  superseded wording, not a live statement: it holds for `aiUsage`
+  deletes (never enqueued) and is withdrawn for chat deletes. C2's
+  retention range for a HEALTHY run (~48h to just under 72h for buckets,
+  ~24h to ~48h for chat messages) is unaffected — it describes runs that
+  reach `writer.close()`, not the broken runs.
+
+### C10 — Narrow route is "Add Exemption" (Single Field / automatic), NOT a "verified Add Index"
+
+- **Old claims (exact quotes):** §4 — "**Narrow route (the verified route
+  for this one-field change):** Firebase console → Firestore → Indexes →
+  Add index, collection group `aiUsage`, `bucket_start` Ascending,
+  collection-group scope."; C8 — "§4 now has ONE verified route — the
+  narrow console Add-index"; §4 (do-NOT-use bullet) — "It is not the
+  verified route for adding this one index."; C3 — "console Firestore →
+  Indexes → Add index for `aiUsage` / `bucket_start` ASC,
+  collection-group scope".
+- **Contradicting evidence — "verified" was never earned:** no live-browser
+  check of the console labels or preview for this path has run on project
+  `driver-saathi-app`. The route's console wording is therefore NOT
+  console-verified; calling it "the verified route" overstates the
+  evidence. Console-label proof needs the read-only browser task briefed
+  below — until that proof exists, the route is the route, not a verified
+  route.
+- **Contradicting evidence — the path is "Add Exemption", not "Add
+  Index":** the Firebase blog on collection-group queries (2019-06-20)
+  describes the console path as Firestore → Index tab → Single Field
+  section → "Add exemption" button, specifying the collection, the field,
+  and a "collection group" scope, then enabling ascending and/or
+  descending. The Cloud docs ("Manage Standard edition indexes") give the
+  same path as Databases → select database → Indexes → **Automatic** tab
+  → **Add Exemption** → Collection ID + Field path → select settings →
+  Save Exemption; the index overview confirms automatic indexes with
+  collection-group scope are not maintained by default and an exemption
+  overrides the automatic settings for that field. "Add Index" / "Create
+  Index" is the Manual-tab composite route (Indexes → **Manual** tab →
+  Create Index, Collection ID + fields + index mode) — a DIFFERENT route
+  from the Single Field Add Exemption route. The whole-file `firebase
+  deploy --only firestore:indexes` is a third, different route (already
+  demoted by C8).
+- **Correction:** §4 now names the route exactly — Single Field /
+  automatic indexes, **Add Exemption**: Collection ID `aiUsage`, Field
+  path `bucket_start`, COLLECTION_GROUP Ascending, preserving existing
+  settings (the collection-scope Ascending / Descending / array-contains
+  entries stay as in the repo `fieldOverrides` entry) — and drops
+  "verified" from the route. The three routes (Add Exemption;
+  manual/composite Add Index; whole-file deploy) are kept explicitly
+  separate in §4; only Add Exemption is the route. F1 now says Add
+  Exemption route only. What IS verified stays verified: the repo
+  `fieldOverrides` entry (§4, unchanged), the live↔repo reconciliation (8
+  manual composites + 4 exemptions), and that a whole-file deploy is not
+  one-field-only (C3/C8). The quoted "Add index" / "verified route"
+  wording inside the C3 and C8 entries is superseded wording, not a live
+  statement.
+- **Console-label proof — browser-task brief (read-only, NOT run here;
+  coordinator to hand to a browser-capable agent):** sign in as
+  `altafraza7384@gmail.com` (the GitHub/Google account — NOT
+  `razakhan.chino@proton.me`, the Lovable account) on project
+  `driver-saathi-app`, database `(default)`. Go to Firebase console →
+  Firestore → Indexes → **Automatic** tab → **Add Exemption** (if the
+  console shows the older "Single Field" section naming instead, record
+  the exact labels as shown). Fill Collection ID `aiUsage`, Field path
+  `bucket_start`; record verbatim every label, toggle/checkbox, scope
+  option, and preview/summary text the form shows, and which existing
+  settings it shows as preserved (collection-scope Ascending / Descending
+  / array-contains). Then CLOSE/CANCEL the dialog WITHOUT saving — do NOT
+  click Save Exemption, do NOT create any index, do NOT change anything
+  else. Afterwards re-check the exemptions list and confirm no `aiUsage`
+  entry was created. Record screenshots or verbatim text of (a) the
+  Indexes page tabs (Automatic vs Manual), (b) the Add Exemption form
+  fields and defaults, (c) any preview/summary line showing what would be
+  created, (d) confirmation the dialog was closed unsaved and nothing was
+  applied. Stop and report if sign-in fails or the console UI differs
+  from this brief — do not improvise a different route.
+
 ---
 
 ## 1. Database, billing, usage — what the repo/config can say
@@ -371,14 +485,18 @@ would turn these scenarios into a number.
 
 ### First resumed run — what it will read, delete, and cost
 
-Once the index exists, the next 03:00 IST run reads and deletes the whole
-accumulated backlog in one run — not a normal night's worth:
+Once the index exists, the next 03:00 IST run reads and deletes the
+accumulated backlog in one run — not a normal night's worth. The `aiUsage`
+backlog is known to have accumulated (no `aiUsage` delete is ever enqueued
+while the query fails — see C9); the `chat_messages` backlog is UNKNOWN
+(chat deletes were enqueued before the throw and may have flushed — see
+C9), so the chat side of the first resumed run cannot be sized in advance:
 
 - **Reads:** one collection-group query read per stale `aiUsage` doc, plus
-  one per stale `chat_messages` doc (the chat deletes queued before the
-  throw never flushed either, so stale chat messages have been accumulating
-  too). Exact counts equal the backlog size, which is unmeasured.
-- **Deletes:** one delete per stale doc via `bulkWriter`, then the normal
+  one per stale `chat_messages` doc that is still present — how many stale
+  chat messages remain is UNKNOWN (see C9). Exact counts equal the backlog
+  size, which is unmeasured.
+- **Deletes:** one delete per stale doc still present via `bulkWriter`, then the normal
   nightly deletes thereafter.
 - **Function charges:** one scheduled invocation + the compute time of a
   longer-than-normal run (a large backlog means a longer run). Billed at
@@ -410,15 +528,19 @@ accumulated backlog in one run — not a normal night's worth:
   unless the index is created. Stale hourly quota buckets accumulate
   without bound while the job is broken (the 48h cutoff is not a retention
   guarantee — see C2; even healthy, buckets live ~48h to just under 72h),
-  and because the throw happens before `writer.close()`, the chat-message
-  deletes queued earlier in the same run may never flush — so stale chat
-  messages accumulate too. The first resumed run clears the whole backlog
-  at once (see §2, "First resumed run").
+  and the chat-message side is UNKNOWN: the chat deletes are enqueued
+  before the throw, and BulkWriter sends full batches as they enqueue, so
+  `writer.close()` never being reached does NOT prove they never flushed
+  (see C9) — whether stale chat messages accumulated, and how many, is
+  unknown until logs/count evidence exists. The first resumed run clears
+  the accumulated `aiUsage` backlog at once (see §2, "First resumed
+  run"); the chat side of that run is likewise UNKNOWN.
 - **Proposed change (this branch, patch only — NOT applied):** add a
   `fieldOverrides` entry for `aiUsage` / `bucket_start` to
   `firebase/firestore.indexes.json` (see §4). **Cost: conditional — see §2;
   no confirmed ₹0 figure (pending P1/P2).**
-  Applying it later is the narrow console route only (one index, §4). A
+  Applying it later is the narrow console Add Exemption route only (one
+  single-field exemption, §4). A
   whole-file `firebase deploy --only firestore:indexes` is NOT the route
   for this change (see §4). It is an index deploy, not a rules deploy, and
   does not touch the rules HOLD. No TTL, no manual cleanup run.
@@ -527,8 +649,11 @@ accumulated backlog in one run — not a normal night's worth:
 
 - **`cleanupTransactions` (`index.ts:345-362`) — the gap that bit:**
   no `try/catch`, no `retryCount`, no logging at all. The index failure
-  threw mid-run, before `writer.close()`, so queued deletes never flushed,
-  and the only trace was the Cloud Scheduler "Failed" status + 2 log lines
+  threw mid-run, before `writer.close()`: the `aiUsage` deletes were never
+  enqueued at all, and the chat deletes enqueued earlier in the run have
+  UNKNOWN completion — `close()` never being reached does not prove they
+  never flushed (BulkWriter sends full batches as they enqueue; see C9).
+  The only trace was the Cloud Scheduler "Failed" status + 2 log lines
   found by manual log inspection. **Proposed (code change, later bundle,
   $0):** wrap each collection-group query in `try/catch` with a
   `console.error` naming the source — the exact pattern `sendNotifications`
@@ -648,18 +773,27 @@ ground — every repo index exists live:
 | fieldOverride reminders.notify_at (4 entries) | Single-field exemption `reminders / notify_at` (CG Ascending) |
 | fieldOverride aiUsage.bucket_start (NEW, this branch) | **Missing live — this is the gap** |
 
-**To apply later (after cost/effects approval — NOT done here) — one verified
-route:**
+**To apply later (after cost/effects approval — NOT done here) — one route
+(console labels/preview NOT yet verified; see C10):**
 
-- **Narrow route (the verified route for this one-field change):** Firebase
-  console → Firestore → Indexes → Add index, collection group `aiUsage`,
-  `bucket_start` Ascending, collection-group scope. Creates exactly this
-  one index and leaves every existing setting untouched — verified against
-  the reconciliation table above: live holds 8 manual composite indexes
-  (all Enabled) + 4 single-field exemptions, and the console Add-index
-  touches none of them; #3, #8 and #10 stay single-field exemptions and
-  are NOT converted to composites. No code change, no deploy, no TTL, no
-  manual cleanup run.
+- **Narrow route (the route for this one-field change — console
+  labels/preview NOT yet verified; see C10):** Firebase console →
+  Firestore → Indexes → **Automatic** tab → **Add Exemption**, Collection
+  ID `aiUsage`, Field path `bucket_start`, COLLECTION_GROUP Ascending,
+  preserving existing settings (the collection-scope Ascending /
+  Descending / array-contains entries stay as in the repo
+  `fieldOverrides` entry). Adds exactly this one single-field exemption
+  and leaves every existing setting untouched — the preservation claim
+  rests on the reconciliation table above (live holds 8 manual composite
+  indexes, all Enabled, + 4 single-field exemptions) and on the exemption
+  mechanism (an exemption overrides automatic settings for that field
+  only); the console's own labels/preview for this path are NOT yet
+  verified — that needs the read-only browser-task proof (C10). #3, #8
+  and #10 stay single-field exemptions and are NOT converted to
+  composites. No code change, no deploy, no TTL, no manual cleanup run.
+  This is NOT the Manual-tab composite "Add Index" / "Create Index"
+  route and NOT the whole-file deploy below — three separate routes; only
+  Add Exemption is the route here.
 - **Do NOT use the whole-file route for this change:**
   `firebase deploy --only firestore:indexes` from `firebase/` (index
   deploy only; does not touch rules) deploys the ENTIRE file — all 11
@@ -667,8 +801,8 @@ route:**
   also re-asserts the three entries live currently covers only via
   single-field exemptions (#3, #8, #10), adding composite index entries
   for them — a representation change to existing settings (same query
-  coverage, different console form). It is not the verified route for
-  adding this one index.
+  coverage, different console form). It is not the route for adding this
+  one index.
 
 The next `cleanupTransactions` run (03:00 IST) should then
 succeed — verify from the Scheduler job status + Functions logs, not from
