@@ -70,6 +70,12 @@ import {
  *   flow. A session that ends without this logout path (e.g. a token
  *   revoked while offline) leaves no record, so a later clear cannot
  *   be proven safe for that identity's writes. Do not claim otherwise.
+ * - The ledger's record is mirrored to a first-party cookie (see
+ *   preservedWrites.ts) so a transient failure of both other stores
+ *   cannot lose it. The exact residuals live there: all three stores
+ *   failing at record time plus a targeted cookie deletion, a cookie
+ *   channel dying while holding the only copy (stuck-safe), and
+ *   first-party cookies blocked (logout clear permanently refused).
  * - Local-only stores are out of scope here: chat history (localStorage,
  *   24 h prune), routine reminders and other device-local state are
  *   untouched by this change.
@@ -153,9 +159,14 @@ export async function hasNoPendingWrites(
  * (verifyLive). A clean active queue alone never authorises a
  * whole-cache clear — and neither does an empty ledger read on its
  * own: reads from dead stores return empty exactly like a genuinely
- * empty ledger, so without the liveness proof a record lost when both
+ * empty ledger, so without the liveness proof a record lost when the
  * stores were down would be invisible to the next logout. Only a live
- * round-trip makes "empty" mean "no record exists".
+ * round-trip makes "empty" mean "no record exists". The ledger is
+ * mirrored to a first-party cookie (round 5) so the transient-heal
+ * window — both other stores down at record time, recovered by the
+ * next logout — is closed by the record itself, and verifyLive also
+ * probes the cookie channel, because a disabled cookie jar reads
+ * empty without throwing.
  */
 export async function clearFirestoreCacheOnLogout(
   db: Firestore,
@@ -215,8 +226,8 @@ export async function clearFirestoreCacheOnLogout(
     };
   }
 
-  // POSITIVE proof (round 4b): ledger-emptiness alone is NOT proof
-  // that no pending writes exist. Both ledger stores can refuse
+  // POSITIVE proof (round 4b, round 5): ledger-emptiness alone is NOT
+  // proof that no pending writes exist. Ledger stores can refuse
   // writes while still reading empty — an earlier identity's record
   // can then be lost with no durable trace, while its writes are
   // still sitting in Firestore's pending cache (waitForPendingWrites
@@ -225,9 +236,12 @@ export async function clearFirestoreCacheOnLogout(
   // pending writes). A destructive whole-cache clear therefore needs
   // the ledger channel proven live: only a successful round-trip of
   // the current ledger content makes "empty" mean "no record exists"
-  // rather than "the stores are dead". If that proof fails, refuse
-  // the clear — never clear on doubt. This writes no flag or marker;
-  // the proof is the ledger record itself round-tripping.
+  // rather than "the stores are dead". Round 5 adds the cookie mirror
+  // so the transient-heal window is closed by the record itself, and
+  // the liveness proof probes the cookie channel too (a disabled
+  // cookie jar reads empty without throwing). If that proof fails,
+  // refuse the clear — never clear on doubt. This writes no flag or
+  // marker; the proof is the ledger record itself round-tripping.
   if (!(await ledger.verifyLive())) {
     return {
       cleared: false,

@@ -19,25 +19,31 @@
  * logout through this flow). Until then the cache is kept, however
  * many other users log in and out.
  *
- * STORAGE (round 3): the ledger record itself lives in its OWN
+ * STORAGE (round 3, round 5): the ledger record itself lives in its OWN
  * IndexedDB database ("driver-saathi-preserved-writes"), NOT in
  * localStorage and NOT in Firestore's IndexedDB store. That database
  * survives clearIndexedDbPersistence (which wipes only Firestore's
  * store), survives a page reload and a fresh client, and has its own
  * quota — independent of localStorage. The same record is ALSO
- * mirrored to localStorage: if either store's write fails, the record
- * still lands durably in the other one, and a later logout reads the
- * union of both. The effective ledger is the union; if EITHER store
- * cannot be read, hasUnresolved() fails closed (never clear on doubt).
+ * mirrored to localStorage, and (round 5) to a first-party cookie:
+ * if any store's write fails, the record still lands durably in the
+ * others, and a later logout reads the union of all three. The
+ * effective ledger is the union; if ANY store cannot be read,
+ * hasUnresolved() fails closed (never clear on doubt). The cookie is
+ * synchronous (document.cookie) and independent of both IndexedDB and
+ * localStorage, so it is the store that survives the transient
+ * failure of the other two — see the healed-window note below.
  *
  * WHY NOT A FLAG: after a write fails, no sentinel, marker, or
  * in-memory flag is treated as proof of anything. The ONLY thing that
  * blocks a later clear is the ledger record itself, written durably
  * (in at least one store). A flag cannot name the owning identity and
  * cannot be resolved by that identity returning and logging out clean;
- * the record can. record() therefore reports whether it landed
- * durably (true) or not (false) instead of swallowing the failure —
- * a failed record is visible to the caller, never silent.
+ * the record can. The cookie holds the SAME record (the uid list),
+ * not a flag — it is a third mirror of the record, not a substitute
+ * for it. record() therefore reports whether it landed durably
+ * (true) or not (false) instead of swallowing the failure — a failed
+ * record is visible to the caller, never silent.
  *
  * FAIL-CLOSED: if a stored value is corrupt or a store cannot be
  * read, hasUnresolved() returns true (preserve) rather than assuming
@@ -51,28 +57,40 @@
  * record, so a later clear cannot be proven safe for that identity's
  * writes. The privacy draft states this limit; do not claim more.
  *
- * RESIDUAL LIMIT (round 3, narrowed in round 4b): if EVERY durable
- * store fails at once — the IndexedDB write AND the localStorage write
- * both throw — the record cannot be written anywhere. record() returns
- * false (the failure is visible, and the CURRENT logout still preserves
- * the cache). A later logout no longer trusts an empty ledger read on
- * its own: before clearing it must PROVE the ledger channel live
- * (verifyLive: round-trip the current content through the stores). When
- * the stores are STILL down at that later logout, the probe fails and
- * the clear is refused — the persistent-failure case is closed. What
- * remains unprovable is the transient window: a record lost while ALL
- * stores were down, where the stores recover before the next logout.
- * Then the probe passes, the ledger reads empty, and the clear cannot
- * be proven unsafe. No client-side mechanism can resurrect a record
- * that was never written anywhere — a memory-only flag dies with the
- * reload, a marker in a third store would be exactly the kind of
- * non-record proof this ledger refuses to rely on, and no public
- * Firestore API enumerates another identity's pending writes
- * (waitForPendingWrites is scoped to the ACTIVE user, per Firebase's
- * own docs), so Firestore cannot close that window either. The
- * single-store failure the regressions cover — localStorage quota/error
- * while IndexedDB works, or vice versa — is handled by the mirror, and
- * the both-stores-down case is refused while the stores stay down.
+ * HEALED-WINDOW HOLE — CLOSED (round 5): the round-4 residual was
+ * the transient window: a record lost while ALL ledger stores were
+ * down, where the stores recover before the next logout. Then the
+ * liveness probe passed, the ledger read empty, and the clear could
+ * not be proven unsafe. That window is closed by the cookie mirror:
+ * the record now has to fail in THREE independent stores at once to
+ * be lost, and the cookie is the store that keeps working when
+ * IndexedDB and localStorage transiently refuse writes (it is
+ * synchronous and on a separate storage path). A fresh client after
+ * the heal reads the cookie and refuses the clear. The regressions
+ * prove it: both stores fail at A's record and recover before B's
+ * logout → cleared=false, no terminate/clear calls, A's record
+ * survives. The cookie channel is itself proven live at clear time
+ * (verifyLive probes it: a disabled cookie jar reads empty without
+ * throwing, so its emptiness alone is never trusted).
+ *
+ * REMAINING RESIDUALS (exact, round 5 — do not claim more):
+ * (1) A record is lost only if ALL THREE stores fail at record time
+ * AND the cookie is then deleted before the next logout while the
+ * other two recover. Normal site-data clearing wipes the Firestore
+ * cache too, so there is nothing left to protect in that case; only
+ * a targeted deletion of this one cookie (e.g. via devtools) while
+ * the other two stores heal leaves the hole. No client-side
+ * mechanism can resurrect a record that was never written anywhere.
+ * (2) If the cookie channel dies AFTER holding the only copy of a
+ * record, that entry stays unresolved (stuck-safe, fail-closed)
+ * until the channel recovers and the owner logs out clean — the
+ * cache is kept meanwhile, never cleared on doubt.
+ * (3) On clients where first-party cookies are blocked, the cookie
+ * probe fails and logout cache-clear is permanently refused
+ * (fail-closed): the cache is kept. Privacy yields to data safety,
+ * as elsewhere in this module.
+ * (4) The pre-existing scope limit stands: the ledger only knows
+ * about identities whose logout went through this flow.
  *
  * TRANSACTION DURABILITY (round 4a): an IndexedDB write is durable
  * only when its TRANSACTION completes. A put request can report
@@ -105,7 +123,7 @@ export type PreservedWritesLedger = {
   /**
    * Record that uid's unsynced writes were preserved at logout.
    * Returns true when the record landed durably in at least one
-   * store, false when it landed nowhere (both stores failed, or the
+   * store, false when it landed nowhere (all stores failed, or the
    * stored value could not be read and so was left untouched). A
    * false return is NOT silent: the caller must treat it as "no
    * durable proof exists for this identity" — the current logout
@@ -126,17 +144,22 @@ export type PreservedWritesLedger = {
   /** Recorded uids (empty when unreadable — never throws). */
   list(): Promise<string[]>;
   /**
-   * POSITIVE proof that the ledger channel is live (round 4b): writes
-   * the current ledger content back to every store and reads it back,
-   * and returns true only when the round-trip succeeds in at least one
-   * store and the read-back equals what was written. An empty read is
-   * trustworthy ONLY when this passes: a read of null/empty from dead
-   * stores looks identical to a genuinely empty ledger, and only a
-   * live round-trip tells them apart. This writes NO new value, flag,
-   * or marker — it re-writes the ledger's own current content (or
-   * removes the key when empty) and verifies it. False when the
-   * ledger is unreadable, when no store accepts the write, or when
-   * the read-back differs. Never throws.
+   * POSITIVE proof that the ledger channel is live (round 4b, round 5):
+   * writes the current ledger content back to every store and reads
+   * it back, and returns true only when the round-trip succeeds in at
+   * least one store and the read-back equals what was written. An
+   * empty read is trustworthy ONLY when this passes: a read of
+   * null/empty from dead stores looks identical to a genuinely empty
+   * ledger, and only a live round-trip tells them apart. This writes
+   * NO new value, flag, or marker — it re-writes the ledger's own
+   * current content (or removes the key when empty) and verifies it.
+   * When a cookie store is configured it is additionally proven live
+   * directly (write the ledger's own JSON encoding, require it back):
+   * a disabled cookie jar reads empty WITHOUT throwing, so the union
+   * round-trip alone cannot prove that channel live, and an empty
+   * cookie read must never authorise a clear on its own. False when
+   * the ledger is unreadable, when no store accepts the write, when
+   * the read-back differs, or when the cookie probe fails. Never throws.
    */
   verifyLive(): Promise<boolean>;
 };
@@ -151,6 +174,110 @@ function localStorageStore(): PreservedWritesStorage {
     },
     async remove() {
       localStorage.removeItem(PRESERVED_WRITES_STORAGE_KEY);
+    },
+  };
+}
+
+/**
+ * Cookie name for the ledger's third mirror. No `:` — a colon is a
+ * cookie-name separator (RFC 6265 token), so the localStorage key
+ * cannot be reused verbatim.
+ */
+export const PRESERVED_WRITES_COOKIE_NAME =
+  "driver-saathi-preserved-pending-writes";
+/** One year: the record must survive reloads and fresh clients until its owner resolves it. */
+const PRESERVED_WRITES_COOKIE_MAX_AGE_SECONDS = 31536000;
+
+/** Minimal `document.cookie` surface, injectable so tests can drive it with a fake jar. */
+export type CookieJar = {
+  cookie: string;
+};
+
+/**
+ * The ledger's own record as a first-party cookie (round 5): a third
+ * durable store, synchronous and independent of both IndexedDB and
+ * localStorage. It holds the SAME record as the other mirrors — the
+ * JSON array of user ids, not a flag or marker — so it names the
+ * owning identity and is resolved the same way (the owner returning
+ * and logging out clean). A cookie is set and read synchronously via
+ * document.cookie, on a storage path no IndexedDB/localStorage
+ * failure can touch.
+ *
+ * WHY A COOKIE, NOT A CACHE SWEEP: the alternative candidate — before
+ * clearing, sweep the Firestore cache for every writable collection
+ * and refuse if any cached document has metadata.hasPendingWrites —
+ * cannot be the proof. A pending DELETE tombstones its document, so
+ * the doc is excluded from getDocsFromCache query results, and its id
+ * is not enumerable through any public Firestore API; the sweep would
+ * be blind to deletes. It also cannot enumerate subcollections of
+ * identities unknown to the client. The cookie instead mirrors the
+ * record itself, so it covers every mutation type, including deletes.
+ *
+ * FAIL-OPEN READ: unlike the other stores, a cookie jar fails OPEN
+ * on read — disabled/blocked cookies read empty WITHOUT throwing, so
+ * an empty cookie read proves nothing on its own. Two defences:
+ * (1) write() verifies its own read-back and THROWS when the value
+ * did not land, so a dead channel fails loudly like the other stores
+ * (record() then honestly reports that the cookie did not take it);
+ * (2) verifyLive() probes the cookie channel directly (write the
+ * ledger's own JSON encoding, require it back) before any clear is
+ * authorised. A cookie that never lands therefore blocks the clear
+ * instead of silently authorising it.
+ *
+ * The jar is injectable so tests can drive this store with a fake
+ * cookie jar (including one that silently drops writes, modelling
+ * cookies disabled). With no jar, the global document is used; when
+ * there is no document at all the store cannot be created (the
+ * production ledger then omits it, as it omits IndexedDB when that
+ * is unavailable).
+ */
+export function createCookieStore(jar?: CookieJar): PreservedWritesStorage {
+  const doc: CookieJar | undefined =
+    jar ?? (typeof document !== "undefined" ? document : undefined);
+  if (!doc) throw new Error("document.cookie is not available");
+
+  const readRaw = (): string | null => {
+    const prefix = `${PRESERVED_WRITES_COOKIE_NAME}=`;
+    for (const part of doc.cookie.split(";")) {
+      const trimmed = part.trim();
+      if (trimmed.startsWith(prefix)) {
+        const encoded = trimmed.slice(prefix.length);
+        try {
+          return decodeURIComponent(encoded);
+        } catch {
+          // An undecodable value is corrupt, not empty: return
+          // invalid JSON so the ledger fails closed.
+          return "corrupt";
+        }
+      }
+    }
+    return null;
+  };
+
+  return {
+    async read() {
+      return readRaw();
+    },
+    async write(value: string) {
+      doc.cookie =
+        `${PRESERVED_WRITES_COOKIE_NAME}=${encodeURIComponent(value)}` +
+        `; max-age=${PRESERVED_WRITES_COOKIE_MAX_AGE_SECONDS}; path=/; SameSite=Lax`;
+      // A disabled/blocked jar drops the write SILENTLY (no throw),
+      // so verify the read-back: a cookie that never landed must fail
+      // loudly, or record() would report success for a record that
+      // exists nowhere.
+      if (readRaw() !== value) {
+        throw new Error(
+          "Cookie write could not be verified (cookies may be disabled)",
+        );
+      }
+    },
+    async remove() {
+      // Absence cannot be verified (it looks identical to a dead
+      // channel) — verifyLive probes the channel with a write
+      // instead of trusting a remove + read.
+      doc.cookie =
+        `${PRESERVED_WRITES_COOKIE_NAME}=; max-age=0; path=/; SameSite=Lax`;
     },
   };
 }
@@ -288,31 +415,41 @@ function parseUids(raw: string | null): string[] | null {
 export function createPreservedWritesLedger(
   storage: PreservedWritesStorage = localStorageStore(),
   fallback: PreservedWritesStorage | null = null,
+  cookie: PreservedWritesStorage | null = null,
 ): PreservedWritesLedger {
   /**
-   * The effective ledger is the UNION of both stores. Either store
-   * unreadable or corrupt → null (fail closed). Both stores hold the
-   * same record (mirrored on write), so the union only differs when
-   * one store's write failed — exactly the case the mirror exists for.
+   * The effective ledger is the UNION of all configured stores. Any
+   * store unreadable or corrupt → null (fail closed). Every store
+   * holds the same record (mirrored on write), so the union only
+   * differs when a store's write failed — exactly the case the
+   * mirrors exist for. The cookie is the third mirror (round 5): it
+   * is what survives the other two failing at once and then healing.
    */
+  const stores: { name: string; store: PreservedWritesStorage }[] = [
+    { name: "primary", store: storage },
+    ...(fallback ? [{ name: "mirror", store: fallback }] : []),
+    ...(cookie ? [{ name: "cookie", store: cookie }] : []),
+  ];
+
   const readUids = async (): Promise<string[] | null> => {
     try {
-      const primary = parseUids(await storage.read());
-      if (primary === null) return null;
-      if (!fallback) return primary;
-      let rawFallback: string | null;
-      try {
-        rawFallback = await fallback.read();
-      } catch (e) {
-        console.warn(
-          "Preserved-writes ledger mirror unreadable; preserving cache",
-          e,
-        );
-        return null;
+      const all: string[] = [];
+      for (const { name, store } of stores) {
+        let raw: string | null;
+        try {
+          raw = await store.read();
+        } catch (e) {
+          console.warn(
+            `Preserved-writes ledger ${name} store unreadable; preserving cache`,
+            e,
+          );
+          return null;
+        }
+        const uids = parseUids(raw);
+        if (uids === null) return null;
+        all.push(...uids);
       }
-      const mirrored = parseUids(rawFallback);
-      if (mirrored === null) return null;
-      return [...new Set([...primary, ...mirrored])];
+      return [...new Set(all)];
     } catch (e) {
       console.warn("Preserved-writes ledger unreadable; preserving cache", e);
       return null;
@@ -320,25 +457,21 @@ export function createPreservedWritesLedger(
   };
 
   /**
-   * Write the full uid list to both stores (best effort each).
+   * Write the full uid list to every store (best effort each).
    * Returns true when it landed durably in at least one store.
    */
   const writeUids = async (uids: string[]): Promise<boolean> => {
     let durable = false;
-    try {
-      if (uids.length === 0) await storage.remove();
-      else await storage.write(JSON.stringify(uids));
-      durable = true;
-    } catch (e) {
-      console.warn("Preserved-writes ledger write failed", e);
-    }
-    if (fallback) {
+    for (const { name, store } of stores) {
       try {
-        if (uids.length === 0) await fallback.remove();
-        else await fallback.write(JSON.stringify(uids));
+        if (uids.length === 0) await store.remove();
+        else await store.write(JSON.stringify(uids));
         durable = true;
       } catch (e) {
-        console.warn("Preserved-writes ledger mirror write failed", e);
+        console.warn(
+          `Preserved-writes ledger ${name} store write failed`,
+          e,
+        );
       }
     }
     return durable;
@@ -384,21 +517,52 @@ export function createPreservedWritesLedger(
       if (!(await writeUids(uids))) return false;
       const back = await readUids();
       if (back === null) return false;
-      return (
-        back.length === uids.length && uids.every((u) => back.includes(u))
-      );
+      if (
+        !(back.length === uids.length && uids.every((u) => back.includes(u)))
+      )
+        return false;
+      // COOKIE LIVENESS (round 5): a disabled cookie jar reads empty
+      // WITHOUT throwing, so the union round-trip above cannot prove
+      // the cookie channel live — its emptiness alone is never proof
+      // that no record exists. Prove it directly: write the ledger's
+      // own JSON encoding (even when empty: "[]") to the cookie and
+      // require the read-back to equal it. This writes no flag or
+      // marker — it is the ledger's own content. If the probe fails,
+      // the clear is refused: a record lost when the other stores
+      // were down could be hiding behind the dead channel.
+      if (cookie) {
+        const encoded = JSON.stringify(uids);
+        try {
+          await cookie.write(encoded);
+          const seen = await cookie.read();
+          if (seen !== encoded) return false;
+        } catch (e) {
+          console.warn(
+            "Preserved-writes ledger cookie channel could not be proven live; preserving cache",
+            e,
+          );
+          return false;
+        }
+      }
+      return true;
     },
   };
 }
 
 /**
  * Shared production ledger: its own IndexedDB database as primary,
- * localStorage as the mirror. Where IndexedDB does not exist (older
- * WebViews, jsdom tests) the primary is localStorage alone, as before.
+ * localStorage as the mirror, and (round 5) a first-party cookie as
+ * the third mirror — synchronous and independent of both, so a record
+ * survives the other two failing at once and then healing. Where
+ * IndexedDB does not exist (older WebViews, jsdom tests) the primary
+ * is localStorage alone, as before; where there is no document (no
+ * browser) the cookie mirror is omitted.
  */
 const hasIndexedDb = typeof indexedDB !== "undefined";
+const hasDocument = typeof document !== "undefined";
 export const preservedWritesLedger: PreservedWritesLedger =
   createPreservedWritesLedger(
     hasIndexedDb ? indexedDbStore() : localStorageStore(),
     hasIndexedDb ? localStorageStore() : null,
+    hasDocument ? createCookieStore() : null,
   );

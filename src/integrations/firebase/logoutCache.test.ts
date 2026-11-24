@@ -5,6 +5,7 @@ import {
   type FirestoreCacheApi,
 } from "./logoutCache";
 import {
+  createCookieStore,
   createPreservedWritesLedger,
   type PreservedWritesLedger,
   type PreservedWritesStorage,
@@ -498,5 +499,224 @@ describe("clearFirestoreCacheOnLogout — both ledger stores fail, fresh client 
       "terminate",
       "clearIndexedDbPersistence",
     ]);
+  });
+});
+
+/**
+ * Store whose writes fail while `failing` and succeed after it is
+ * cleared (round 5): models a TRANSIENT store failure that heals
+ * before the next logout. Reads always work and return the stored
+ * value — only the writes were refused at record time.
+ */
+function flakyAsyncStore(): {
+  store: PreservedWritesStorage;
+  setFailing(failing: boolean): void;
+} {
+  let value: string | null = null;
+  let failing = false;
+  return {
+    store: {
+      read: async () => value,
+      write: async (v: string) => {
+        if (failing) throw new Error("QuotaExceededError: setItem failed");
+        value = v;
+      },
+      remove: async () => {
+        if (failing) throw new Error("denied");
+        value = null;
+      },
+    },
+    setFailing(f: boolean) {
+      failing = f;
+    },
+  };
+}
+
+/**
+ * Minimal fake `document.cookie` jar (round 5) — see
+ * preservedWrites.test.ts for the same helper. Setting `cookie`
+ * stores the first `name=value` segment; `max-age=0` deletes.
+ */
+function fakeCookieJar() {
+  const jar = new Map<string, string>();
+  return {
+    get cookie() {
+      return [...jar.entries()]
+        .map(([k, v]) => `${k}=${v}`)
+        .join("; ");
+    },
+    set cookie(raw: string) {
+      const [pair, ...directives] = raw.split(";");
+      const eq = pair.indexOf("=");
+      if (eq === -1) return;
+      const name = pair.slice(0, eq).trim();
+      const value = pair.slice(eq + 1).trim();
+      if (/max-age=0\b/.test(directives.join(";"))) jar.delete(name);
+      else jar.set(name, value);
+    },
+  };
+}
+
+/** A jar that silently drops every write (cookies disabled/blocked). */
+function droppingCookieJar() {
+  return {
+    get cookie() {
+      return "";
+    },
+    set cookie(_value: string) {
+      // Silently ignored.
+    },
+  };
+}
+
+describe("clearFirestoreCacheOnLogout — healed transient window (round 5)", () => {
+  it("refuses a later clean logout after both ledger stores failed at record time and recovered (cookie holds the record)", async () => {
+    // REGRESSION (round 5): the transient-heal window round 4 left
+    // open. Both ledger stores refuse writes while A logs out with
+    // pending writes; the record lands ONLY in the cookie (a third,
+    // synchronous, independent store). The stores then recover before
+    // B's logout — a live empty ledger from the recovered stores must
+    // NOT authorise the clear: the cookie still holds A's record.
+    // No real cache deletion happens in this test: the refusal is
+    // asserted from the result + call list, and A's record survives.
+    const primary = flakyAsyncStore();
+    const mirror = flakyAsyncStore();
+    const jar = fakeCookieJar();
+    primary.setFailing(true);
+    mirror.setFailing(true);
+    const first = createPreservedWritesLedger(
+      primary.store,
+      mirror.store,
+      createCookieStore(jar),
+    );
+    const { api: pendingApi } = apiWith({
+      waitForPendingWrites: () => new Promise<void>(() => {}),
+    });
+    const resultA = await clearFirestoreCacheOnLogout(fakeDb, {
+      timeoutMs: 10,
+      api: pendingApi,
+      preservedWrites: first,
+      departingUid: "user-A",
+    });
+    expect(resultA.cleared).toBe(false);
+    expect(resultA.reason).toBe("pending-writes-preserved");
+    // The record landed durably (in the cookie) — no "could not be
+    // written durably" warning.
+    expect(resultA.detail ?? "").not.toMatch(/could not be written durably/);
+    expect(await first.list()).toEqual(["user-A"]);
+
+    // The stores recover before B's logout (the transient window).
+    primary.setFailing(false);
+    mirror.setFailing(false);
+    // Reload: a fresh ledger instance over the SAME stores.
+    const second = createPreservedWritesLedger(
+      primary.store,
+      mirror.store,
+      createCookieStore(jar),
+    );
+    expect(await second.list()).toEqual(["user-A"]);
+    const { api: cleanApi, calls } = apiWith({});
+    const resultB = await clearFirestoreCacheOnLogout(fakeDb, {
+      timeoutMs: 50,
+      api: cleanApi,
+      preservedWrites: second,
+      departingUid: "user-B",
+    });
+    expect(resultB.cleared).toBe(false);
+    expect(resultB.reason).toBe("pending-writes-preserved");
+    // terminate() and clearIndexedDbPersistence() were never called:
+    // A's pending write survived B's logout.
+    expect(calls).toEqual(["waitForPendingWrites"]);
+    expect(await second.list()).toEqual(["user-A"]);
+  });
+
+  it("still clears when the ledger is empty and all three channels are live", async () => {
+    // The refusal above is about an unprovable clear, not about never
+    // clearing: healthy stores + empty ledger + clean active queue
+    // still clears. (Guards the cookie probe against refusing every
+    // healthy logout.)
+    const { store: primary } = memoryAsyncStore();
+    const { store: mirror } = memoryAsyncStore();
+    const ledger = createPreservedWritesLedger(
+      primary,
+      mirror,
+      createCookieStore(fakeCookieJar()),
+    );
+    const { api, calls } = apiWith({});
+    const result = await clearFirestoreCacheOnLogout(fakeDb, {
+      timeoutMs: 50,
+      api,
+      preservedWrites: ledger,
+      departingUid: "user-B",
+    });
+    expect(result).toEqual({ cleared: true, reason: "cleared" });
+    expect(calls).toEqual([
+      "waitForPendingWrites",
+      "terminate",
+      "clearIndexedDbPersistence",
+    ]);
+  });
+
+  it("refuses when all three stores are down at record time and still down at the next logout", async () => {
+    // All three channels dead at A's record: the record lands nowhere
+    // (record() reports false) and the stores are STILL down at B's
+    // logout, so no channel can prove the ledger live.
+    const first = createPreservedWritesLedger(
+      failingAsyncStore(),
+      failingAsyncStore(),
+      createCookieStore(droppingCookieJar()),
+    );
+    const { api: pendingApi } = apiWith({
+      waitForPendingWrites: () => new Promise<void>(() => {}),
+    });
+    const resultA = await clearFirestoreCacheOnLogout(fakeDb, {
+      timeoutMs: 10,
+      api: pendingApi,
+      preservedWrites: first,
+      departingUid: "user-A",
+    });
+    expect(resultA.cleared).toBe(false);
+    expect(resultA.detail).toMatch(/could not be written durably/);
+
+    const second = createPreservedWritesLedger(
+      failingAsyncStore(),
+      failingAsyncStore(),
+      createCookieStore(droppingCookieJar()),
+    );
+    const { api: cleanApi, calls } = apiWith({});
+    const resultB = await clearFirestoreCacheOnLogout(fakeDb, {
+      timeoutMs: 50,
+      api: cleanApi,
+      preservedWrites: second,
+      departingUid: "user-B",
+    });
+    expect(resultB.cleared).toBe(false);
+    expect(resultB.reason).toBe("pending-writes-preserved");
+    expect(calls).toEqual(["waitForPendingWrites"]);
+  });
+
+  it("refuses when the cookie channel is dead at the next logout even though the other stores are live and empty", async () => {
+    // POSITIVE-PROOF test: the two ledger stores are live and empty,
+    // but the cookie channel silently drops writes (cookies disabled).
+    // A disabled cookie jar reads empty WITHOUT throwing, so its
+    // emptiness proves nothing — a record lost when the other stores
+    // were down could be hiding there. The clear is refused.
+    const { store: primary } = memoryAsyncStore();
+    const { store: mirror } = memoryAsyncStore();
+    const ledger = createPreservedWritesLedger(
+      primary,
+      mirror,
+      createCookieStore(droppingCookieJar()),
+    );
+    const { api, calls } = apiWith({});
+    const result = await clearFirestoreCacheOnLogout(fakeDb, {
+      timeoutMs: 50,
+      api,
+      preservedWrites: ledger,
+      departingUid: "user-B",
+    });
+    expect(result.cleared).toBe(false);
+    expect(result.reason).toBe("pending-writes-preserved");
+    expect(calls).toEqual(["waitForPendingWrites"]);
   });
 });

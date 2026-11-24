@@ -9,6 +9,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+  createCookieStore,
   createIndexedDbStore,
   createPreservedWritesLedger,
   type PreservedWritesLedger,
@@ -526,5 +527,139 @@ describe("preserved-writes ledger — IndexedDB transaction completion (round 4a
     );
     expect(await reloaded.list()).toEqual(["user-A"]);
     expect(await reloaded.hasUnresolved()).toBe(true);
+  });
+});
+
+/**
+ * Minimal fake `document.cookie` jar (round 5). Setting `cookie`
+ * stores the first `name=value` segment (attributes after the first
+ * `;` are directives, not returned by a read); `max-age=0` deletes.
+ * Reading returns the stored pairs joined with "; ", as a browser does.
+ */
+function fakeCookieJar() {
+  const jar = new Map<string, string>();
+  return {
+    get cookie() {
+      return [...jar.entries()]
+        .map(([k, v]) => `${k}=${v}`)
+        .join("; ");
+    },
+    set cookie(raw: string) {
+      const [pair, ...directives] = raw.split(";");
+      const eq = pair.indexOf("=");
+      if (eq === -1) return;
+      const name = pair.slice(0, eq).trim();
+      const value = pair.slice(eq + 1).trim();
+      if (/max-age=0\b/.test(directives.join(";"))) jar.delete(name);
+      else jar.set(name, value);
+    },
+  };
+}
+
+/**
+ * A jar that silently drops every write (cookies disabled/blocked):
+ * the setter is a no-op and reads always return "". This is exactly
+ * how a browser with cookies disabled behaves — no throw, no value.
+ */
+function droppingCookieJar() {
+  return {
+    get cookie() {
+      return "";
+    },
+    set cookie(_value: string) {
+      // Silently ignored.
+    },
+  };
+}
+
+describe("preserved-writes ledger — cookie third store (round 5)", () => {
+  it("createCookieStore round-trips the ledger value through a document.cookie jar", async () => {
+    const store = createCookieStore(fakeCookieJar());
+    expect(await store.read()).toBe(null);
+    await store.write('["user-A"]');
+    expect(await store.read()).toBe('["user-A"]');
+    await store.remove();
+    expect(await store.read()).toBe(null);
+  });
+
+  it("createCookieStore write throws when the jar silently drops the cookie (cookies disabled)", async () => {
+    // A dead cookie channel must fail LOUDLY on write: a silent drop
+    // would let record() report success for a record that landed
+    // nowhere, and the ledger would then trust an empty read.
+    const store = createCookieStore(droppingCookieJar());
+    await expect(store.write('["user-A"]')).rejects.toThrow(/cookie/i);
+    expect(await store.read()).toBe(null);
+  });
+
+  it("record lands in the cookie when both other stores fail, and a fresh ledger instance sees it", async () => {
+    // FAILING-FIRST (round 5): the transient-heal window. Both ledger
+    // stores refuse the write; the record itself must still land
+    // durably — in the cookie, a third store independent of
+    // IndexedDB/localStorage — so a fresh client after a reload sees it.
+    const jar = fakeCookieJar();
+    const first = createPreservedWritesLedger(
+      failingStorage(),
+      failingStorage(),
+      createCookieStore(jar),
+    );
+    expect(await first.record("user-A")).toBe(true);
+    expect(await first.list()).toEqual(["user-A"]);
+    // Reload: a fresh ledger instance over the SAME stores.
+    const second = createPreservedWritesLedger(
+      failingStorage(),
+      failingStorage(),
+      createCookieStore(jar),
+    );
+    expect(await second.list()).toEqual(["user-A"]);
+    expect(await second.hasUnresolved()).toBe(true);
+  });
+
+  it("record returns false when all three stores fail", async () => {
+    const ledger = createPreservedWritesLedger(
+      failingStorage(),
+      failingStorage(),
+      createCookieStore(droppingCookieJar()),
+    );
+    expect(await ledger.record("user-A")).toBe(false);
+  });
+
+  it("verifyLive is false when the cookie channel silently drops writes, even with healthy other stores", async () => {
+    // The other stores are live and the ledger is empty — but a
+    // disabled cookie jar reads empty WITHOUT throwing, so its
+    // emptiness proves nothing: a record lost when the other stores
+    // were down could be hiding there. The clear must not be
+    // authorised on that evidence.
+    const { storage } = memoryStorage();
+    const ledger = createPreservedWritesLedger(
+      storage,
+      memoryStorage().storage,
+      createCookieStore(droppingCookieJar()),
+    );
+    expect(await ledger.list()).toEqual([]);
+    expect(await ledger.verifyLive()).toBe(false);
+  });
+
+  it("verifyLive is true when all three channels are live and the ledger is empty", async () => {
+    const { storage } = memoryStorage();
+    const ledger = createPreservedWritesLedger(
+      storage,
+      memoryStorage().storage,
+      createCookieStore(fakeCookieJar()),
+    );
+    expect(await ledger.verifyLive()).toBe(true);
+  });
+
+  it("the owner returning clean resolves a cookie-only entry (no stuck state)", async () => {
+    const jar = fakeCookieJar();
+    const ledger = createPreservedWritesLedger(
+      failingStorage(),
+      failingStorage(),
+      createCookieStore(jar),
+    );
+    await ledger.record("user-A");
+    expect(await ledger.hasUnresolved()).toBe(true);
+    await ledger.resolve("user-A");
+    expect(await ledger.hasUnresolved()).toBe(false);
+    expect(await ledger.list()).toEqual([]);
   });
 });
