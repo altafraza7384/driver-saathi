@@ -283,58 +283,59 @@ class FakeIndexedDbTransaction {
   ) {}
 
   objectStore(name: string) {
-    const tx = this;
+    // The store methods are arrow functions so `this` is lexically the
+    // transaction (a `const tx = this` alias would trip no-this-alias).
     const store: Record<string, unknown> = {
-      get(key: string) {
+      get: (key: string) => {
         const req: Record<string, unknown> = {
           result: undefined,
           error: null,
           onsuccess: null,
           onerror: null,
         };
-        tx.pending++;
+        this.pending++;
         setTimeout(() => {
-          req.result = tx.read(name, key);
+          req.result = this.read(name, key);
           (req.onsuccess as ((ev: Event) => void) | null)?.(
             new Event("success"),
           );
-          tx.requestSettled();
+          this.requestSettled();
         }, 0);
         return req;
       },
-      put(value: unknown, key: string) {
+      put: (value: unknown, key: string) => {
         const req: Record<string, unknown> = {
           result: undefined,
           error: null,
           onsuccess: null,
           onerror: null,
         };
-        tx.pending++;
-        tx.stage(name, key, value);
+        this.pending++;
+        this.stage(name, key, value);
         setTimeout(() => {
           req.result = key;
           (req.onsuccess as ((ev: Event) => void) | null)?.(
             new Event("success"),
           );
-          tx.afterWriteRequest();
+          this.afterWriteRequest();
         }, 0);
         return req;
       },
-      delete(key: string) {
+      delete: (key: string) => {
         const req: Record<string, unknown> = {
           result: undefined,
           error: null,
           onsuccess: null,
           onerror: null,
         };
-        tx.pending++;
-        tx.stage(name, key, DELETED);
+        this.pending++;
+        this.stage(name, key, DELETED);
         setTimeout(() => {
           req.result = undefined;
           (req.onsuccess as ((ev: Event) => void) | null)?.(
             new Event("success"),
           );
-          tx.afterWriteRequest();
+          this.afterWriteRequest();
         }, 0);
         return req;
       },
@@ -446,7 +447,8 @@ class FakeIndexedDbFactory {
   }
 
   private makeDb(data: FakeDbData) {
-    const factory = this;
+    // `transaction` is an arrow function so `this` is lexically the
+    // factory (a `const factory = this` alias would trip no-this-alias).
     const db: Record<string, unknown> = {
       objectStoreNames: {
         contains: (storeName: string) => data.stores.has(storeName),
@@ -457,12 +459,12 @@ class FakeIndexedDbFactory {
         }
         return {};
       },
-      transaction(
+      transaction: (
         storeNames: string | string[],
         mode?: IDBTransactionMode,
-      ) {
+      ) => {
         return new FakeIndexedDbTransaction(
-          factory,
+          this,
           data,
           mode ?? "readonly",
         );
