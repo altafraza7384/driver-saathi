@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterAll, beforeAll, describe, it } from "vitest";
 import { initializeTestEnvironment, assertFails, assertSucceeds, RulesTestEnvironment } from "@firebase/rules-unit-testing";
-import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import { deleteDoc, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 
 let env: RulesTestEnvironment;
 beforeAll(async () => {
@@ -43,6 +43,15 @@ describe("admin & plans", () => {
   });
   it("admin can create valid plan", async () => {
     await assertSucceeds(setDoc(doc(env.authenticatedContext("adm", { admin: true }).firestore(), "subscription_plans/p"), { billing_interval: "free", price_inr: 0, is_active: true }));
+  });
+  // Q2 DECIDED 2026-11-24 (owner): subscription_plans client delete stays
+  // `false` — only the cancellation-first Admin SDK callable may remove
+  // plans. Direct client delete is denied for admins and non-admins alike.
+  // (The preservation-v2 tests asserting the opposite are dead with Q2.)
+  it("admin CANNOT directly delete a plan (Q2 decided: delete stays false)", async () => {
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "subscription_plans/pdel"), { billing_interval: "free", price_inr: 0, is_active: true }));
+    await assertFails(deleteDoc(doc(env.authenticatedContext("adm", { admin: true }).firestore(), "subscription_plans/pdel")));
+    await assertFails(deleteDoc(doc(env.authenticatedContext("alice").firestore(), "subscription_plans/pdel")));
   });
 });
 
