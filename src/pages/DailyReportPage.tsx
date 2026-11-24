@@ -12,10 +12,12 @@ import { Button } from "@/components/ui/button";
 import {
   buildDailyReportText,
   canShareDailyReport,
+  formatCheckpointLabel,
   mergeMilestones,
   mergeSchedule,
   milestoneForNow,
   milestoneIsUnset,
+  milestoneRows,
   minutesOf,
   incomeEarnedBy,
   ReportCheckpoint,
@@ -94,9 +96,7 @@ export default function DailyReportPage() {
 
   const schedule = mergeSchedule((settings as any[]).filter((r) => r.kind === "schedule"));
   const milestones = mergeMilestones(
-    (settings as any[])
-      .filter((r) => r.kind === "milestone")
-      .map((r) => ({ key: r.key, min: Number(r.min_amount) || 0, max: Number(r.max_amount) || 0 })),
+    milestoneRows((settings as any[]).filter((r) => r.kind === "milestone")),
   ).filter((m) => !milestoneIsUnset(m));
   const timeForKey = (key: string) => schedule.find((s) => s.key === key)?.time ?? "00:00";
   const now = new Date();
@@ -109,10 +109,10 @@ export default function DailyReportPage() {
   // cutoff reach the target, otherwise "not confirmed" (never "missed" -
   // the driver may have earned it without logging in time).
   const checkpoints: (ReportCheckpoint & { noData: boolean })[] = milestones.map((m) => {
-    if (minutesOf(timeForKey(m.key)) > nowMin) return { label: `${timeForKey(m.key)} (${formatINR(m.min)}–${formatINR(m.max)})`, met: null, noData: false };
+    if (minutesOf(timeForKey(m.key)) > nowMin) return { label: formatCheckpointLabel(timeForKey(m.key), m.min, m.max), met: null, noData: false };
     const earned = incomeEarnedBy(todayTx as any[], today, timeForKey(m.key));
     return {
-      label: `${timeForKey(m.key)} (${formatINR(m.min)}–${formatINR(m.max)})`,
+      label: formatCheckpointLabel(timeForKey(m.key), m.min, m.max),
       met: earned.total >= m.min,
       noData: earned.count === 0,
     };
@@ -137,9 +137,9 @@ export default function DailyReportPage() {
   return (
     <div className="space-y-5 p-4 pt-6 pb-24">
       <button onClick={() => navigate("/more")} className="flex items-center gap-1 text-sm text-muted-foreground mb-2"><ArrowLeft className="h-4 w-4" /> {t("common.back")}</button>
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{t("report.title")}</h1>
-        <Button size="sm" className="gap-1" onClick={share} disabled={!canShareDailyReport(isLoading, hasError)}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="min-w-0 break-words text-xl font-bold sm:text-2xl">{t("report.title")}</h1>
+        <Button size="sm" className="shrink-0 gap-1" onClick={share} disabled={!canShareDailyReport(isLoading, hasError)}>
           <Share2 className="h-4 w-4" /> {t("report.share")}
         </Button>
       </div>

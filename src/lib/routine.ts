@@ -65,6 +65,22 @@ export function schedulePreset(mode: ShiftMode): ScheduleItem[] {
 }
 
 /**
+ * Which shift mode the page should show after a settings load: a FAILED
+ * shift intent wins over the stored row. The save invalidates the query,
+ * so the refetch returns the OLD stored mode (e.g. Day) while the
+ * driver's Night edit is still pending retry — letting the stored row
+ * win would clobber the intent, and Save-again would then write Day
+ * while reporting success. With no failed intent the stored mode stands;
+ * with neither, Day is the default.
+ */
+export function resolveShiftMode(
+  stored: ShiftMode | null,
+  pendingFailed: ShiftMode | null,
+): ShiftMode {
+  return pendingFailed ?? stored ?? "day";
+}
+
+/**
  * Switching Day/Night remaps only times that still sit on the OLD preset's
  * defaults; any time the driver personalized is kept as-is, so toggling
  * back and forth never destroys a custom schedule. Enabled flags and
@@ -130,13 +146,17 @@ export function routineNotificationId(key: string): number {
   return (Math.abs(hash) % 2_000_000_000) + 1;
 }
 
-/** Merge stored rows over defaults; unknown stored keys are ignored. */
+/** Merge stored rows over defaults; unknown stored keys are ignored.
+ *  When two stored rows claim the same key (a legacy random-id row plus
+ *  a row written with the stable id), the stable-id row wins: it is the
+ *  one later saves update, so the legacy copy can never resurrect stale
+ *  values on read. */
 export function mergeSchedule(
-  stored: { key: string; time: string; enabled: boolean; message: string }[],
+  stored: { id?: string; kind?: string; key: string; time: string; enabled: boolean; message: string }[],
   defaults: ScheduleItem[] = DEFAULT_SCHEDULE,
 ): ScheduleItem[] {
   return defaults.map((d) => {
-    const row = stored.find((s) => s.key === d.key);
+    const row = findStoredRow(stored, "schedule", d.key);
     return row
       ? { key: d.key, time: row.time || d.time, enabled: row.enabled, message: row.message || d.message }
       : d;
@@ -144,13 +164,137 @@ export function mergeSchedule(
 }
 
 export function mergeMilestones(
-  stored: { key: string; min: number; max: number }[],
+  stored: { id?: string; kind?: string; key: string; min: number; max: number }[],
   defaults: Milestone[] = DEFAULT_MILESTONES,
 ): Milestone[] {
   return defaults.map((d) => {
-    const row = stored.find((s) => s.key === d.key);
+    const row = findStoredRow(stored, "milestone", d.key);
     return row ? { key: d.key, min: row.min, max: row.max } : d;
   });
+}
+
+/**
+ * Raw routine_settings rows as stored (min/max_amount) → the shape
+ * mergeMilestones reads. The row `id` MUST be preserved: the merge
+ * prefers the stable-id row over a legacy random-id row for the same
+ * kind+key, and it can only do that when it can see the id. Call sites
+ * that hand-mapped `{key, min, max}` dropped the id, so a legacy row
+ * listed first won and a stale value showed (cp1 500 over the stable
+ * 600). Every milestone read must go through this helper, never a
+ * hand-rolled map.
+ */
+export function milestoneRows(
+  rows: { id?: string; kind?: string; key: string; min_amount?: number | string; max_amount?: number | string }[],
+): { id?: string; kind?: string; key: string; min: number; max: number }[] {
+  return rows.map((r) => ({
+    id: r.id,
+    kind: r.kind,
+    key: r.key,
+    min: Number(r.min_amount) || 0,
+    max: Number(r.max_amount) || 0,
+  }));
+}
+
+/**
+ * Stable Firestore doc id for one routine_settings row.
+ *
+ * A save that cannot see the rows it just wrote (empty cache, failed
+ * refetch) used to blind-insert every row again — 26 stored rows for 13
+ * logical ones. Writing with this id makes a repeat insert overwrite
+ * the same doc instead of duplicating it (the adapter maps a payload
+ * `id` to the doc id — the same pattern as habitLogId). Kind and key
+ * contain no "/", so the joined id is always a legal doc id.
+ */
+export function routineSettingId(kind: string, key: string): string {
+  return `${kind}_${key}`;
+}
+
+export interface RoutineSettingRowLike {
+  id?: string;
+  kind?: string;
+  key: string;
+}
+
+/** Payload shape for one routine_settings row write (insert or update).
+ *  Kept as a named type so the upsert helpers keep the table's row
+ *  shape instead of degrading to Record<string, unknown>. */
+export interface RoutineSettingPayload {
+  kind: string;
+  key: string;
+  time?: string;
+  enabled?: boolean;
+  message?: string;
+  min_amount?: number;
+  max_amount?: number;
+}
+
+/** The stored row for one logical setting, if any: the stable-id row
+ *  first, else any legacy row (adapter-generated random id) with the
+ *  same kind+key. Callers update the row found here in place and only
+ *  insert (with the stable id) when nothing is found — the legacy row
+ *  is never deleted, so no real data is lost. */
+export function findSettingRow<T extends RoutineSettingRowLike>(
+  rows: T[],
+  kind: string,
+  key: string,
+): T | undefined {
+  return findStoredRow(rows, kind, key);
+}
+
+/** Shared lookup for findSettingRow and the merge functions: prefer the
+ *  stable-id row; fall back to a row whose kind matches (or is absent,
+ *  as in older fixtures) and whose key matches. */
+function findStoredRow<T extends RoutineSettingRowLike>(rows: T[], kind: string, key: string): T | undefined {
+  return (
+    rows.find((r) => r.id === routineSettingId(kind, key)) ??
+    rows.find((r) => r.key === key && (r.kind === undefined || r.kind === kind))
+  );
+}
+
+/**
+ * A checkpoint target is valid when both ends are finite, non-negative,
+ * and the maximum is unset (0) or not below the minimum. Returns the
+ * i18n key of the error, or null when the target is fine. The page
+ * blocks the save on a non-null result, so an invalid target can never
+ * be stored and then misread as a real target.
+ */
+export function validateMilestone(min: number, max: number): "routine.invalidTarget" | null {
+  if (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max < 0) return "routine.invalidTarget";
+  if (max > 0 && max < min) return "routine.invalidTarget";
+  return null;
+}
+
+/** Outcome of the reminder-scheduling step, kept apart from the save
+ *  result: scheduling can fail (no permission, no plugin, web) while
+ *  the settings themselves saved fine, and the user must see exactly
+ *  that — never "save failed". */
+export type ScheduleOutcome =
+  | { status: "scheduled"; count: number }
+  | { status: "no-permission" }
+  | { status: "failed" };
+
+/** Result of one Routine save: which settings rows failed, and what the
+ *  scheduling step did. `schedule` is null when the save failed
+ *  outright and scheduling was never attempted. The failed rows carry
+ *  their INTENDED values: a save that invalidates the query gets a
+ *  refetch of the OLD stored values, and without these the page would
+ *  clobber the failed edits with them — the next Save would then write
+ *  the old value while reporting success. */
+export interface RoutineSaveResult {
+  failedKeys: string[];
+  schedule: ScheduleOutcome | null;
+  failedSchedule: ScheduleItem[];
+  failedMilestones: Milestone[];
+  failedShiftMode: ShiftMode | null;
+}
+
+/** Overall save status from the failed-row count: all saved, some
+ *  saved (retry only the failed rows by tapping Save again — every row
+ *  write is an idempotent upsert), or nothing saved. */
+export function summarizeRoutineSave(failedCount: number, totalCount: number): "saved" | "partial" | "failed" {
+  if (failedCount <= 0) return "saved";
+  if (failedCount >= totalCount) return "failed";
+  return "partial";
 }
 
 export interface DailyNotification {
@@ -311,6 +455,16 @@ export interface ReportCheckpoint {
  */
 export function canShareDailyReport(isLoading: boolean, hasError: boolean): boolean {
   return !isLoading && !hasError;
+}
+
+/** "10:30 (Rs. 500–Rs. 700)" — the label for one checkpoint in the Daily
+ *  Report. Unset targets (0–0) show the time alone. Night-shift times
+ *  past midnight (02:00, 05:00, 06:00) label exactly the same way: the
+ *  label is the reminder time, not a calendar day, so crossing midnight
+ *  changes nothing about the label. */
+export function formatCheckpointLabel(time: string, min: number, max: number): string {
+  if (min <= 0 && max <= 0) return time;
+  return `${time} (${formatINR(min)}–${formatINR(max)})`;
 }
 
 /** Plain-text WhatsApp summary, Romanized Hinglish, no auto-send. */

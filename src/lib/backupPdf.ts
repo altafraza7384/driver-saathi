@@ -170,6 +170,29 @@ const SECTIONS: Section[] = [
     ],
   },
   {
+    table: "habits",
+    title: "Habits (Aadatein)",
+    sort: (a, b) => num(a.sort_order) - num(b.sort_order) || text(a.name).localeCompare(text(b.name)),
+    columns: [
+      { label: "Habit", value: (r) => text(r.name) },
+      { label: "Active", value: (r) => (r.active === false ? "No" : "Yes") },
+    ],
+  },
+  {
+    table: "habit_logs",
+    title: "Habit log (Aadat ka hisaab)",
+    sort: (a, b) => byDesc("date")(a, b) || text(a._habitName).localeCompare(text(b._habitName)),
+    prepare: (rows, ctx) => {
+      const names = new Map((ctx.habits ?? []).map((h) => [h.id, h.name]));
+      return rows.map((r) => ({ ...r, _habitName: names.get(r.habit_id) ?? "(deleted habit)" }));
+    },
+    columns: [
+      { label: "Date", value: (r) => fmtDate(r.date) },
+      { label: "Habit", value: (r) => text(r._habitName) },
+      { label: "Done", value: (r) => yesNo(r.done) },
+    ],
+  },
+  {
     table: "car_checks",
     title: "Car checks (Gaadi jaanch)",
     sort: byDesc("check_date"),
@@ -200,6 +223,45 @@ const SECTIONS: Section[] = [
       { label: "Reminder", value: (r) => text(r.title) + (r.description ? ` - ${r.description}` : "") },
       { label: "Category", value: (r) => cap(r.category) },
       { label: "Status", value: (r) => (r.is_completed ? "Done" : "Pending") },
+    ],
+  },
+  {
+    // Routine settings are stored as three row kinds in one table
+    // (schedule / milestone / shift); the PDF flattens them into
+    // human-readable Setting / Value rows instead of raw kind/key rows.
+    table: "routine_settings",
+    title: "Routine settings (Roz ka routine)",
+    prepare: (rows) => {
+      const label: Record<string, string> = {
+        wake: "Wake reminder",
+        depart: "Departure",
+        cp1: "Checkpoint 1",
+        cp2: "Checkpoint 2",
+        cp3: "Checkpoint 3",
+        cp4: "Checkpoint 4",
+        day_end: "Day end",
+      };
+      const out: Row[] = [];
+      for (const r of rows.filter((x) => x.kind === "schedule")) {
+        out.push({
+          label: `Reminder - ${label[r.key] ?? r.key}`,
+          value: `${text(r.time)}${r.enabled === false ? " (off)" : ""}${r.message ? ` - ${r.message}` : ""}`,
+        });
+      }
+      for (const r of rows.filter((x) => x.kind === "milestone")) {
+        const unset = num(r.min_amount) === 0 && num(r.max_amount) === 0;
+        out.push({
+          label: `Target - ${label[r.key] ?? r.key}`,
+          value: unset ? "Not set" : `${fmtMoney(r.min_amount)} - ${fmtMoney(r.max_amount)}`,
+        });
+      }
+      const mode = rows.find((x) => x.kind === "shift" && x.key === "mode");
+      if (mode) out.push({ label: "Shift", value: cap(mode.message) });
+      return out;
+    },
+    columns: [
+      { label: "Setting", value: (r) => text(r.label) },
+      { label: "Value", value: (r) => text(r.value) },
     ],
   },
   {

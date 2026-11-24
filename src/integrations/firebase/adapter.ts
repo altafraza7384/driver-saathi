@@ -39,6 +39,7 @@ import {
   updateDoc,
   addDoc,
   deleteDoc,
+  runTransaction,
   query as fsQuery,
   where,
   orderBy,
@@ -66,6 +67,8 @@ import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage
 import { httpsCallable } from "firebase/functions";
 import { firebaseAuth, firebaseDb, firebaseStorage, firebaseFunctions, isLogoutWriteGateClosed } from "./client";
 import { isAdminOnlyAccount } from "@/lib/admin-only";
+import { formatINR, toAmount } from "@/lib/currency";
+import { debtPaymentId } from "@/lib/debts";
 
 /* ---------------------------------- errors --------------------------------- */
 
@@ -1082,6 +1085,129 @@ const functionsAdapter = {
     }
   },
 };
+
+/* ------------------------- debt payment transaction ------------------------ */
+
+/**
+ * Read the payment doc for one Pay attempt, if it was recorded.
+ * This is the reconcile read (round 4): before minting a fresh attempt
+ * id for a payment whose earlier attempt is still pending, the caller
+ * checks whether that earlier attempt actually landed. A found doc
+ * means the attempt committed — the caller must say so plainly and
+ * must NOT mint a fresh id silently or claim a new success. A missing
+ * doc means the attempt never landed (or is still in flight in another
+ * tab), so a fresh id is safe. A read failure throws: the caller aborts
+ * visibly rather than guessing.
+ */
+export async function getDebtPaymentByAttempt(args: {
+  userId: string;
+  debtId: string;
+  attemptKey: string;
+}): Promise<{ amount: number; created_at: string } | null> {
+  const { userId, debtId, attemptKey } = args;
+  const paymentRef = doc(
+    firebaseDb,
+    "users",
+    userId,
+    "debt_payments",
+    debtPaymentId(debtId, attemptKey),
+  );
+  const snap = await getDoc(paymentRef);
+  if (!snap.exists()) return null;
+  const data = snap.data() as Record<string, unknown>;
+  return {
+    amount: toAmount(data.amount),
+    created_at: typeof data.created_at === "string" ? data.created_at : "",
+  };
+}
+
+/**
+ * Record one EMI payment AND update the loan balance in a SINGLE
+ * Firestore client transaction — or roll both back together.
+ *
+ * The transaction callback reads the debt doc AND the payment doc for
+ * this attempt BEFORE writing anything:
+ * - the new balance is computed from the LATEST server total_paid, not
+ *   the caller's possibly stale copy, so two concurrent DIFFERENT
+ *   payments both count: on contention Firestore re-runs this callback
+ *   and it re-reads the balance the first committer just wrote;
+ * - if the payment doc already exists, this attempt already committed
+ *   (an earlier try whose result was uncertain, or a retry after
+ *   remount/reload) and the stored outcome is returned WITHOUT writing
+ *   again, so a same-attempt retry never increments the balance twice.
+ *
+ * The callback is PURE — only transaction reads/writes. Firestore may
+ * run it several times, so no toasts, state updates, or invalidation
+ * may happen inside it; callers do those only after this resolves.
+ * A throw means NOTHING was committed: callers must show an error only,
+ * never success, and keep the attempt key so the retry can find the
+ * previous payment if the commit actually landed.
+ *
+ * Rules (firebase/firestore.rules, unchanged): the debt read, the
+ * payment create (user_id == uid) and the debt update are all allowed
+ * for the owner under the users/{uid}/{collection}/{docId} match, which
+ * lists both 'debts' and 'debt_payments' in ownedCollections().
+ */
+export async function recordDebtPaymentInTransaction(args: {
+  userId: string;
+  debtId: string;
+  attemptKey: string;
+  amount: number;
+}): Promise<{ newTotalPaid: number; isFullyPaid: boolean; alreadyRecorded: boolean }> {
+  const { userId, debtId, attemptKey, amount } = args;
+  const debtRef = doc(firebaseDb, "users", userId, "debts", debtId);
+  const paymentRef = doc(
+    firebaseDb,
+    "users",
+    userId,
+    "debt_payments",
+    debtPaymentId(debtId, attemptKey),
+  );
+  return runTransaction(firebaseDb, async (tx) => {
+    const debtSnap = await tx.get(debtRef);
+    if (!debtSnap.exists()) {
+      throw new Error("That loan could not be found.");
+    }
+    const paymentSnap = await tx.get(paymentRef);
+    const data = debtSnap.data() as Record<string, unknown>;
+    const principal = toAmount(data.principal);
+    const totalPaid = toAmount(data.total_paid);
+    if (paymentSnap.exists()) {
+      // Same attempt already committed: the balance already includes
+      // this payment. Return the stored outcome without writing.
+      return {
+        newTotalPaid: totalPaid,
+        isFullyPaid: totalPaid >= principal,
+        alreadyRecorded: true,
+      };
+    }
+    const remaining = principal - totalPaid;
+    if (!Number.isFinite(amount) || amount <= 0 || amount > remaining) {
+      throw new Error(
+        `Payment is more than the remaining amount (${formatINR(remaining)}).`,
+      );
+    }
+    const newTotalPaid = totalPaid + amount;
+    const isFullyPaid = newTotalPaid >= principal;
+    const now = nowIso();
+    tx.set(
+      paymentRef,
+      clean({
+        user_id: userId,
+        debt_id: debtId,
+        amount,
+        created_at: now,
+        updated_at: now,
+      }),
+    );
+    tx.update(debtRef, {
+      total_paid: newTotalPaid,
+      is_active: !isFullyPaid,
+      updated_at: now,
+    });
+    return { newTotalPaid, isFullyPaid, alreadyRecorded: false };
+  });
+}
 
 /* --------------------------------- export ---------------------------------- */
 
