@@ -8,6 +8,10 @@ import {
   preservedWritesLedger,
   type PreservedWritesLedger,
 } from "./preservedWrites";
+import {
+  createDefaultMutationQueueInspector,
+  type MutationQueueInspector,
+} from "./firestoreMutationQueue";
 
 /**
  * Firestore offline cache vs. logout on a shared/trusted device.
@@ -27,8 +31,11 @@ import {
  * (see preservedWrites.ts: the record itself, in its own IndexedDB
  * database mirrored to localStorage), AND (c) the ledger channel
  * itself is proven live (verifyLive: the current ledger content
- * round-trips through the stores). Clearing with pending writes would
- * silently destroy data the user created while offline (e.g. a
+ * round-trips through the stores), AND (d) the Firestore SDK's own
+ * IndexedDB mutation queue holds no unacknowledged batch for ANY
+ * identity (round 6: read-only inspection of the SDK's `mutations`
+ * store — see firestoreMutationQueue.ts). Clearing with pending writes
+ * would silently destroy data the user created while offline (e.g. a
  * transaction saved with no network that has not synced yet), so
  * pending writes are always preserved and the cache is left in place.
  * The safe default on any doubt (timeout, error) is also to preserve.
@@ -68,14 +75,25 @@ import {
  *   succeeds. The failure is reported, not fatal.
  * - The ledger only records identities whose logout went through this
  *   flow. A session that ends without this logout path (e.g. a token
- *   revoked while offline) leaves no record, so a later clear cannot
- *   be proven safe for that identity's writes. Do not claim otherwise.
+ *   revoked while offline) leaves no ledger record — but the round-6
+ *   mutation-queue inspection still sees that identity's batches in
+ *   the SDK's own store, so a later clear is refused anyway. The
+ *   inspection is what closes that scope gap; the remaining gap is
+ *   only writes that were never persisted to the SDK's IndexedDB at
+ *   all (in-memory-only clients, or a batch accepted but not yet
+ *   flushed when inspected — see firestoreMutationQueue.ts).
  * - The ledger's record is mirrored to a first-party cookie (see
  *   preservedWrites.ts) so a transient failure of both other stores
- *   cannot lose it. The exact residuals live there: all three stores
- *   failing at record time plus a targeted cookie deletion, a cookie
- *   channel dying while holding the only copy (stuck-safe), and
- *   first-party cookies blocked (logout clear permanently refused).
+ *   cannot lose it. The all-three-stores case the cookie could not
+ *   close — all three fail at record time, or a cookie-only record
+ *   deleted before the next logout — is closed by the round-6
+ *   mutation-queue inspection (d): the SDK queue is independent of
+ *   every ledger store, so a lost ledger record no longer authorises
+ *   a clear. The exact residuals live in firestoreMutationQueue.ts:
+ *   SDK schema drift (inspection goes "unknown", clears refused
+ *   until the inspector is updated) and the in-memory flush window.
+ *   Do not claim the logout cache is "fully closed" beyond what the
+ *   regressions prove.
  * - Local-only stores are out of scope here: chat history (localStorage,
  *   24 h prune), routine reminders and other device-local state are
  *   untouched by this change.
@@ -152,21 +170,32 @@ export async function hasNoPendingWrites(
  * pending offline writes. Returns whether the cache was cleared.
  * Never throws: every failure path returns a result instead.
  *
- * Safety is THREE checks, not one: the departing user's own queue must
+ * Safety is FOUR checks, not one: the departing user's own queue must
  * be clean (waitForPendingWrites, while they are still signed in)
  * AND the preserved-writes ledger must hold no unresolved entry for
  * any earlier identity AND the ledger channel must prove live
- * (verifyLive). A clean active queue alone never authorises a
- * whole-cache clear — and neither does an empty ledger read on its
- * own: reads from dead stores return empty exactly like a genuinely
- * empty ledger, so without the liveness proof a record lost when the
- * stores were down would be invisible to the next logout. Only a live
- * round-trip makes "empty" mean "no record exists". The ledger is
- * mirrored to a first-party cookie (round 5) so the transient-heal
- * window — both other stores down at record time, recovered by the
- * next logout — is closed by the record itself, and verifyLive also
- * probes the cookie channel, because a disabled cookie jar reads
- * empty without throwing.
+ * (verifyLive) AND the Firestore SDK's own mutation queue must hold
+ * no unacknowledged batch for ANY identity (round 6). A clean active
+ * queue alone never authorises a whole-cache clear — and neither does
+ * an empty ledger read on its own: reads from dead stores return empty
+ * exactly like a genuinely empty ledger, so without the liveness proof
+ * a record lost when the stores were down would be invisible to the
+ * next logout. Only a live round-trip makes "empty" mean "no record
+ * exists". The ledger is mirrored to a first-party cookie (round 5) so
+ * the transient-heal window — both other stores down at record time,
+ * recovered by the next logout — is closed by the record itself, and
+ * verifyLive also probes the cookie channel, because a disabled
+ * cookie jar reads empty without throwing. But even a live empty
+ * ledger cannot prove a record was never LOST: all three stores can
+ * fail at record time and heal, or a cookie-only record can be
+ * deleted. The fourth check closes that: it reads the SDK's own
+ * mutation queue directly (firestoreMutationQueue.ts), where the
+ * pending writes themselves live, independent of every ledger store.
+ * If that queue holds any batch, the clear is refused — and the
+ * owning identities are (re-)recorded into the ledger, so the ledger
+ * blocks later clears too even if the queue later becomes
+ * unreadable. If the queue cannot be inspected at all, the clear is
+ * refused as well: never clear on doubt.
  */
 export async function clearFirestoreCacheOnLogout(
   db: Firestore,
@@ -175,6 +204,13 @@ export async function clearFirestoreCacheOnLogout(
     api?: FirestoreCacheApi;
     preservedWrites?: PreservedWritesLedger;
     departingUid?: string | null;
+    /**
+     * Read-only inspector for the SDK's own mutation queue. Omitted:
+     * the production inspector for this app's Firebase project.
+     * Explicit null: no inspector is available — the check reports
+     * "unknown" and the clear is refused (fail closed).
+     */
+    mutationQueue?: MutationQueueInspector | null;
   } = {},
 ): Promise<LogoutCacheResult> {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_PENDING_WRITES_TIMEOUT_MS;
@@ -248,6 +284,62 @@ export async function clearFirestoreCacheOnLogout(
       reason: "pending-writes-preserved",
       detail:
         "The preserved-writes ledger could not be proven live (its stores would not accept and return the ledger record), so an empty ledger is not positive proof that no unsynced writes exist; cache kept so no unsynced data is lost.",
+    };
+  }
+
+  // FOURTH CHECK (round 6): the SDK's own mutation queue. A live
+  // empty ledger still cannot prove a record was never LOST — all
+  // three ledger stores can fail at record time and heal before this
+  // logout, or a cookie-only record can be deleted before it. In
+  // both cases the ledger reads live-and-empty while the pending
+  // writes are still in Firestore's cache, and the checks above
+  // would authorise a clear that destroys them. The writes
+  // themselves are the proof that survives: every unacknowledged
+  // batch — sets AND deletes — is a row in the SDK's own IndexedDB
+  // `mutations` store, independent of every ledger store, for EVERY
+  // identity (waitForPendingWrites is active-user-scoped and no
+  // public Firestore API enumerates another identity's pending
+  // writes). The inspector reads that store read-only. If it holds
+  // any batch, the clear is refused — and the owning identities are
+  // (re-)recorded into the ledger (self-heal), so the ledger blocks
+  // later clears too even if the queue later becomes unreadable. If
+  // the queue cannot be inspected at all ("unknown": no IndexedDB,
+  // no project id, schema drift, open/read failure), the clear is
+  // refused as well — never clear on doubt. This runs inside the
+  // logout write gate (signOutFlow), so no new write can land
+  // between this inspection and terminate()+clear.
+  const inspector =
+    opts.mutationQueue === undefined
+      ? createDefaultMutationQueueInspector()
+      : opts.mutationQueue;
+  const queueCheck = inspector
+    ? await inspector.checkPendingMutations()
+    : { status: "unknown" as const, detail: "No mutation-queue inspector is available" };
+  if (queueCheck.status === "pending") {
+    // Self-heal: the ledger lost (or never had) these identities —
+    // put the proof back where later logouts look for it. Best
+    // effort only; the current logout already preserves the cache.
+    for (const uid of queueCheck.userIds) {
+      try {
+        await ledger.record(uid);
+      } catch {
+        // record() never throws by contract; a failure here must
+        // not turn a preserved logout into an error.
+      }
+    }
+    return {
+      cleared: false,
+      reason: "pending-writes-preserved",
+      detail:
+        "The Firestore SDK's offline mutation queue still holds unsynced writes for a signed-in identity; cache kept so no unsynced data is lost.",
+    };
+  }
+  if (queueCheck.status === "unknown") {
+    return {
+      cleared: false,
+      reason: "pending-writes-preserved",
+      detail:
+        "The Firestore SDK's offline mutation queue could not be inspected, so an empty ledger is not positive proof that no unsynced writes exist; cache kept so no unsynced data is lost.",
     };
   }
 

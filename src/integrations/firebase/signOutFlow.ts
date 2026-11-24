@@ -26,7 +26,11 @@
  *    stores is not positive proof that no pending writes exist, so
  *    the clear is refused while the ledger cannot round-trip its own
  *    content. The flow passes departingUid so the helper can
- *    attribute the record.
+ *    attribute the record — AND (round 6) on the Firestore SDK's own
+ *    mutation queue holding no unacknowledged batch for any identity:
+ *    a live empty ledger still cannot prove a record was never LOST
+ *    (all three stores failing at record time, or a cookie-only
+ *    record deleted), so the SDK queue itself is inspected read-only.
  * 4. Reopen the write gate (finally — the window is over either way).
  * 5. THEN sign out of Auth. Only now does the identity change.
  * 6. Reload ONLY once signed out: the clear terminates the Firestore
@@ -51,6 +55,7 @@ import {
   type LogoutCacheResult,
 } from "./logoutCache";
 import type { PreservedWritesLedger } from "./preservedWrites";
+import type { MutationQueueInspector } from "./firestoreMutationQueue";
 import {
   closeLogoutWriteGate,
   openLogoutWriteGate,
@@ -74,6 +79,14 @@ export type SignOutFlowDeps = {
     departingUid?: string | null;
     /** Ledger override (tests); defaults to the shared localStorage ledger. */
     preservedWrites?: PreservedWritesLedger;
+    /**
+     * Mutation-queue inspector override (tests); defaults to the
+     * production inspector for this app's Firebase project. The
+     * inspector is what closes the all-three-stores case: it reads
+     * the SDK's own mutation queue directly, so a ledger record lost
+     * when every store failed cannot authorise a clear.
+     */
+    mutationQueue?: MutationQueueInspector | null;
   } | null;
   /** Auth sign-out (full). Must run AFTER the cache step. */
   signOutAuth: () => Promise<void>;
@@ -118,6 +131,7 @@ export async function performSignOut(
         api: deps.firestore.api,
         preservedWrites: deps.firestore.preservedWrites,
         departingUid: deps.firestore.departingUid,
+        mutationQueue: deps.firestore.mutationQueue,
       });
     } finally {
       openGate();

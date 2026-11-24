@@ -102,18 +102,30 @@ by the owner **and by admins** under the Firestore rules
   cache of the user's own data on the device. A logout cache clear is
   **proposed, not live** (PR #30, `review/web-security-privacy-2026-11-22`,
   unmerged as of 2026-11-22): it would clear that cache on logout only
-  when two things are both proven — the departing user's own offline
+  when four things are all proven — the departing user's own offline
   queue is clean, AND no earlier signed-in user has unresolved
   preserved writes recorded in the preserved-writes ledger
   (`src/integrations/firebase/logoutCache.ts` + `signOutFlow.ts` +
-  `preservedWrites.ts`). A clean check of the departing user's queue
-  alone does NOT prove a whole-cache clear safe, because
-  `waitForPendingWrites` only sees the active identity's queue. The
-  safety claim is conditional on that proven scope only: the ledger
-  records only identities whose logout went through this flow, so a
-  session that ends without that logout path (e.g. a token revoked
-  while offline) leaves no record, and a later clear cannot be proven
-  safe for that identity's writes. Within the proven scope, pending
+  `preservedWrites.ts`), AND the ledger channel itself proves live,
+  AND the Firestore SDK's own offline mutation queue holds no
+  unacknowledged batch for any identity (read-only inspection of the
+  SDK's IndexedDB `mutations` store, `firestoreMutationQueue.ts`,
+  round 6). A clean check of the departing user's queue alone does
+  NOT prove a whole-cache clear safe, because
+  `waitForPendingWrites` only sees the active identity's queue; and a
+  live empty ledger alone does not prove it either, because a ledger
+  record can be lost when every ledger store fails at record time —
+  the mutation-queue inspection is what closes that case, since the
+  pending writes themselves live in the SDK's store independent of
+  every ledger store. The safety claim is conditional on that proven
+  scope only: the ledger records only identities whose logout went
+  through this flow, and the inspection covers only this app's
+  Firestore database (default persistence key, default database) as
+  laid out by the installed Firebase SDK — if that layout changes,
+  the inspection fails closed (clears refused) until updated. A
+  session that ends without that logout path leaves no ledger record,
+  but its batches are still visible in the SDK mutation queue, so a
+  later clear is refused for them too. Within the proven scope, pending
   offline writes are always preserved, never deleted. Until that PR
   merges and deploys, logout does **not** clear the offline cache.
 

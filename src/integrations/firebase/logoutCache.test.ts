@@ -7,10 +7,35 @@ import {
 import {
   createCookieStore,
   createPreservedWritesLedger,
+  PRESERVED_WRITES_COOKIE_NAME,
   type PreservedWritesLedger,
   type PreservedWritesStorage,
 } from "./preservedWrites";
+import {
+  createFirestoreMutationQueueInspector,
+  type MutationQueueCheck,
+  type MutationQueueInspector,
+} from "./firestoreMutationQueue";
 import type { Firestore } from "firebase/firestore";
+
+/** Stub inspector: the SDK mutation queue is provably empty. */
+function cleanInspector(): MutationQueueInspector {
+  return {
+    checkPendingMutations: async (): Promise<MutationQueueCheck> => ({
+      status: "clean",
+    }),
+  };
+}
+
+/** Stub inspector: the SDK mutation queue still holds these uids' batches. */
+function pendingInspector(userIds: string[]): MutationQueueInspector {
+  return {
+    checkPendingMutations: async (): Promise<MutationQueueCheck> => ({
+      status: "pending",
+      userIds,
+    }),
+  };
+}
 
 /** Ledger over an in-memory store, so helper tests never touch localStorage. */
 function memoryLedger(): PreservedWritesLedger {
@@ -125,6 +150,7 @@ describe("clearFirestoreCacheOnLogout", () => {
     const result = await clearFirestoreCacheOnLogout(fakeDb, {
       timeoutMs: 50,
       api,
+      mutationQueue: cleanInspector(),
     });
     expect(result).toEqual({ cleared: true, reason: "cleared" });
     expect(calls).toEqual([
@@ -171,6 +197,7 @@ describe("clearFirestoreCacheOnLogout", () => {
     const result = await clearFirestoreCacheOnLogout(fakeDb, {
       timeoutMs: 50,
       api,
+      mutationQueue: cleanInspector(),
     });
     expect(result).toEqual({ cleared: true, reason: "cleared" });
     expect(calls).toEqual([
@@ -189,6 +216,7 @@ describe("clearFirestoreCacheOnLogout", () => {
     const result = await clearFirestoreCacheOnLogout(fakeDb, {
       timeoutMs: 50,
       api,
+      mutationQueue: cleanInspector(),
     });
     expect(result.cleared).toBe(false);
     expect(result.reason).toBe("clear-failed");
@@ -212,6 +240,7 @@ describe("clearFirestoreCacheOnLogout", () => {
     const result = await clearFirestoreCacheOnLogout(fakeDb, {
       timeoutMs: 50,
       api,
+      mutationQueue: cleanInspector(),
     });
     expect(result).toEqual({
       cleared: false,
@@ -252,6 +281,7 @@ describe("clearFirestoreCacheOnLogout — older retained identities (round 2)", 
       api,
       preservedWrites: ledger,
       departingUid: "user-A",
+      mutationQueue: cleanInspector(),
     });
     // A's own queue just proved clean, so A's entry is stale — the
     // clear is allowed and the entry is resolved.
@@ -492,6 +522,7 @@ describe("clearFirestoreCacheOnLogout — both ledger stores fail, fresh client 
       api,
       preservedWrites: ledger,
       departingUid: "user-B",
+      mutationQueue: cleanInspector(),
     });
     expect(result).toEqual({ cleared: true, reason: "cleared" });
     expect(calls).toEqual([
@@ -648,6 +679,7 @@ describe("clearFirestoreCacheOnLogout — healed transient window (round 5)", ()
       api,
       preservedWrites: ledger,
       departingUid: "user-B",
+      mutationQueue: cleanInspector(),
     });
     expect(result).toEqual({ cleared: true, reason: "cleared" });
     expect(calls).toEqual([
@@ -718,5 +750,429 @@ describe("clearFirestoreCacheOnLogout — healed transient window (round 5)", ()
     expect(result.cleared).toBe(false);
     expect(result.reason).toBe("pending-writes-preserved");
     expect(calls).toEqual(["waitForPendingWrites"]);
+  });
+});
+
+/**
+ * Cookie jar whose writes fail while `failing` and succeed after it
+ * is cleared (round 6): models the cookie channel dying at record
+ * time and healing before the next logout. While failing, the setter
+ * silently drops the write — exactly how a blocked cookie jar
+ * behaves — so createCookieStore's read-back verification throws.
+ */
+function flakyCookieJar(): {
+  jar: { cookie: string };
+  setFailing(failing: boolean): void;
+} {
+  const backing = new Map<string, string>();
+  let failing = false;
+  return {
+    jar: {
+      get cookie() {
+        return [...backing.entries()]
+          .map(([k, v]) => `${k}=${v}`)
+          .join("; ");
+      },
+      set cookie(raw: string) {
+        if (failing) return; // Silently dropped.
+        const [pair, ...directives] = raw.split(";");
+        const eq = pair.indexOf("=");
+        if (eq === -1) return;
+        const name = pair.slice(0, eq).trim();
+        const value = pair.slice(eq + 1).trim();
+        if (/max-age=0\b/.test(directives.join(";"))) backing.delete(name);
+        else backing.set(name, value);
+      },
+    },
+    setFailing(f: boolean) {
+      failing = f;
+    },
+  };
+}
+
+/**
+ * Minimal fake of the Firestore SDK's own IndexedDB database (round 6)
+ * — same layout as in firestoreMutationQueue.test.ts: database
+ * `firestore/[DEFAULT]/driver-saathi-app/main`, stores
+ * `mutationQueues` and `mutations` (index `userMutationsIndex`).
+ * Shared across the "reload" so B's logout inspects the same queue
+ * A's writes landed in.
+ */
+const SDK_DB_NAME = "firestore/[DEFAULT]/driver-saathi-app/main";
+
+class FakeSdkDb {
+  private stores = new Map<
+    string,
+    { records: Map<number, Record<string, unknown>>; indexes: Set<string> }
+  >();
+
+  constructor() {
+    this.stores.set("mutationQueues", {
+      records: new Map(),
+      indexes: new Set(),
+    });
+    this.stores.set("mutations", {
+      records: new Map(),
+      indexes: new Set(["userMutationsIndex"]),
+    });
+  }
+
+  addBatch(uid: string, batchId: number) {
+    this.stores.get("mutations")?.records.set(batchId, {
+      userId: uid,
+      batchId,
+      mutations: [{ type: "set" }],
+    });
+  }
+
+  removeBatch(batchId: number) {
+    this.stores.get("mutations")?.records.delete(batchId);
+  }
+
+  asFactory(): IDBFactory {
+    const data = this.stores;
+    const factory = {
+      databases: async () => [{ name: SDK_DB_NAME, version: 18 }],
+      open: (name: string) => {
+        const req: Record<string, unknown> = {
+          result: undefined,
+          error: null,
+          onupgradeneeded: null,
+          onsuccess: null,
+          onerror: null,
+          onblocked: null,
+        };
+        setTimeout(() => {
+          const db: Record<string, unknown> = {
+            objectStoreNames: {
+              contains: (storeName: string) => data.has(storeName),
+            },
+            close: () => {},
+            transaction: (
+              _storeNames: string | string[],
+              _mode?: IDBTransactionMode,
+            ) => {
+              const tx: Record<string, unknown> = {
+                oncomplete: null,
+                onerror: null,
+                onabort: null,
+                error: null,
+                objectStore: (storeName: string) => {
+                  const storeData = data.get(storeName);
+                  if (!storeData) {
+                    throw new Error(`NotFoundError: ${storeName}`);
+                  }
+                  return {
+                    index: (indexName: string) => {
+                      if (!storeData.indexes.has(indexName)) {
+                        throw new Error(`NotFoundError: index ${indexName}`);
+                      }
+                      return {};
+                    },
+                    getAll: () => {
+                      const getReq: Record<string, unknown> = {
+                        result: undefined,
+                        error: null,
+                        onsuccess: null,
+                        onerror: null,
+                      };
+                      setTimeout(() => {
+                        getReq.result = [...storeData.records.values()];
+                        (getReq.onsuccess as ((ev: Event) => void) | null)?.(
+                          new Event("success"),
+                        );
+                        setTimeout(() => {
+                          (tx.oncomplete as ((ev: Event) => void) | null)?.(
+                            new Event("complete"),
+                          );
+                        }, 0);
+                      }, 0);
+                      return getReq;
+                    },
+                  };
+                },
+              };
+              return tx;
+            },
+          };
+          req.result = db;
+          (req.onsuccess as ((ev: Event) => void) | null)?.(
+            new Event("success"),
+          );
+        }, 0);
+        return req as unknown as IDBOpenDBRequest;
+      },
+    };
+    return factory as unknown as IDBFactory;
+  }
+}
+
+/** The REAL inspector over the fake SDK database (not a stub). */
+function realInspector(sdkDb: FakeSdkDb): MutationQueueInspector {
+  return createFirestoreMutationQueueInspector({
+    projectId: "driver-saathi-app",
+    factory: sdkDb.asFactory(),
+    timeoutMs: 1000,
+  });
+}
+
+describe("clearFirestoreCacheOnLogout — all-three-stores case (round 6)", () => {
+  it("(i) all three ledger stores fail at A's record, heal, and B's clean logout still does NOT clear — the SDK queue proves it", async () => {
+    // FAILING-FIRST (round 6a): the case the user named STILL
+    // unresolved. All THREE ledger stores refuse A's record, then
+    // recover before B's logout. The ledger reads live-and-empty and
+    // B's active queue is clean — the old gates would authorise the
+    // clear and destroy A's pending write. The SDK's own mutation
+    // queue still holds A's batch, and the inspector reads it
+    // directly, so the clear is refused. No real cache deletion
+    // happens: the refusal is asserted from the result + call list,
+    // and A's uid is re-recorded into the healed ledger (self-heal),
+    // so the ledger blocks later clears too.
+    const primary = flakyAsyncStore();
+    const mirror = flakyAsyncStore();
+    const cookie = flakyCookieJar();
+    primary.setFailing(true);
+    mirror.setFailing(true);
+    cookie.setFailing(true);
+    const sdkDb = new FakeSdkDb();
+    sdkDb.addBatch("user-A", 1);
+
+    const first = createPreservedWritesLedger(
+      primary.store,
+      mirror.store,
+      createCookieStore(cookie.jar),
+    );
+    const { api: pendingApi } = apiWith({
+      waitForPendingWrites: () => new Promise<void>(() => {}),
+    });
+    const resultA = await clearFirestoreCacheOnLogout(fakeDb, {
+      timeoutMs: 10,
+      api: pendingApi,
+      preservedWrites: first,
+      departingUid: "user-A",
+    });
+    expect(resultA.cleared).toBe(false);
+    expect(resultA.reason).toBe("pending-writes-preserved");
+    expect(resultA.detail).toMatch(/could not be written durably/);
+    // The record landed nowhere: all three stores refused it.
+    expect(await first.list()).toEqual([]);
+
+    // The stores heal before B's logout (the transient window).
+    primary.setFailing(false);
+    mirror.setFailing(false);
+    cookie.setFailing(false);
+    // Reload: a fresh ledger instance over the SAME (healed) stores.
+    const second = createPreservedWritesLedger(
+      primary.store,
+      mirror.store,
+      createCookieStore(cookie.jar),
+    );
+    expect(await second.list()).toEqual([]);
+    expect(await second.verifyLive()).toBe(true);
+
+    const { api: cleanApi, calls } = apiWith({});
+    const resultB = await clearFirestoreCacheOnLogout(fakeDb, {
+      timeoutMs: 50,
+      api: cleanApi,
+      preservedWrites: second,
+      departingUid: "user-B",
+      mutationQueue: realInspector(sdkDb),
+    });
+    expect(resultB.cleared).toBe(false);
+    expect(resultB.reason).toBe("pending-writes-preserved");
+    expect(resultB.detail).toMatch(/mutation queue/i);
+    // terminate() and clearIndexedDbPersistence() were never called:
+    // A's pending write survived B's logout.
+    expect(calls).toEqual(["waitForPendingWrites"]);
+    // Self-heal: the inspector's pending uid was recorded into the
+    // healed ledger, so a later logout is blocked by the ledger too.
+    expect(await second.list()).toEqual(["user-A"]);
+  });
+
+  it("(ii) a cookie-only record deleted before B's logout still does NOT clear — the SDK queue proves it", async () => {
+    // FAILING-FIRST (round 6b): the preserved cookie-only case. Both
+    // ledger stores refuse A's record, so it lands ONLY in the
+    // cookie; the stores then heal, and the cookie is deleted before
+    // B's logout. The ledger reads live-and-empty — but A's batch is
+    // still in the SDK mutation queue, and the inspector sees it.
+    const primary = flakyAsyncStore();
+    const mirror = flakyAsyncStore();
+    const cookie = flakyCookieJar();
+    primary.setFailing(true);
+    mirror.setFailing(true);
+    const sdkDb = new FakeSdkDb();
+    sdkDb.addBatch("user-A", 1);
+
+    const first = createPreservedWritesLedger(
+      primary.store,
+      mirror.store,
+      createCookieStore(cookie.jar),
+    );
+    const { api: pendingApi } = apiWith({
+      waitForPendingWrites: () => new Promise<void>(() => {}),
+    });
+    const resultA = await clearFirestoreCacheOnLogout(fakeDb, {
+      timeoutMs: 10,
+      api: pendingApi,
+      preservedWrites: first,
+      departingUid: "user-A",
+    });
+    expect(resultA.cleared).toBe(false);
+    expect(await first.list()).toEqual(["user-A"]);
+
+    // The stores heal, and the cookie — the record's only copy — is
+    // deleted before B's logout (targeted deletion, not site-data
+    // clearing, so the Firestore cache itself survives).
+    primary.setFailing(false);
+    mirror.setFailing(false);
+    cookie.jar.cookie =
+      `${PRESERVED_WRITES_COOKIE_NAME}=; max-age=0; path=/; SameSite=Lax`;
+    const second = createPreservedWritesLedger(
+      primary.store,
+      mirror.store,
+      createCookieStore(cookie.jar),
+    );
+    expect(await second.list()).toEqual([]);
+    expect(await second.verifyLive()).toBe(true);
+
+    const { api: cleanApi, calls } = apiWith({});
+    const resultB = await clearFirestoreCacheOnLogout(fakeDb, {
+      timeoutMs: 50,
+      api: cleanApi,
+      preservedWrites: second,
+      departingUid: "user-B",
+      mutationQueue: realInspector(sdkDb),
+    });
+    expect(resultB.cleared).toBe(false);
+    expect(resultB.reason).toBe("pending-writes-preserved");
+    expect(calls).toEqual(["waitForPendingWrites"]);
+    expect(await second.list()).toEqual(["user-A"]);
+  });
+
+  it("still clears when the ledger is live-and-empty AND the SDK mutation queue is empty (real inspector)", async () => {
+    // The refusal above is about an unprovable clear, not about never
+    // clearing: healthy ledger + empty SDK queue + clean active queue
+    // still clears. (Guards the inspector against refusing every
+    // healthy logout.)
+    const { store: primary } = memoryAsyncStore();
+    const { store: mirror } = memoryAsyncStore();
+    const ledger = createPreservedWritesLedger(
+      primary,
+      mirror,
+      createCookieStore(fakeCookieJar()),
+    );
+    const sdkDb = new FakeSdkDb(); // No batches: the queue is empty.
+    const { api, calls } = apiWith({});
+    const result = await clearFirestoreCacheOnLogout(fakeDb, {
+      timeoutMs: 50,
+      api,
+      preservedWrites: ledger,
+      departingUid: "user-B",
+      mutationQueue: realInspector(sdkDb),
+    });
+    expect(result).toEqual({ cleared: true, reason: "cleared" });
+    expect(calls).toEqual([
+      "waitForPendingWrites",
+      "terminate",
+      "clearIndexedDbPersistence",
+    ]);
+  });
+
+  it("clears only after the owner returns clean: the SDK queue drains, the ledger resolves, and the clear is allowed", async () => {
+    // A returns, comes back online, syncs (the batch leaves the SDK
+    // mutation queue), and logs out clean — only now is the
+    // whole-cache clear allowed, and A's ledger entry is resolved.
+    const { store: primary } = memoryAsyncStore();
+    const { store: mirror } = memoryAsyncStore();
+    const ledger = createPreservedWritesLedger(
+      primary,
+      mirror,
+      createCookieStore(fakeCookieJar()),
+    );
+    await ledger.record("user-A");
+    const sdkDb = new FakeSdkDb();
+    sdkDb.addBatch("user-A", 1);
+
+    // A is still unsynced: no clear, even though A is the departing
+    // user — waitForPendingWrites is clean here in the fake API, but
+    // the SDK queue still holds the batch, so the inspector refuses.
+    const { api: apiA, calls: callsA } = apiWith({});
+    const resultA = await clearFirestoreCacheOnLogout(fakeDb, {
+      timeoutMs: 50,
+      api: apiA,
+      preservedWrites: ledger,
+      departingUid: "user-A",
+      mutationQueue: realInspector(sdkDb),
+    });
+    expect(resultA.cleared).toBe(false);
+    expect(callsA).toEqual(["waitForPendingWrites"]);
+    expect(await ledger.list()).toEqual(["user-A"]);
+
+    // A syncs: the batch is acknowledged and leaves the queue.
+    sdkDb.removeBatch(1);
+    const { api: apiA2, calls: callsA2 } = apiWith({});
+    const resultA2 = await clearFirestoreCacheOnLogout(fakeDb, {
+      timeoutMs: 50,
+      api: apiA2,
+      preservedWrites: ledger,
+      departingUid: "user-A",
+      mutationQueue: realInspector(sdkDb),
+    });
+    expect(resultA2).toEqual({ cleared: true, reason: "cleared" });
+    expect(callsA2).toEqual([
+      "waitForPendingWrites",
+      "terminate",
+      "clearIndexedDbPersistence",
+    ]);
+    expect(await ledger.list()).toEqual([]);
+  });
+
+  it("refuses when the SDK mutation queue cannot be inspected (unknown), even with a live empty ledger", async () => {
+    // Fail-closed: an inspector that cannot read the queue proves
+    // nothing, so an empty ledger must not authorise the clear.
+    const { store: primary } = memoryAsyncStore();
+    const { store: mirror } = memoryAsyncStore();
+    const ledger = createPreservedWritesLedger(
+      primary,
+      mirror,
+      createCookieStore(fakeCookieJar()),
+    );
+    const unknownInspector: MutationQueueInspector = {
+      checkPendingMutations: async (): Promise<MutationQueueCheck> => ({
+        status: "unknown",
+        detail: "IndexedDB is not available",
+      }),
+    };
+    const { api, calls } = apiWith({});
+    const result = await clearFirestoreCacheOnLogout(fakeDb, {
+      timeoutMs: 50,
+      api,
+      preservedWrites: ledger,
+      departingUid: "user-B",
+      mutationQueue: unknownInspector,
+    });
+    expect(result.cleared).toBe(false);
+    expect(result.reason).toBe("pending-writes-preserved");
+    expect(result.detail).toMatch(/mutation queue/i);
+    expect(calls).toEqual(["waitForPendingWrites"]);
+  });
+
+  it("refuses when the inspector reports pending batches, even with no ledger entry at all", async () => {
+    // The ledger never saw this identity (e.g. its session ended
+    // without this logout flow): the SDK queue is the only trace, and
+    // it is enough to refuse — and to record the uid for later.
+    const ledger = memoryLedger();
+    const { api, calls } = apiWith({});
+    const result = await clearFirestoreCacheOnLogout(fakeDb, {
+      timeoutMs: 50,
+      api,
+      preservedWrites: ledger,
+      departingUid: "user-B",
+      mutationQueue: pendingInspector(["user-A"]),
+    });
+    expect(result.cleared).toBe(false);
+    expect(result.reason).toBe("pending-writes-preserved");
+    expect(calls).toEqual(["waitForPendingWrites"]);
+    expect(await ledger.list()).toEqual(["user-A"]);
   });
 });

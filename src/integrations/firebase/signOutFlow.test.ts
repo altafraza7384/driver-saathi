@@ -28,6 +28,10 @@
 import { describe, it, expect, vi } from "vitest";
 import { performSignOut, type SignOutFlowDeps } from "./signOutFlow";
 import type { FirestoreCacheApi } from "./logoutCache";
+import type {
+  MutationQueueCheck,
+  MutationQueueInspector,
+} from "./firestoreMutationQueue";
 import {
   createPreservedWritesLedger,
   preservedWritesLedger,
@@ -67,6 +71,15 @@ function failingAsyncStore(): PreservedWritesStorage {
     remove: async () => {
       throw new Error("denied");
     },
+  };
+}
+
+/** Stub inspector: the SDK mutation queue is provably empty. */
+function cleanInspector(): MutationQueueInspector {
+  return {
+    checkPendingMutations: async (): Promise<MutationQueueCheck> => ({
+      status: "clean",
+    }),
   };
 }
 
@@ -189,6 +202,7 @@ function makeDeps(
       api: fake.asApi(),
       timeoutMs: 50,
       departingUid,
+      mutationQueue: cleanInspector(),
     },
     signOutAuth: async () => {
       fake.signOut();
@@ -302,6 +316,7 @@ describe("performSignOut — recovery when the clear fails after terminate (fix 
             throw new Error("failed-precondition: another tab holds the DB");
           },
         },
+        mutationQueue: cleanInspector(),
       },
     });
 
@@ -477,6 +492,7 @@ describe("performSignOut — failed ledger store across a reload (round 3)", () 
         timeoutMs: 50,
         departingUid: "user-A",
         preservedWrites: ledgerA2,
+        mutationQueue: cleanInspector(),
       },
     });
     const resultA2 = await performSignOut(depsA2);
@@ -558,5 +574,108 @@ describe("performSignOut — both ledger stores fail across a reload (round 4b)"
     expect(after.store.get("tx-A1")).toEqual({ amount: 500 });
     expect(after.pending.get("user-A")?.has("tx-A1")).toBe(true);
     expect(resultB.signedOut).toBe(true);
+  });
+});
+
+describe("performSignOut — SDK mutation queue (round 6)", () => {
+  it("refuses B's clean logout while the SDK queue still holds A's batch even though the ledger lost the record, and clears only after A syncs", async () => {
+    // FLOW-LEVEL version of round-6 (i): A's ledger record lands
+    // nowhere (both ledger stores fail at record time), the stores
+    // then heal, and B logs out with a clean active queue and a
+    // live empty ledger. The old gates would clear and destroy A's
+    // write. The mutation-queue inspector — here a stub driven by
+    // the fake's pending state, standing in for the real inspector
+    // that reads the SDK's own IndexedDB `mutations` store — still
+    // sees A's batch, so the clear is refused and A's write
+    // survives. Only after A returns, syncs, and logs out clean is
+    // the clear allowed.
+    const shared = {
+      store: new Map<string, unknown>(),
+      pending: new Map<string, Set<string>>(),
+    };
+    const fake = new FakeFirestore(shared);
+    // Inspector driven by the fake's pending queues: pending while
+    // ANY identity has an unsynced write, clean once all sync.
+    const queueInspector: MutationQueueInspector = {
+      checkPendingMutations: async (): Promise<MutationQueueCheck> => {
+        const userIds = [...fake.pending.entries()]
+          .filter(([, keys]) => keys.size > 0)
+          .map(([uid]) => uid);
+        return userIds.length === 0
+          ? { status: "clean" }
+          : { status: "pending", userIds };
+      },
+    };
+
+    // A logs out with an offline write pending; the ledger record
+    // lands nowhere (both stores fail).
+    fake.signIn("user-A");
+    fake.write("user-A", "tx-A1", { amount: 500 });
+    const failingLedger = createPreservedWritesLedger(
+      failingAsyncStore(),
+      failingAsyncStore(),
+    );
+    const { deps: depsA } = makeDeps(fake, {
+      firestore: {
+        db: fake as unknown as Firestore,
+        api: fake.asApi(),
+        timeoutMs: 50,
+        departingUid: "user-A",
+        preservedWrites: failingLedger,
+        mutationQueue: queueInspector,
+      },
+    });
+    const resultA = await performSignOut(depsA);
+    expect(resultA.cache?.cleared).toBe(false);
+    expect(resultA.cache?.reason).toBe("pending-writes-preserved");
+    expect(resultA.cache?.detail).toMatch(/could not be written durably/);
+    expect(fake.clearCalls).toBe(0);
+    expect(fake.store.get("tx-A1")).toEqual({ amount: 500 });
+
+    // Reload: a fresh client over the same store, and a FRESH ledger
+    // over healthy stores (the heal). B signs in and out clean.
+    const after = new FakeFirestore(shared);
+    const healedLedger = createPreservedWritesLedger(
+      memoryAsyncStore().store,
+    );
+    expect(await healedLedger.list()).toEqual([]);
+    after.signIn("user-B");
+    const { deps: depsB } = makeDeps(after, {
+      firestore: {
+        db: after as unknown as Firestore,
+        api: after.asApi(),
+        timeoutMs: 50,
+        departingUid: "user-B",
+        preservedWrites: healedLedger,
+        mutationQueue: queueInspector,
+      },
+    });
+    const resultB = await performSignOut(depsB);
+    expect(resultB.cache?.cleared).toBe(false);
+    expect(resultB.cache?.reason).toBe("pending-writes-preserved");
+    expect(resultB.cache?.detail).toMatch(/mutation queue/i);
+    expect(after.clearCalls).toBe(0);
+    // A's write survived B's logout — it was NOT silently discarded.
+    expect(after.store.get("tx-A1")).toEqual({ amount: 500 });
+    expect(after.pending.get("user-A")?.has("tx-A1")).toBe(true);
+    expect(resultB.signedOut).toBe(true);
+
+    // A returns, comes back online, syncs, and logs out clean — only
+    // now is the whole-cache clear allowed.
+    after.signIn("user-A");
+    after.syncAll();
+    const { deps: depsA2 } = makeDeps(after, {
+      firestore: {
+        db: after as unknown as Firestore,
+        api: after.asApi(),
+        timeoutMs: 50,
+        departingUid: "user-A",
+        preservedWrites: healedLedger,
+        mutationQueue: queueInspector,
+      },
+    });
+    const resultA2 = await performSignOut(depsA2);
+    expect(resultA2.cache?.cleared).toBe(true);
+    expect(after.store.has("tx-A1")).toBe(false);
   });
 });

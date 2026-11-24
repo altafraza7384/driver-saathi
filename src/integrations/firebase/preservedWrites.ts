@@ -73,14 +73,29 @@
  * (verifyLive probes it: a disabled cookie jar reads empty without
  * throwing, so its emptiness alone is never trusted).
  *
- * REMAINING RESIDUALS (exact, round 5 — do not claim more):
- * (1) A record is lost only if ALL THREE stores fail at record time
- * AND the cookie is then deleted before the next logout while the
- * other two recover. Normal site-data clearing wipes the Firestore
- * cache too, so there is nothing left to protect in that case; only
- * a targeted deletion of this one cookie (e.g. via devtools) while
- * the other two stores heal leaves the hole. No client-side
- * mechanism can resurrect a record that was never written anywhere.
+ * REMAINING RESIDUALS (exact, round 6 — do not claim more):
+ * (1) CLOSED (round 6): the all-three-stores case — a record lost
+ * only if ALL THREE stores fail at record time, or a cookie-only
+ * record deleted before the next logout while the other two recover.
+ * The ledger could never resurrect a record written nowhere, but
+ * the round-6 mutation-queue inspection (firestoreMutationQueue.ts,
+ * gated in logoutCache.ts) reads the pending writes themselves from
+ * the SDK's own IndexedDB `mutations` store, independent of every
+ * ledger store — so a lost record no longer authorises a clear, and
+ * the owning identities are re-recorded into the ledger (self-heal).
+ * The regressions in logoutCache.test.ts prove both named cases.
+ * What remains is NOT this case but the inspector's own limits:
+ * (a) SDK schema drift — if a future Firebase SDK renames the
+ * `mutations` store, the `userMutationsIndex`, or the database
+ * name, the inspection returns "unknown" and logout clears are
+ * refused (stuck-safe) until the inspector is updated; no data is
+ * lost, but privacy clears stop. (b) A mutation accepted into the
+ * SDK's in-memory queue but not yet flushed to IndexedDB at
+ * inspection time — for earlier identities impossible (no new
+ * writes land after their logout); for the departing user covered
+ * by the waitForPendingWrites check. (c) The inspection covers
+ * only this app's Firestore database (default persistence key,
+ * default database, configured project id).
  * (2) If the cookie channel dies AFTER holding the only copy of a
  * record, that entry stays unresolved (stuck-safe, fail-closed)
  * until the channel recovers and the owner logs out clean — the
@@ -89,8 +104,12 @@
  * probe fails and logout cache-clear is permanently refused
  * (fail-closed): the cache is kept. Privacy yields to data safety,
  * as elsewhere in this module.
- * (4) The pre-existing scope limit stands: the ledger only knows
- * about identities whose logout went through this flow.
+ * (4) The pre-existing scope limit stands in narrowed form: the
+ * ledger only knows about identities whose logout went through this
+ * flow — but the round-6 inspection ALSO sees batches of identities
+ * whose session ended without this flow, so a later clear is
+ * refused for their writes too. Only writes never persisted to the
+ * SDK's IndexedDB at all are outside both proofs.
  *
  * TRANSACTION DURABILITY (round 4a): an IndexedDB write is durable
  * only when its TRANSACTION completes. A put request can report
