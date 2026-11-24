@@ -200,7 +200,7 @@ history (`git log -S` / `git show` on `firebase/firestore.rules` at main
 | 2 | Email-verification gate (`isUnverifiedEmailUser`/`notUnverified` + all applications incl. SOS cancel-only closure) | `acda46f` (same combined release) | Owner decision 2026-11-21 (gate: unverified password users cannot read/write own data); merged via PR #26 with the user's 11:43 IST approval after the v5 review. |
 | 3 | `ownedCollections` 16 → 19 (habits/habit_logs/routine_settings) | `acda46f` (same combined release) | "Roz ka Routine" feature, one of the 4 agreed features in PRs #19–25; merged via PR #26 with the user's approval. This is the fix for the verified permission-denied reads. |
 | 4 | `roles` read gains `notUnverified()` | `acda46f` | Part of the gate (item 2) — same evidence. |
-| 5 | `subscription_plans`: `validPlanPrice()` + `deleting` guard; **delete `if isAdmin()` → `if false`** | `db45208` (2026-11-09, "fix: prevent client bypass of cancellation-first plan deletion", author altafraza7384) | **NO separate owner approval for the rule choice.** The `deleteSubscriptionPlan` callable (cancellation-first: sets `deleting`, cancels Razorpay mandates, clears plan ids, deletes offers, then deletes via Admin SDK) is user-requested (Admin plan DELETE shipped 2026-10-25) and the admin page uses only the callable — but the user has stated (2026-11-23) that the callable facts and the rule choice are separate approvals. Merged via PR #26, but the merge approval is not treated as approval of this line. **→ Q2 (below), the single open question.** |
+| 5 | `subscription_plans`: `validPlanPrice()` + `deleting` guard; **delete `if isAdmin()` → `if false`** | `db45208` (2026-11-09, "fix: prevent client bypass of cancellation-first plan deletion", author altafraza7384) | **DECIDED 2026-11-24 13:05 IST (owner): subscription_plans client delete stays `false` (Q2, below).** The `deleteSubscriptionPlan` callable (cancellation-first: sets `deleting`, cancels Razorpay mandates, clears plan ids, deletes offers, then deletes via Admin SDK) is user-requested (Admin plan DELETE shipped 2026-10-25) and the admin page uses only the callable. Merged via PR #26. **Policy approval ONLY — NOT approval for merge/deploy or rules/index apply.** |
 | 6 | `insurance_leads`: create/read gain `notUnverified()` + `leadTextOk()`/`leadTextUpdateOk()`; delete stays `if isAdmin()` in BOTH | `acda46f` | Gate (item 2) + hardening (item 1) — same evidence. Delete unchanged. |
 | 7 | `sos_requests`: gate + cancel-only closure | `acda46f` | Gate (item 2) — same evidence. |
 | 8 | `sos_request_details`: parent-request existence + ownership check on create, gate on create/read | `acda46f` (combined release; the parent check is PR #25 hardening) | Merged via PR #26 with the user's approval after the v5 review. |
@@ -208,11 +208,12 @@ history (`git log -S` / `git show` on `firebase/firestore.rules` at main
 
 **Bottom line of the reconciliation:** of the substantive differences, every
 one is covered by the PR #26 merge approval and/or the 2026-11-21 gate
-decision EXCEPT item 5's delete line, which is Q2. The proposed file removes
+decision, including item 5's delete line, which was Q2 — now DECIDED
+2026-11-24 (delete stays `false`; see Q2 below). The proposed file removes
 exactly ONE live permission (plan delete, admin) and otherwise only adds
 owner-approved restrictions.
 
-## Preservation patch v2 (reviewable only — NOT applied anywhere)
+## Preservation patch v2 — DEAD (Q2 decided 2026-11-24; reviewable only — NOT applied anywhere)
 
 - `rules-preservation-0001v2-restore-plan-delete.patch` (audit folder) —
   base: main `579d353`, proposed blob `1e899c2` (378 lines) → preserved blob
@@ -223,11 +224,16 @@ owner-approved restrictions.
   `if isAdmin();` (with a comment pointing at Q2). Verified: the patch
   applies cleanly onto main `579d353` in a scratch clone; only the intended
   file changes; resulting blob/hash/lines all match.
+  **DEAD — do NOT apply:** Q2 was decided 2026-11-24 13:05 IST (owner):
+  subscription_plans client delete stays `false`. The patch is retained in
+  the audit folder for audit only; it was used in round 6 only as the
+  failing-first control file (see Q2 below), never applied to any branch.
 - `rules-preservation-0002v2-plan-delete-tests.patch` (audit folder) — 2
   targeted rules tests in `firebase/functions/test/rules.test.ts` (248 →
   265 lines, 44 → 46 `it()`): admin CAN delete a plan (FAILS against the
   proposed file, PASSES against the preserved file), non-admin CANNOT delete
   a plan (passes against both).
+  **DEAD — do NOT add:** they assert the opposite of the decided Q2 value.
 - WITHDRAWN (wrong baseline, do not use):
   `rules-preservation-0001-restore-live-permissions.patch` (preserved blob
   `10d0930`) and `rules-preservation-0002-preserved-permissions-tests.patch`
@@ -241,7 +247,7 @@ owner-approved restrictions.
   and there are no per-user-nudge or marketplace-offer paths in the deployed
   rules).
 
-## Q2 — THE SINGLE OPEN QUESTION (UNANSWERED)
+## Q2 — DECIDED 2026-11-24 13:05 IST (subscription_plans client delete stays `false`)
 
 **Q2 — Plan delete vs cancellation-first deletion.** Requirement in
 conflict: cancellation-first plan deletion — the `deleteSubscriptionPlan`
@@ -256,15 +262,32 @@ cancellation (subscribers keep a plan id pointing at a deleted plan).
 **Question: keep direct admin delete (live), or close the bypass by flipping
 this one line back to `false` (proposed)?**
 
-**Neither option is an approved decision.** The v2 patch is a candidate for
-the first option, not a decision — if the answer is `false`, the deployable
-file is the proposed file as-is (blob `1e899c2`), and the v2 patch is
-discarded.
+**DECIDED by the owner 2026-11-24 13:05 IST: subscription_plans client
+delete stays `false` (the proposed value).** Direct client delete is denied
+for admins and non-admins alike; the normal Admin Plans delete button
+continues through the cancellation-first `deleteSubscriptionPlan` callable.
+Preservation v2 (patch + its 2 tests) is DEAD — do not apply it.
 
-**Rules deployment remains HELD until Q2 is answered** (and a green emulator
-run of the 46 rules tests is obtained — see below). The auth prerequisite
-(signup → verify → Home) is satisfied; no re-signup is pending. This proof
-is NOT a go-ahead for rules deployment.
+**This is a POLICY approval ONLY — NOT approval for merge/deploy or
+rules/index apply.** The deployable file, if deployment is ever approved,
+is the proposed file as-is (blob `1e899c2`, 378 lines).
+
+**Round 6 (2026-11-24) pin:** 1 new rules test records the decision —
+`admin CANNOT directly delete a plan (Q2 decided: delete stays false)` in
+`firebase/functions/test/rules.test.ts` (44 → 45 `it()`; branch
+`review/rules-admin-delete-deny-test-2026-11-24`, local commit `4829d14`,
+remote head `3f1d7e0`). It asserts admin client delete → denied AND
+non-admin client delete → denied; the callable path is out of scope for
+rules tests. Local failing-first could NOT be demonstrated: the emulator
+fails at rule-load before any test executes (see Emulator result below),
+so the test neither passed against the proposed file nor failed-assertion
+against the preservation-v2 allowing file locally.
+
+**Rules deployment remains HELD** — Q2 is answered, but this decision is a
+policy approval only (no merge/deploy or rules/index approval), and a green
+emulator run of the 45 rules tests is still not obtained (see below). The
+auth prerequisite (signup → verify → Home) is satisfied; no re-signup is
+pending. This proof is NOT a go-ahead for rules deployment.
 
 ## Emulator result — PENDING, NOT a pass
 
@@ -273,10 +296,24 @@ Do NOT describe the emulator run as passed. The Firestore emulator's
 inside the emulator itself) for the real rules file AND a trivial 6-line
 file — with JDK 17 and JDK 21 (Temurin 21.0.13.1), with and without JVM
 proxy props. `vitest run test/rules.test.ts` therefore fails at
-`initializeTestEnvironment`/`loadFirestoreRules` with **all 46 tests
-skipped**. The targeted emulator run (46 tests incl. the 2 plan-delete
-tests) remains PENDING — it needs an environment where the emulator's rules
-endpoint works (user's machine / CI).
+`initializeTestEnvironment`/`loadFirestoreRules` with **all 45 tests
+skipped**. The targeted emulator run (45 tests incl. the 1 admin-deny test;
+the 2 preservation-v2 tests are dead with Q2) remains PENDING — it needs an
+environment where the emulator's rules endpoint works (user's machine / CI).
+
+Round-6 re-attempt 2026-11-24 (JDK 21 Temurin 21.0.13.1, emulator
+v1.22.0, port 8085, emulator HTTP 200 on `/`): same failure, verbatim —
+`Error: {"error":{"code":503,"message":"io exception","status":"UNAVAILABLE"}}`
+at `loadFirestoreRules`, 45 tests skipped, exit 1 — attempted once against
+the proposed file (blob `1e899c2`) and once against the preservation-v2
+allowing file (blob `72f3c4d5`); both fail identically at rule-load, before
+any test executes. Also verified the same day: no CI workflow runs the
+rules tests — Production Checks (`bun run test`) runs only the root
+`src/**` vitest suite, and no workflow runs
+`firebase/functions` `test:rules` — so there is no CI green to report
+either. What would give a real result: a workflow job running the emulator
+rules suite, or a run on the user's machine / an environment where the
+`:securityRules` endpoint works.
 
 ## Why the user's permission-denied reads happen
 
