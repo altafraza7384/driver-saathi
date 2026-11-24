@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { db } from "@/lib/backend";
+import { BACKEND, db } from "@/lib/backend";
+import { firebaseDb } from "@/integrations/firebase/client";
+import { performSignOut } from "@/integrations/firebase/signOutFlow";
 import type { User, Session } from "@supabase/supabase-js";
 
 type AuthContextType = {
@@ -96,14 +98,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = async () => {
-    try {
-      await db.auth.signOut();
-    } catch (error) {
-      console.error("Sign out failed, clearing local session", error);
-      await db.auth.signOut({ scope: "local" });
-    }
-    queryClient.cancelQueries();
-    queryClient.clear();
+    // Ordering matters (PR #30 fix 1): the departing user's pending
+    // writes must be checked BEFORE Auth sign-out changes the identity,
+    // or waitForPendingWrites sees the next identity's empty queue and
+    // the cache clear destroys unsynced data. performSignOut owns that
+    // order (cancel → gate → check/clear → sign out → reload); useAuth
+    // only supplies the real dependencies. departingUid lets the
+    // preserved-writes ledger (round 2) record the departing user when
+    // their writes are pending, so a later user's clean logout cannot
+    // clear the cache while those writes are still unsynced.
+    await performSignOut({
+      firestore:
+        BACKEND === "firebase"
+          ? { db: firebaseDb, departingUid: user?.id ?? null }
+          : null,
+      signOutAuth: async () => {
+        await db.auth.signOut();
+      },
+      signOutAuthLocal: async () => {
+        await db.auth.signOut({ scope: "local" });
+      },
+      cancelQueries: () => {
+        queryClient.cancelQueries();
+      },
+      clearQueries: () => {
+        queryClient.clear();
+      },
+      onCacheKept: (result) => {
+        console.warn(
+          "Firestore offline cache kept on logout:",
+          result.reason,
+          result.detail ?? "",
+        );
+      },
+    });
   };
 
   return <AuthContext.Provider value={{ user, session, loading, signOut }}>{children}</AuthContext.Provider>;

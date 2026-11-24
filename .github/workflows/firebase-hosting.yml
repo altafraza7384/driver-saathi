@@ -51,6 +51,7 @@ name: Firebase Hosting Deploy
       - "package-lock.json"
       - "vite.config.ts"
       - "index.html"
+      - "firebase.json"
       - "firebase/firebase.json"
       - ".github/workflows/firebase-hosting.yml"
   workflow_dispatch:
@@ -121,6 +122,73 @@ jobs:
       # run only (public "dist" is inside the root project directory,
       # same rewrites as firebase.json) and deploys from the root.
       # The file is generated in the runner and never committed.
+      #
+      # SECURITY HEADERS — KEEP IN SYNC: this heredoc is what actually
+      # deploys. The root firebase.json is NOT read by this workflow, so
+      # a header change there alone never reaches the live site. The
+      # headers block below MUST stay identical to the headers block in
+      # the root firebase.json (and public/_headers, the Lovable-era
+      # copy). Change all three together, or the saved config and the
+      # live config drift apart again.
+      #
+      # Why the headers cover "**" and not just "/index.html": the SPA
+      # rewrite serves /index.html content for every route, but Firebase
+      # matches header rules against the REQUEST path, so a request for
+      # /more never matched "/index.html" and got no security headers.
+      # "**" applies them to every HTML route. The "/assets/**" rule
+      # stays listed AFTER "**" so its immutable Cache-Control wins for
+      # hashed assets (later matching rules override earlier ones for
+      # the same header key).
+      #
+      # CSP — why each origin is allowed (verified by code inspection,
+      # 2026-11-22; no live login/payment test was run):
+      #  - 'unsafe-inline' (script + style): index.html ships inline
+      #    boot/splash code (an inline <style>, an inline <script> and
+      #    an onclick="location.reload()"). Removing it needs an
+      #    index.html refactor first; until then a CSP without it would
+      #    break first paint. No 'unsafe-eval'.
+      #  - frame-src *.firebaseapp.com: Firebase Auth (signInWithPopup,
+      #    with a signInWithRedirect fallback — see adapter.ts) runs a
+      #    hidden auth iframe on the auth domain
+      #    (<project>.firebaseapp.com/__/auth/iframe). Without this,
+      #    Google login breaks. Top-level redirect navigation is not
+      #    CSP-gated, so the redirect fallback is unaffected either way.
+      #  - script-src https://apis.google.com: the Firebase Auth SDK
+      #    injects https://apis.google.com/js/api.js at runtime for
+      #    signInWithPopup — a real-browser isolated probe blocked
+      #    exactly that script before this origin was added (2026-11-22).
+      #  - STAGED ENFORCEMENT (2026-11-22): no live browser is available
+      #    in this sandbox, so no live Google login or Razorpay checkout
+      #    has been run against this CSP. Before relying on it: deploy,
+      #    sign in with Google on the live URL, open Razorpay sandbox
+      #    checkout, and watch the console for CSP violations (in
+      #    particular any frame/connect-src from accounts.google.com the
+      #    popup flow may need — do NOT pre-add origins without an
+      #    observed violation). A config match is not a login pass.
+      #  - script-src + frame-src + connect-src *.razorpay.com:
+      #    SubscriptionPlansCard loads checkout.js from
+      #    checkout.razorpay.com on demand and opens the Razorpay
+      #    checkout iframe; the iframe and its API calls live under
+      #    *.razorpay.com. Without these, the paid-plan checkout breaks.
+      #  - connect-src *.googleapis.com: Firestore, Identity Toolkit /
+      #    Secure Token (auth), Firebase Installations and FCM
+      #    registration all live here.
+      #  - connect-src *.cloudfunctions.net: the AI chat / finance-AI
+      #    callables (asia-south1) and the Razorpay subscription
+      #    callables are httpsCallable Cloud Functions.
+      #  - style-src fonts.googleapis.com + font-src fonts.gstatic.com:
+      #    Montserrat/Roboto loaded in index.html.
+      #  - connect-src *.supabase.co, *.firebaseio.com, lovable.dev,
+      #    *.lovable.app: kept for the legacy Supabase/Lovable code
+      #    path behind VITE_BACKEND (not the live Firebase path). They
+      #    cost nothing and keep that build working.
+      #  - No Permissions-Policy on purpose: the app uses Geolocation
+      #    (Car SOS GPS) and the microphone (speech / driving mode), so
+      #    a restrictive policy would break features. Add one only with
+      #    geolocation=(self) and microphone=(self) preserved.
+      #  - frame-ancestors 'none' (+ X-Frame-Options DENY) is safe: the
+      #    native app loads the site as the top-level document in its
+      #    WebView, not inside a frame.
       - name: Deploy to Firebase Hosting
         run: |
           cat > firebase-hosting-deploy.json <<'EOF'
@@ -130,10 +198,13 @@ jobs:
               "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
               "rewrites": [{ "source": "**", "destination": "/index.html" }],
               "headers": [
-                { "source": "/index.html", "headers": [
+                { "source": "**", "headers": [
                   { "key": "Cache-Control", "value": "no-cache" },
                   { "key": "X-Content-Type-Options", "value": "nosniff" },
-                  { "key": "X-Frame-Options", "value": "DENY" }
+                  { "key": "X-Frame-Options", "value": "DENY" },
+                  { "key": "Strict-Transport-Security", "value": "max-age=31536000; includeSubDomains" },
+                  { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+                  { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://apis.google.com https://checkout.razorpay.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.cloudfunctions.net https://*.razorpay.com https://*.supabase.co wss://*.supabase.co https://lovable.dev https://*.lovable.app; frame-src 'self' https://*.firebaseapp.com https://*.razorpay.com; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests" }
                 ] },
                 { "source": "/assets/**", "headers": [
                   { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }

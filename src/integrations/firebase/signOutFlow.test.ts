@@ -1,0 +1,681 @@
+/**
+ * Regression tests for the sign-out flow (PR #30 corrections 1 + 2).
+ *
+ * The bug (fix 1): the old flow signed out of Auth FIRST and only then
+ * asked Firestore whether any writes were pending. waitForPendingWrites
+ * only sees the ACTIVE identity's queue, so after sign-out it saw the
+ * (empty) anonymous queue and reported "clean" while the DEPARTING
+ * user's offline writes were still unsynced — terminate() + clear then
+ * destroyed them. The fix checks + clears BEFORE the identity change,
+ * while the departing user is still signed in.
+ *
+ * The second bug (fix 1, same flow): a write landing between the clean
+ * check and terminate()+clear was silently destroyed. The fix closes a
+ * write gate for the check→clear window, so a racing write is REJECTED
+ * with a retryable error instead of being silently lost.
+ *
+ * The third bug (fix 2): when terminate() succeeded but the clear
+ * failed, the Firestore instance stayed terminated and the next read
+ * threw "client already terminated". The fix reinitializes a usable
+ * client over the surviving IndexedDB data (pending writes intact).
+ *
+ * The fake below models the real SDK behaviour the reviewers observed:
+ * waitForPendingWrites is scoped to the CURRENT identity (after
+ * sign-out it sees an empty queue), a terminated client rejects reads,
+ * and clearIndexedDbPersistence wipes the store — including pending
+ * writes — which is exactly the data loss the old order caused.
+ */
+import { describe, it, expect, vi } from "vitest";
+import { performSignOut, type SignOutFlowDeps } from "./signOutFlow";
+import type { FirestoreCacheApi } from "./logoutCache";
+import type {
+  MutationQueueCheck,
+  MutationQueueInspector,
+} from "./firestoreMutationQueue";
+import {
+  createPreservedWritesLedger,
+  preservedWritesLedger,
+  type PreservedWritesStorage,
+} from "./preservedWrites";
+import type { Firestore } from "firebase/firestore";
+
+/** In-memory async store shared across ledger instances (a "reload"). */
+function memoryAsyncStore(initial?: string | null): {
+  store: PreservedWritesStorage;
+  get raw(): string | null;
+} {
+  let value: string | null = initial ?? null;
+  return {
+    store: {
+      read: async () => value,
+      write: async (v: string) => {
+        value = v;
+      },
+      remove: async () => {
+        value = null;
+      },
+    },
+    get raw() {
+      return value;
+    },
+  };
+}
+
+/** Write-only failure: READ returns null but WRITE throws. */
+function failingAsyncStore(): PreservedWritesStorage {
+  return {
+    read: async () => null,
+    write: async () => {
+      throw new Error("QuotaExceededError: setItem failed");
+    },
+    remove: async () => {
+      throw new Error("denied");
+    },
+  };
+}
+
+/** Stub inspector: the SDK mutation queue is provably empty. */
+function cleanInspector(): MutationQueueInspector {
+  return {
+    checkPendingMutations: async (): Promise<MutationQueueCheck> => ({
+      status: "clean",
+    }),
+  };
+}
+
+/** Minimal in-test model of one Firestore client + its IndexedDB store. */
+class FakeFirestore {
+  uid: string | null = null;
+  terminated = false;
+  store: Map<string, unknown>;
+  pending: Map<string, Set<string>>;
+
+  /**
+   * A reload creates a fresh client over the SAME IndexedDB store: pass
+   * the shared maps to model it (the store and the pending queues
+   * survive; only the client instance is new).
+   */
+  constructor(shared?: {
+    store: Map<string, unknown>;
+    pending: Map<string, Set<string>>;
+  }) {
+    this.store = shared?.store ?? new Map<string, unknown>();
+    this.pending = shared?.pending ?? new Map<string, Set<string>>();
+  }
+  gate = { closed: false };
+  calls: string[] = [];
+  /** Hook run inside waitForPendingWrites, after the snapshot decision. */
+  onWaitForPendingWrites: (() => void) | null = null;
+  /** Errors from racing writes attempted during the check→clear window. */
+  raceErrors: unknown[] = [];
+  clearCalls = 0;
+
+  signIn(uid: string) {
+    this.uid = uid;
+  }
+
+  signOut() {
+    this.calls.push("signOutAuth");
+    this.uid = null;
+  }
+
+  /** A user write. Rejected while the logout write gate is closed. */
+  write(uid: string, key: string, value: unknown) {
+    if (this.terminated) {
+      throw new Error("Firestore has already been terminated");
+    }
+    if (this.gate.closed) {
+      throw new Error("LOGOUT_WRITE_GATE: writes paused while signing out");
+    }
+    this.store.set(key, value);
+    const set = this.pending.get(uid) ?? new Set<string>();
+    set.add(key);
+    this.pending.set(uid, set);
+  }
+
+  read(key: string): unknown {
+    if (this.terminated) {
+      throw new Error("Firestore has already been terminated");
+    }
+    return this.store.get(key);
+  }
+
+  /** Network comes back: every pending write syncs. */
+  syncAll() {
+    this.pending.clear();
+  }
+
+  /** waitForPendingWrites, scoped to the CURRENT identity (as observed
+   *  in the real SDK): after sign-out it sees the empty anonymous queue
+   *  and resolves, even though the previous user's writes are pending. */
+  waitForPendingWrites(): Promise<void> {
+    this.calls.push("waitForPendingWrites");
+    const n = this.pending.get(this.uid ?? "")?.size ?? 0;
+    this.onWaitForPendingWrites?.();
+    return n === 0 ? Promise.resolve() : new Promise<void>(() => {});
+  }
+
+  terminate(): Promise<void> {
+    this.calls.push("terminate");
+    if (this.terminated) throw new Error("already terminated");
+    this.terminated = true;
+    return Promise.resolve();
+  }
+
+  clearIndexedDbPersistence(): Promise<void> {
+    this.calls.push("clearIndexedDbPersistence");
+    if (!this.terminated) {
+      throw new Error(
+        "failed-precondition: clearIndexedDbPersistence requires terminate first",
+      );
+    }
+    this.clearCalls += 1;
+    this.store.clear();
+    this.pending.clear();
+    return Promise.resolve();
+  }
+
+  /** Fresh client over the same IndexedDB store (terminate → init). */
+  reinitialize() {
+    this.calls.push("reinitializeFirestore");
+    this.terminated = false;
+  }
+
+  asApi(): FirestoreCacheApi {
+    return {
+      waitForPendingWrites: () => this.waitForPendingWrites(),
+      terminate: () => this.terminate(),
+      clearIndexedDbPersistence: () => this.clearIndexedDbPersistence(),
+    };
+  }
+}
+
+function makeDeps(
+  fake: FakeFirestore,
+  overrides: Partial<SignOutFlowDeps> = {},
+  departingUid?: string | null,
+): { deps: SignOutFlowDeps; reload: ReturnType<typeof vi.fn> } {
+  const reload = vi.fn();
+  const deps: SignOutFlowDeps = {
+    firestore: {
+      db: fake as unknown as Firestore,
+      api: fake.asApi(),
+      timeoutMs: 50,
+      departingUid,
+      mutationQueue: cleanInspector(),
+    },
+    signOutAuth: async () => {
+      fake.signOut();
+    },
+    signOutAuthLocal: async () => {
+      fake.signOut();
+    },
+    cancelQueries: () => {
+      fake.calls.push("cancelQueries");
+    },
+    clearQueries: () => {
+      fake.calls.push("clearQueries");
+    },
+    closeWriteGate: () => {
+      fake.gate.closed = true;
+    },
+    openWriteGate: () => {
+      fake.gate.closed = false;
+    },
+    reinitializeFirestore: () => {
+      fake.reinitialize();
+    },
+    reload,
+    ...overrides,
+  };
+  return { deps, reload };
+}
+
+describe("performSignOut — departing user's pending writes (fix 1)", () => {
+  it("preserves the departing user's unsynced write: no clear, write survives sign-out", async () => {
+    const fake = new FakeFirestore();
+    fake.signIn("user-A");
+    fake.write("user-A", "tx-1", { amount: 500 });
+    const { deps, reload } = makeDeps(fake);
+
+    const result = await performSignOut(deps);
+
+    expect(result.cache?.reason).toBe("pending-writes-preserved");
+    expect(result.cache?.cleared).toBe(false);
+    expect(fake.clearCalls).toBe(0);
+    // The write is still there after logout — it was NOT destroyed.
+    expect(fake.store.get("tx-1")).toEqual({ amount: 500 });
+    expect(fake.pending.get("user-A")?.has("tx-1")).toBe(true);
+    expect(result.signedOut).toBe(true);
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("checks pending writes BEFORE Auth sign-out (ordering)", async () => {
+    const fake = new FakeFirestore();
+    fake.signIn("user-A");
+    const { deps } = makeDeps(fake);
+
+    const result = await performSignOut(deps);
+
+    expect(result.cache?.cleared).toBe(true);
+    expect(result.signedOut).toBe(true);
+    expect(result.reloaded).toBe(true);
+    // The pending-writes check must run while user-A is still the active
+    // identity — i.e. before signOutAuth flips it to anonymous.
+    expect(fake.calls.indexOf("waitForPendingWrites")).toBeGreaterThan(-1);
+    expect(fake.calls.indexOf("waitForPendingWrites")).toBeLessThan(
+      fake.calls.indexOf("signOutAuth"),
+    );
+    expect(fake.calls.indexOf("cancelQueries")).toBeLessThan(
+      fake.calls.indexOf("waitForPendingWrites"),
+    );
+  });
+
+  it("rejects a write racing the check→clear window instead of silently destroying it", async () => {
+    const fake = new FakeFirestore();
+    fake.signIn("user-A");
+    // A write that lands after the clean snapshot but before terminate.
+    fake.onWaitForPendingWrites = () => {
+      try {
+        fake.write("user-A", "tx-race", { amount: 100 });
+      } catch (e) {
+        fake.raceErrors.push(e);
+      }
+    };
+    const { deps } = makeDeps(fake);
+
+    const result = await performSignOut(deps);
+
+    expect(result.cache?.cleared).toBe(true);
+    // Either the racing write was rejected by the gate (so its caller can
+    // retry) or it survived — it must NEVER be silently destroyed.
+    const rejected = fake.raceErrors.some(
+      (e) => e instanceof Error && e.message.includes("LOGOUT_WRITE_GATE"),
+    );
+    const survived = fake.store.has("tx-race");
+    expect(rejected || survived).toBe(true);
+    // The gate is reopened after the flow, so the next account can write.
+    expect(fake.gate.closed).toBe(false);
+  });
+});
+
+describe("performSignOut — recovery when the clear fails after terminate (fix 2)", () => {
+  it("reinitializes a usable client and keeps pending data when the clear fails", async () => {
+    const fake = new FakeFirestore();
+    fake.signIn("user-A");
+    fake.write("user-A", "tx-1", { amount: 500 });
+    fake.syncAll(); // synced, so the check passes and the clear is attempted
+    const { deps, reload } = makeDeps(fake, {
+      firestore: {
+        db: fake as unknown as Firestore,
+        timeoutMs: 50,
+        api: {
+          waitForPendingWrites: () => fake.waitForPendingWrites(),
+          terminate: () => fake.terminate(),
+          clearIndexedDbPersistence: async () => {
+            throw new Error("failed-precondition: another tab holds the DB");
+          },
+        },
+        mutationQueue: cleanInspector(),
+      },
+    });
+
+    const result = await performSignOut(deps);
+
+    expect(result.cache?.reason).toBe("clear-failed");
+    expect(result.cache?.cleared).toBe(false);
+    expect(result.reinitialized).toBe(true);
+    expect(fake.calls).toContain("reinitializeFirestore");
+    // The client works again and the data was NOT discarded.
+    expect(fake.read("tx-1")).toEqual({ amount: 500 });
+    expect(result.signedOut).toBe(true);
+    expect(reload).not.toHaveBeenCalled();
+  });
+});
+
+describe("performSignOut — older retained identity's pending writes (round 2)", () => {
+  // These tests use the REAL default preserved-writes ledger
+  // (localStorage-backed, shared across the logins in each test) so
+  // they prove the production wiring, not just an injected fake. Each
+  // test resolves its entries in a finally, so no state leaks into
+  // other tests in this file.
+  it("preserves user A's unsynced write when user B logs out with a clean queue (cross-login)", async () => {
+    const fake = new FakeFirestore();
+    try {
+      // A logs out with an offline write pending: cache preserved.
+      fake.signIn("user-A");
+      fake.write("user-A", "tx-A1", { amount: 500 });
+      const { deps: depsA } = makeDeps(fake, {}, "user-A");
+      const resultA = await performSignOut(depsA);
+      expect(resultA.cache?.reason).toBe("pending-writes-preserved");
+      expect(fake.clearCalls).toBe(0);
+      expect(fake.store.get("tx-A1")).toEqual({ amount: 500 });
+
+      // B signs in on the same device and logs out with a clean queue.
+      // B's active-user check is clean — but that is NOT a whole-cache
+      // safety proof: A's write is still pending in the retained cache.
+      fake.signIn("user-B");
+      const { deps: depsB } = makeDeps(fake, {}, "user-B");
+      const resultB = await performSignOut(depsB);
+      expect(resultB.cache?.cleared).toBe(false);
+      expect(resultB.cache?.reason).toBe("pending-writes-preserved");
+      expect(fake.clearCalls).toBe(0);
+      // A's write survived B's logout — it was NOT silently discarded.
+      expect(fake.store.get("tx-A1")).toEqual({ amount: 500 });
+      expect(fake.pending.get("user-A")?.has("tx-A1")).toBe(true);
+      expect(resultB.signedOut).toBe(true);
+
+      // A returns, comes back online, syncs, and logs out clean — only
+      // now is the whole-cache clear allowed.
+      fake.signIn("user-A");
+      fake.syncAll();
+      const { deps: depsA2 } = makeDeps(fake, {}, "user-A");
+      const resultA2 = await performSignOut(depsA2);
+      expect(resultA2.cache?.cleared).toBe(true);
+      expect(fake.store.has("tx-A1")).toBe(false);
+    } finally {
+      await preservedWritesLedger.resolve("user-A");
+      await preservedWritesLedger.resolve("user-B");
+    }
+  });
+
+  it("preserves user A's unsynced write across a reload when user B logs out (reload)", async () => {
+    // One IndexedDB store shared across the reload; the ledger is the
+    // same durable localStorage store the production code uses.
+    const shared = {
+      store: new Map<string, unknown>(),
+      pending: new Map<string, Set<string>>(),
+    };
+    const before = new FakeFirestore(shared);
+    try {
+      before.signIn("user-A");
+      before.write("user-A", "tx-A1", { amount: 500 });
+      const { deps: depsA } = makeDeps(before, {}, "user-A");
+      const resultA = await performSignOut(depsA);
+      expect(resultA.cache?.reason).toBe("pending-writes-preserved");
+      expect(before.clearCalls).toBe(0);
+
+      // Reload: a fresh client over the same store. B signs in and out.
+      const after = new FakeFirestore(shared);
+      after.signIn("user-B");
+      const { deps: depsB } = makeDeps(after, {}, "user-B");
+      const resultB = await performSignOut(depsB);
+      expect(resultB.cache?.cleared).toBe(false);
+      expect(resultB.cache?.reason).toBe("pending-writes-preserved");
+      expect(after.clearCalls).toBe(0);
+      // A's write is still there after the reload + B's logout.
+      expect(after.store.get("tx-A1")).toEqual({ amount: 500 });
+      expect(after.pending.get("user-A")?.has("tx-A1")).toBe(true);
+      expect(resultB.signedOut).toBe(true);
+    } finally {
+      await preservedWritesLedger.resolve("user-A");
+      await preservedWritesLedger.resolve("user-B");
+    }
+  });
+});
+
+describe("performSignOut — failed ledger store across a reload (round 3)", () => {
+  it("preserves user A's unsynced write across a reload when the localStorage mirror fails, and clears only after A returns clean", async () => {
+    // The mirror (localStorage role) refuses writes — setItem throws,
+    // getItem returns null — while the primary (IndexedDB role) works.
+    // The record itself must land durably, so a fresh client after
+    // the reload still refuses B's whole-cache clear. No flag, no
+    // memory marker: the proof is the record in the surviving store.
+    const primaryBacking = memoryAsyncStore();
+    const mirror = failingAsyncStore();
+    const shared = {
+      store: new Map<string, unknown>(),
+      pending: new Map<string, Set<string>>(),
+    };
+    const before = new FakeFirestore(shared);
+
+    // A logs out with an offline write pending: cache preserved.
+    before.signIn("user-A");
+    before.write("user-A", "tx-A1", { amount: 500 });
+    const ledgerA = createPreservedWritesLedger(
+      primaryBacking.store,
+      mirror,
+    );
+    const { deps: depsA } = makeDeps(before, {
+      firestore: {
+        db: before as unknown as Firestore,
+        api: before.asApi(),
+        timeoutMs: 50,
+        departingUid: "user-A",
+        preservedWrites: ledgerA,
+      },
+    });
+    const resultA = await performSignOut(depsA);
+    expect(resultA.cache?.reason).toBe("pending-writes-preserved");
+    expect(resultA.cache?.cleared).toBe(false);
+    expect(before.clearCalls).toBe(0);
+    expect(before.store.get("tx-A1")).toEqual({ amount: 500 });
+
+    // Reload: a fresh client over the same store, and a FRESH ledger
+    // instance over the same stores. B signs in and out clean.
+    const after = new FakeFirestore(shared);
+    const ledgerB = createPreservedWritesLedger(
+      primaryBacking.store,
+      mirror,
+    );
+    after.signIn("user-B");
+    const { deps: depsB } = makeDeps(after, {
+      firestore: {
+        db: after as unknown as Firestore,
+        api: after.asApi(),
+        timeoutMs: 50,
+        departingUid: "user-B",
+        preservedWrites: ledgerB,
+      },
+    });
+    const resultB = await performSignOut(depsB);
+    expect(resultB.cache?.cleared).toBe(false);
+    expect(resultB.cache?.reason).toBe("pending-writes-preserved");
+    expect(after.clearCalls).toBe(0);
+    // A's write survived B's logout — it was NOT silently discarded.
+    expect(after.store.get("tx-A1")).toEqual({ amount: 500 });
+    expect(after.pending.get("user-A")?.has("tx-A1")).toBe(true);
+    expect(resultB.signedOut).toBe(true);
+
+    // A returns, comes back online, syncs, and logs out clean — only
+    // now is the whole-cache clear allowed (the owner resolved it).
+    after.signIn("user-A");
+    after.syncAll();
+    const ledgerA2 = createPreservedWritesLedger(
+      primaryBacking.store,
+      mirror,
+    );
+    const { deps: depsA2 } = makeDeps(after, {
+      firestore: {
+        db: after as unknown as Firestore,
+        api: after.asApi(),
+        timeoutMs: 50,
+        departingUid: "user-A",
+        preservedWrites: ledgerA2,
+        mutationQueue: cleanInspector(),
+      },
+    });
+    const resultA2 = await performSignOut(depsA2);
+    expect(resultA2.cache?.cleared).toBe(true);
+    expect(after.store.has("tx-A1")).toBe(false);
+  });
+});
+
+describe("performSignOut — both ledger stores fail across a reload (round 4b)", () => {
+  it("refuses B's clean logout on a fresh client when both ledger writes failed, and A's write survives", async () => {
+    // REGRESSION (round 4b): BOTH ledger stores refuse writes, but
+    // reads return empty (readable). A's pending write therefore
+    // leaves no durable ledger trace — yet it is still in Firestore's
+    // pending cache. A fresh client after a reload reads an empty
+    // ledger, so ledger-emptiness alone must NOT authorise B's
+    // whole-cache clear: the clear needs POSITIVE proof (the ledger
+    // channel proving live), and with both stores still down that
+    // proof fails. No real cache deletion happens in this test: the
+    // refusal is asserted from the result and clearCalls staying 0.
+    // No flag, no memory marker: the proof is the ledger record
+    // itself round-tripping, and here it cannot.
+    const failingPrimary = failingAsyncStore();
+    const failingMirror = failingAsyncStore();
+    const shared = {
+      store: new Map<string, unknown>(),
+      pending: new Map<string, Set<string>>(),
+    };
+    const before = new FakeFirestore(shared);
+
+    // A logs out with an offline write pending: cache preserved, and
+    // the record could not be written durably anywhere.
+    before.signIn("user-A");
+    before.write("user-A", "tx-A1", { amount: 500 });
+    const ledgerA = createPreservedWritesLedger(
+      failingPrimary,
+      failingMirror,
+    );
+    const { deps: depsA } = makeDeps(before, {
+      firestore: {
+        db: before as unknown as Firestore,
+        api: before.asApi(),
+        timeoutMs: 50,
+        departingUid: "user-A",
+        preservedWrites: ledgerA,
+      },
+    });
+    const resultA = await performSignOut(depsA);
+    expect(resultA.cache?.reason).toBe("pending-writes-preserved");
+    expect(resultA.cache?.cleared).toBe(false);
+    expect(resultA.cache?.detail).toMatch(/could not be written durably/);
+    expect(before.clearCalls).toBe(0);
+    expect(before.store.get("tx-A1")).toEqual({ amount: 500 });
+
+    // Reload: a fresh client over the same store, and a FRESH ledger
+    // instance over the same (still failing) stores. B signs in and
+    // out with a clean queue — that clean check is scoped to B and
+    // proves nothing about A's retained writes.
+    const after = new FakeFirestore(shared);
+    const ledgerB = createPreservedWritesLedger(
+      failingPrimary,
+      failingMirror,
+    );
+    expect(await ledgerB.list()).toEqual([]);
+    after.signIn("user-B");
+    const { deps: depsB } = makeDeps(after, {
+      firestore: {
+        db: after as unknown as Firestore,
+        api: after.asApi(),
+        timeoutMs: 50,
+        departingUid: "user-B",
+        preservedWrites: ledgerB,
+      },
+    });
+    const resultB = await performSignOut(depsB);
+    expect(resultB.cache?.cleared).toBe(false);
+    expect(resultB.cache?.reason).toBe("pending-writes-preserved");
+    expect(after.clearCalls).toBe(0);
+    // A's write survived B's logout — it was NOT silently discarded.
+    expect(after.store.get("tx-A1")).toEqual({ amount: 500 });
+    expect(after.pending.get("user-A")?.has("tx-A1")).toBe(true);
+    expect(resultB.signedOut).toBe(true);
+  });
+});
+
+describe("performSignOut — SDK mutation queue (round 6)", () => {
+  it("refuses B's clean logout while the SDK queue still holds A's batch even though the ledger lost the record, and clears only after A syncs", async () => {
+    // FLOW-LEVEL version of round-6 (i): A's ledger record lands
+    // nowhere (both ledger stores fail at record time), the stores
+    // then heal, and B logs out with a clean active queue and a
+    // live empty ledger. The old gates would clear and destroy A's
+    // write. The mutation-queue inspector — here a stub driven by
+    // the fake's pending state, standing in for the real inspector
+    // that reads the SDK's own IndexedDB `mutations` store — still
+    // sees A's batch, so the clear is refused and A's write
+    // survives. Only after A returns, syncs, and logs out clean is
+    // the clear allowed.
+    const shared = {
+      store: new Map<string, unknown>(),
+      pending: new Map<string, Set<string>>(),
+    };
+    const fake = new FakeFirestore(shared);
+    // Inspector driven by the fake's pending queues: pending while
+    // ANY identity has an unsynced write, clean once all sync.
+    const queueInspector: MutationQueueInspector = {
+      checkPendingMutations: async (): Promise<MutationQueueCheck> => {
+        const userIds = [...fake.pending.entries()]
+          .filter(([, keys]) => keys.size > 0)
+          .map(([uid]) => uid);
+        return userIds.length === 0
+          ? { status: "clean" }
+          : { status: "pending", userIds };
+      },
+    };
+
+    // A logs out with an offline write pending; the ledger record
+    // lands nowhere (both stores fail).
+    fake.signIn("user-A");
+    fake.write("user-A", "tx-A1", { amount: 500 });
+    const failingLedger = createPreservedWritesLedger(
+      failingAsyncStore(),
+      failingAsyncStore(),
+    );
+    const { deps: depsA } = makeDeps(fake, {
+      firestore: {
+        db: fake as unknown as Firestore,
+        api: fake.asApi(),
+        timeoutMs: 50,
+        departingUid: "user-A",
+        preservedWrites: failingLedger,
+        mutationQueue: queueInspector,
+      },
+    });
+    const resultA = await performSignOut(depsA);
+    expect(resultA.cache?.cleared).toBe(false);
+    expect(resultA.cache?.reason).toBe("pending-writes-preserved");
+    expect(resultA.cache?.detail).toMatch(/could not be written durably/);
+    expect(fake.clearCalls).toBe(0);
+    expect(fake.store.get("tx-A1")).toEqual({ amount: 500 });
+
+    // Reload: a fresh client over the same store, and a FRESH ledger
+    // over healthy stores (the heal). B signs in and out clean.
+    const after = new FakeFirestore(shared);
+    const healedLedger = createPreservedWritesLedger(
+      memoryAsyncStore().store,
+    );
+    expect(await healedLedger.list()).toEqual([]);
+    after.signIn("user-B");
+    const { deps: depsB } = makeDeps(after, {
+      firestore: {
+        db: after as unknown as Firestore,
+        api: after.asApi(),
+        timeoutMs: 50,
+        departingUid: "user-B",
+        preservedWrites: healedLedger,
+        mutationQueue: queueInspector,
+      },
+    });
+    const resultB = await performSignOut(depsB);
+    expect(resultB.cache?.cleared).toBe(false);
+    expect(resultB.cache?.reason).toBe("pending-writes-preserved");
+    expect(resultB.cache?.detail).toMatch(/mutation queue/i);
+    expect(after.clearCalls).toBe(0);
+    // A's write survived B's logout — it was NOT silently discarded.
+    expect(after.store.get("tx-A1")).toEqual({ amount: 500 });
+    expect(after.pending.get("user-A")?.has("tx-A1")).toBe(true);
+    expect(resultB.signedOut).toBe(true);
+
+    // A returns, comes back online, syncs, and logs out clean — only
+    // now is the whole-cache clear allowed.
+    after.signIn("user-A");
+    after.syncAll();
+    const { deps: depsA2 } = makeDeps(after, {
+      firestore: {
+        db: after as unknown as Firestore,
+        api: after.asApi(),
+        timeoutMs: 50,
+        departingUid: "user-A",
+        preservedWrites: healedLedger,
+        mutationQueue: queueInspector,
+      },
+    });
+    const resultA2 = await performSignOut(depsA2);
+    expect(resultA2.cache?.cleared).toBe(true);
+    expect(after.store.has("tx-A1")).toBe(false);
+  });
+});
