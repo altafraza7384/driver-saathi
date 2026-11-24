@@ -6,7 +6,10 @@ branch is applied live.** The only file change besides this report is the
 `firebase/firestore.indexes.json` — a repo-file patch only. It is NOT deployed,
 no index is created in the console, no rules change, no secret is rotated, no
 cleanup is run, no paid test is run. The branch waits for cost/effects approval
-before anything is applied.
+before anything is applied. (Round 5, C12, added one more docs-only file:
+the console-proof artifact
+`docs/console-proof-add-exemption-2026-11-23.md` — still nothing applied
+live.)
 
 **Base:** `main` at `579d353` (PR #27 merged 2026-11-22 ~15:28 IST).
 **Branch:** `review/cloud-settings-2026-11-22`.
@@ -403,9 +406,35 @@ list are likewise preserved.
   observed match the report's earlier live inventory. C10's "until that
   proof exists" condition is now met for labels/defaults/preview — the
   route's console wording is observed — but the route itself is still
-  unapplied, and §4's "NOT done here" stands. No screenshot references
-  are included here; screenshots of this console proof are captured
-  separately by the coordinator.
+  unapplied, and §4's "NOT done here" stands. The verbatim console
+  observations are recorded in the proof artifact
+  `docs/console-proof-add-exemption-2026-11-23.md` (round 5, C12) — no
+  screenshot file exists for this check (see the artifact).
+
+### Round 5 — 2026-11-24 (console-proof artifact C12)
+
+### C12 — Console-proof artifact created; "screenshots captured separately" withdrawn
+
+- **Old claim (exact quote, C11):** "No screenshot references are
+  included here; screenshots of this console proof are captured
+  separately by the coordinator."
+- **Contradicting evidence:** no proof artifact existed in the repo, the
+  PR files, or the PR comments, and no screenshot file exists at all —
+  the browser task that ran the 2026-11-23 read-only check returns no
+  file paths, so no screenshot could be attached. There is nothing for a
+  coordinator to have captured separately.
+- **Correction:** the verbatim console observations from the 2026-11-23
+  check (Automatic tab settings, baseline 4 exemptions, Add Exemption
+  step-1 labels, step-2 switches/defaults, Ascending toggle behaviour,
+  Cancel outcome, index HOLD) are now recorded in the proof artifact
+  `docs/console-proof-add-exemption-2026-11-23.md`, which states plainly
+  that NO screenshot file exists and that the proof rests on TWO agreeing
+  independent console text reads (2026-11-23, read-only, no
+  Save/Publish, Cancel only). No screenshot filename is invented or
+  claimed anywhere. The C11 line above now points at the artifact
+  instead of the withdrawn coordinator-screenshot claim. Nothing else in
+  C11 changes: the route stays console-observed, NOT applied, and the
+  `aiUsage` index stays HOLD.
 
 ---
 
