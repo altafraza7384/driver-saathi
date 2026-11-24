@@ -58,6 +58,13 @@ export default function HealthPage() {
   // other, not on a stale render's state).
   const formRef = useRef(form);
   formRef.current = form;
+  // Whether today's log has loaded SUCCESSFULLY. A failed read leaves
+  // the form at its all-zero initials — saving then would upsert a
+  // zero log over any existing values. Nothing may mutate (Save or the
+  // quick-write buttons) until a load has succeeded; the ref mirrors
+  // the flag for async handlers, like formRef above.
+  const loadOkRef = useRef(false);
+  loadOkRef.current = !isLoading && !logError;
 
   useEffect(() => {
     if (log) setForm({ sleep_hours: String(log.sleep_hours || 0), water_glasses: String(log.water_glasses || 0), breaks_taken: String(log.breaks_taken || 0), steps: String(log.steps || 0) });
@@ -65,6 +72,14 @@ export default function HealthPage() {
 
   const upsertLog = async (current: typeof form) => {
     if (!user) throw new Error("Please sign in again.");
+    // No mutation without a successful load: on a failed read the form
+    // holds all-zero initials, and upserting them would overwrite the
+    // stored log with sleep/water/breaks/steps 0 while reporting
+    // success. The Save button is disabled in that state too, but the
+    // guard lives here so a programmatic/queued invocation cannot slip
+    // past the styling. A genuine first log (load succeeded, no log
+    // stored yet) is unaffected — the load did succeed.
+    if (!loadOkRef.current) throw new Error(t("home.loadError"));
     const payload = {
       id: todayDocId,
       user_id: user.id,
@@ -194,7 +209,7 @@ export default function HealthPage() {
 
       <div className="pt-1">
         <p className="min-h-5 text-sm text-destructive">{saveError}</p>
-        <Button className="w-full gap-2" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || isLoading}>
+        <Button className="w-full gap-2" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || isLoading || logError}>
           <Save className="h-4 w-4" /> {saveMutation.isPending ? t("common.saving") : t("health.saveTodayLog")}
         </Button>
       </div>

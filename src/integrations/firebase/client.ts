@@ -42,6 +42,13 @@ export const firebaseAuth: Auth = getAuth(firebaseApp);
  * (the multi-tab manager is a browser concept). Any failure (private
  * mode, missing IndexedDB, an already-initialized instance) falls back
  * to the default in-memory-cache instance.
+ *
+ * `let`, not `const`, on purpose: after terminate() (logout cache clear,
+ * or a failed clear) the instance is dead and the app needs a fresh one
+ * over the same IndexedDB store. reinitializeFirestore() below reassigns
+ * this live binding, so every importer that reads `firebaseDb` at call
+ * time (the adapter does) gets the new instance. Modules must NOT
+ * capture it into their own const at import time.
  */
 function createFirestore(app: FirebaseApp): Firestore {
   if (typeof indexedDB !== "undefined") {
@@ -60,7 +67,44 @@ function createFirestore(app: FirebaseApp): Firestore {
   return getFirestore(app);
 }
 
-export const firebaseDb: Firestore = createFirestore(firebaseApp);
+export let firebaseDb: Firestore = createFirestore(firebaseApp);
+
+/**
+ * Rebuild the Firestore client over the same IndexedDB store, after the
+ * previous instance was terminated (logout cache clear, or a clear that
+ * failed after terminate). The local data — including any pending
+ * unsynced writes — is still in IndexedDB, so nothing is discarded: the
+ * new instance resumes syncing it. createFirestore() already falls back
+ * to getFirestore() when the old instance is somehow still alive, so
+ * this is safe to call even when terminate() itself failed.
+ */
+export function reinitializeFirestore(): void {
+  firebaseDb = createFirestore(firebaseApp);
+}
+
+/**
+ * Logout write gate (PR #30 fix 1). Between the pending-writes check and
+ * terminate()+clear during sign-out, a new write landing in the queue
+ * would be silently destroyed by the clear — the check already passed.
+ * The sign-out flow closes this gate BEFORE the check and reopens it
+ * right after, so the adapter rejects writes in that window with a
+ * retryable error instead of losing them. It is closed only for that
+ * short window (and never in normal operation), so no UI string or
+ * behaviour changes anywhere else.
+ */
+let logoutWriteGateClosed = false;
+
+export function closeLogoutWriteGate(): void {
+  logoutWriteGateClosed = true;
+}
+
+export function openLogoutWriteGate(): void {
+  logoutWriteGateClosed = false;
+}
+
+export function isLogoutWriteGateClosed(): boolean {
+  return logoutWriteGateClosed;
+}
 export const firebaseStorage: FirebaseStorage = getStorage(firebaseApp);
 // Staged Cloud Functions (firebase/functions) are deployed in asia-south1.
 export const firebaseFunctions: Functions = getFunctions(firebaseApp, "asia-south1");

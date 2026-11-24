@@ -12,6 +12,7 @@ import {
   milestoneForNow,
   mergeSchedule,
   milestoneIsUnset,
+  milestoneRows,
 } from "@/lib/routine";
 
 /**
@@ -39,9 +40,9 @@ export default function RoutineCheckpointCard({ todayIncome }: { todayIncome: nu
     (settings as any[]).filter((r) => r.kind === "schedule"),
   );
   const milestones = mergeMilestones(
-    (settings as any[])
-      .filter((r) => r.kind === "milestone")
-      .map((r) => ({ key: r.key, min: Number(r.min_amount) || 0, max: Number(r.max_amount) || 0 })),
+    milestoneRows(
+      (settings as any[]).filter((r) => r.kind === "milestone"),
+    ),
   ).filter((m) => !milestoneIsUnset(m));
   const timeForKey = (key: string) =>
     (schedule.find((s) => s.key === key) ?? DEFAULT_SCHEDULE.find((s) => s.key === key))?.time ?? "00:00";

@@ -2,19 +2,27 @@ import { describe, expect, it } from "vitest";
 import {retimeForMode, SCHEDULE_KEYS, schedulePreset,
   DEFAULT_MILESTONES,
   DEFAULT_SCHEDULE,
+  NIGHT_SCHEDULE,
   buildDailyNotifications,
   buildDailyReportText,
   canShareDailyReport,
   computeStreak,
+  formatCheckpointLabel,
   habitLogId,
   isHabitDone,
+  findSettingRow,
   mergeMilestones,
   mergeSchedule,
+  milestoneRows,
   milestoneForNow,
   minutesOf,
   parseTime,
   planHabitToggle,
+  resolveShiftMode,
   routineNotificationId,
+  routineSettingId,
+  summarizeRoutineSave,
+  validateMilestone,
   incomeEarnedBy,
 } from "@/lib/routine";
 
@@ -80,6 +88,65 @@ describe("buildDailyNotifications", () => {
     expect(notes[0].schedule.on).toEqual({ hour: 7, minute: 0 });
     expect(notes[0].schedule.every).toBe("day");
     expect(notes[0].title).toBe("title-wake");
+  });
+});
+
+describe("routineSettingId / findSettingRow (idempotent settings upsert)", () => {
+  it("gives one stable id per kind+key, and a legal Firestore doc id", () => {
+    expect(routineSettingId("schedule", "cp1")).toBe("schedule_cp1");
+    expect(routineSettingId("schedule", "cp1")).toBe(routineSettingId("schedule", "cp1"));
+    expect(routineSettingId("schedule", "cp1")).not.toBe(routineSettingId("milestone", "cp1"));
+    expect(routineSettingId("schedule", "cp1")).not.toBe(routineSettingId("schedule", "cp2"));
+    for (const kind of ["schedule", "milestone", "shift"]) {
+      for (const key of ["wake", "cp1", "mode"]) {
+        expect(routineSettingId(kind, key)).not.toContain("/");
+      }
+    }
+  });
+
+  it("prefers the stable-id row over a legacy random-id row for the same kind+key", () => {
+    const rows = [
+      { id: "legacy-random", kind: "schedule", key: "cp1", time: "10:30", enabled: true, message: "old" },
+      { id: "schedule_cp1", kind: "schedule", key: "cp1", time: "11:15", enabled: true, message: "new" },
+    ];
+    expect(findSettingRow(rows, "schedule", "cp1")?.id).toBe("schedule_cp1");
+  });
+
+  it("falls back to the legacy row when no stable-id row exists yet", () => {
+    const rows = [{ id: "legacy-random", kind: "schedule", key: "cp1", time: "10:30", enabled: true, message: "old" }];
+    expect(findSettingRow(rows, "schedule", "cp1")?.id).toBe("legacy-random");
+  });
+
+  it("returns undefined when the setting was never stored", () => {
+    expect(findSettingRow([], "schedule", "cp1")).toBeUndefined();
+    expect(findSettingRow([{ id: "x", kind: "schedule", key: "cp2" }], "schedule", "cp1")).toBeUndefined();
+  });
+
+  it("merge prefers the stable-id row, so a legacy duplicate cannot resurrect stale values", () => {
+    const merged = mergeSchedule([
+      { id: "legacy-random", kind: "schedule", key: "cp1", time: "10:30", enabled: true, message: "old" },
+      { id: "schedule_cp1", kind: "schedule", key: "cp1", time: "11:15", enabled: true, message: "new" },
+    ]);
+    expect(merged.find((s) => s.key === "cp1")?.time).toBe("11:15");
+    const ms = mergeMilestones([
+      { id: "legacy-m", kind: "milestone", key: "cp1", min: 500, max: 700 },
+      { id: "milestone_cp1", kind: "milestone", key: "cp1", min: 600, max: 800 },
+    ]);
+    expect(ms.find((m) => m.key === "cp1")).toEqual({ key: "cp1", min: 600, max: 800 });
+  });
+
+  it("a repeat write to the same stable id overwrites instead of duplicating (store model)", () => {
+    // In-memory stand-in for setDoc-with-id: a Map keyed by doc id.
+    const store = new Map<string, { id: string; kind: string; key: string; time: string }>();
+    const upsert = (kind: string, key: string, time: string) =>
+      store.set(routineSettingId(kind, key), { id: routineSettingId(kind, key), kind, key, time });
+    // Two saves that both see an empty cache (refetch unavailable).
+    for (let i = 0; i < 2; i++) {
+      for (const k of ["wake", "depart", "cp1", "cp2", "cp3", "cp4", "day_end"]) upsert("schedule", k, "07:00");
+      for (const k of ["cp1", "cp2", "cp3", "cp4", "day_end"]) upsert("milestone", k, "07:00");
+      upsert("shift", "mode", "07:00");
+    }
+    expect(store.size).toBe(13);
   });
 });
 
@@ -348,5 +415,195 @@ describe("habitLogId / planHabitToggle / isHabitDone", () => {
     expect(isHabitDone([...store.values()], "h1", "2026-11-22")).toBe(false);
     expect(isHabitDone([...store.values()], "h2", "2026-11-22")).toBe(true);
     expect(isHabitDone([...store.values()], "h1", "2026-11-21")).toBe(true);
+  });
+});
+
+describe("night preset (midnight-crossing reminder times)", () => {
+  it("has the exact night times, including checkpoints past midnight", () => {
+    const night = schedulePreset("night");
+    expect(night).toBe(NIGHT_SCHEDULE);
+    const timeFor = (key: string) => night.find((i) => i.key === key)?.time;
+    expect(timeFor("wake")).toBe("17:00");
+    expect(timeFor("depart")).toBe("17:30");
+    expect(timeFor("cp1")).toBe("20:00");
+    expect(timeFor("cp2")).toBe("23:00");
+    // After midnight, still the same shift's checkpoints.
+    expect(timeFor("cp3")).toBe("02:00");
+    expect(timeFor("cp4")).toBe("05:00");
+    expect(timeFor("day_end")).toBe("06:00");
+  });
+
+  it("differs from the day preset on every key", () => {
+    const night = schedulePreset("night");
+    for (const item of DEFAULT_SCHEDULE) {
+      expect(night.find((i) => i.key === item.key)?.time).not.toBe(item.time);
+    }
+  });
+
+  it("schedules the night checkpoints with stable ids", () => {
+    const notes = buildDailyNotifications(schedulePreset("night"), (k) => `title-${k}`, []);
+    expect(notes).toHaveLength(7);
+    const byKey = new Map(notes.map((n) => [n.title.replace("title-", ""), n]));
+    expect(byKey.get("cp3")?.schedule.on).toEqual({ hour: 2, minute: 0 });
+    expect(byKey.get("cp4")?.schedule.on).toEqual({ hour: 5, minute: 0 });
+    expect(byKey.get("day_end")?.schedule.on).toEqual({ hour: 6, minute: 0 });
+    // Same ids as the day preset: the id depends only on the key, never
+    // on the time, so retiming never leaves a stale duplicate behind.
+    for (const key of SCHEDULE_KEYS) {
+      expect(byKey.get(key)?.id).toBe(routineNotificationId(key));
+    }
+  });
+});
+
+describe("retimeForMode fully-custom schedules", () => {
+  it("keeps every custom time across a day -> night -> day round trip", () => {
+    const custom = schedulePreset("day").map((i) => ({ ...i, time: "09:09", message: `custom-${i.key}` }));
+    const night = retimeForMode(custom, "day", "night");
+    expect(night.every((i) => i.time === "09:09")).toBe(true);
+    expect(night.every((i) => i.message === `custom-${i.key}`)).toBe(true);
+    const back = retimeForMode(night, "night", "day");
+    expect(back).toEqual(custom);
+  });
+
+  it("never adds fields beyond the ScheduleItem shape", () => {
+    const night = retimeForMode(schedulePreset("day"), "day", "night");
+    for (const item of night) {
+      expect(Object.keys(item).sort()).toEqual(["enabled", "key", "message", "time"]);
+    }
+    for (const item of schedulePreset("night")) {
+      expect(Object.keys(item).sort()).toEqual(["enabled", "key", "message", "time"]);
+    }
+  });
+});
+
+describe("formatCheckpointLabel (incl. midnight checkpoints)", () => {
+  it("labels day checkpoints as time + target range", () => {
+    expect(formatCheckpointLabel("10:30", 500, 700)).toBe("10:30 (₹500–₹700)");
+  });
+
+  it("labels night checkpoints past midnight exactly the same way", () => {
+    expect(formatCheckpointLabel("02:00", 1500, 2100)).toBe("02:00 (₹1,500–₹2,100)");
+    expect(formatCheckpointLabel("05:00", 2200, 3000)).toBe("05:00 (₹2,200–₹3,000)");
+    expect(formatCheckpointLabel("06:00", 2500, 3500)).toBe("06:00 (₹2,500–₹3,500)");
+  });
+
+  it("shows the time alone for an unset target", () => {
+    expect(formatCheckpointLabel("10:30", 0, 0)).toBe("10:30");
+  });
+
+  it("shows the range when only the maximum is set", () => {
+    expect(formatCheckpointLabel("13:30", 0, 1400)).toBe("13:30 (₹0–₹1,400)");
+  });
+});
+
+describe("validateMilestone (target min/max)", () => {
+  it("accepts unset, equal, and properly ordered targets", () => {
+    expect(validateMilestone(0, 0)).toBeNull();
+    expect(validateMilestone(500, 500)).toBeNull();
+    expect(validateMilestone(500, 700)).toBeNull();
+    expect(validateMilestone(0, 1400)).toBeNull();
+  });
+
+  it("rejects a maximum below the minimum", () => {
+    expect(validateMilestone(700, 500)).toBe("routine.invalidTarget");
+  });
+
+  it("rejects negative amounts", () => {
+    expect(validateMilestone(-1, 700)).toBe("routine.invalidTarget");
+    expect(validateMilestone(500, -5)).toBe("routine.invalidTarget");
+  });
+
+  it("rejects non-finite amounts", () => {
+    expect(validateMilestone(NaN, 700)).toBe("routine.invalidTarget");
+    expect(validateMilestone(500, Infinity)).toBe("routine.invalidTarget");
+  });
+});
+
+describe("summarizeRoutineSave (partial-save / retry)", () => {
+  it("saved when nothing failed", () => {
+    expect(summarizeRoutineSave(0, 13)).toBe("saved");
+  });
+
+  it("partial when some rows failed — Save-again retries the failed ones", () => {
+    expect(summarizeRoutineSave(1, 13)).toBe("partial");
+    expect(summarizeRoutineSave(12, 13)).toBe("partial");
+  });
+
+  it("failed only when every row failed", () => {
+    expect(summarizeRoutineSave(13, 13)).toBe("failed");
+  });
+});
+
+describe("routineNotificationId stability across reschedules", () => {
+  it("is the same id for a key no matter what time it is scheduled at", () => {
+    const day = buildDailyNotifications(schedulePreset("day"), (k) => k, []);
+    const night = buildDailyNotifications(schedulePreset("night"), (k) => k, []);
+    for (const key of SCHEDULE_KEYS) {
+      expect(day.find((n) => n.title === key)?.id).toBe(night.find((n) => n.title === key)?.id);
+      expect(day.find((n) => n.title === key)?.id).toBe(routineNotificationId(key));
+    }
+  });
+
+  it("gives every schedule key a distinct id", () => {
+    const ids = SCHEDULE_KEYS.map((k) => routineNotificationId(k));
+    expect(new Set(ids).size).toBe(SCHEDULE_KEYS.length);
+  });
+});
+
+describe("night mode never changes accounting dates/history (pin)", () => {
+  it("mode switch changes only reminder times; a transactions fixture is untouched", () => {
+    const transactions = [
+      { type: "income", amount: 650, transaction_date: "2026-11-21", created_at: "2026-11-21T09:00:00Z" },
+      { type: "expense", amount: 300, transaction_date: "2026-11-20", created_at: "2026-11-20T18:00:00Z" },
+    ];
+    const before = JSON.parse(JSON.stringify(transactions));
+    // The whole mode-switch path: preset lookup + retime. Neither takes
+    // transactions in, and neither returns anything but ScheduleItems.
+    const night = retimeForMode(schedulePreset("day"), "day", "night");
+    const back = retimeForMode(night, "night", "day");
+    expect(back).toEqual(schedulePreset("day"));
+    expect(transactions).toEqual(before);
+    // Verified by code inspection (2026-11-22): no migration function
+    // exists; RoutinePage's save writes only routine_settings rows, and
+    // the only transaction_date use in routine.ts is the read filter in
+    // incomeEarnedBy. Transaction writes live only in
+    // AddTransactionPage / RecurringExpenses, which the mode switch
+    // never calls. This test pins the observable contract: switching
+    // modes cannot rewrite a transaction date.
+    expect(night.every((i) => Object.keys(i).sort().join() === "enabled,key,message,time")).toBe(true);
+  });
+});
+
+describe("resolveShiftMode (failed shift intent beats the stored row)", () => {
+  it("a failed Night intent wins over the stored Day row", () => {
+    expect(resolveShiftMode("day", "night")).toBe("night");
+  });
+
+  it("a failed Day intent wins over the stored Night row", () => {
+    expect(resolveShiftMode("night", "day")).toBe("day");
+  });
+
+  it("with no failed intent the stored mode stands", () => {
+    expect(resolveShiftMode("night", null)).toBe("night");
+    expect(resolveShiftMode("day", null)).toBe("day");
+  });
+
+  it("with neither stored nor failed intent the default is Day", () => {
+    expect(resolveShiftMode(null, null)).toBe("day");
+  });
+});
+
+describe("milestoneRows (legacy + stable reconciliation)", () => {
+  it("preserves the row id so the stable-id row wins over a legacy row listed first", () => {
+    const rows = milestoneRows([
+      { id: "legacy-9", kind: "milestone", key: "cp1", min_amount: 500, max_amount: 700 },
+      { id: "milestone_cp1", kind: "milestone", key: "cp1", min_amount: 600, max_amount: 800 },
+    ]);
+    expect(rows[0].id).toBe("legacy-9");
+    expect(rows[1].id).toBe("milestone_cp1");
+    // The merge prefers the stable-id row: 600 shows, not the legacy 500.
+    expect(mergeMilestones(rows)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ key: "cp1", min: 600, max: 800 })]),
+    );
   });
 });

@@ -1,9 +1,33 @@
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
 
+# NOTE (2026-11-22): Firebase Hosting ignores this file — the live headers
+# come from the generated firebase-hosting-deploy.json in
+# .github/workflows/firebase-hosting.yml, which must stay identical to the
+# headers block in the root firebase.json. This file is kept only so the
+# Lovable-era copy does not carry a different, stale CSP if anything still
+# reads it. Change all three together.
+#
+# CSP reasoning (verified by code inspection, 2026-11-22): 'unsafe-inline'
+# is required by the inline boot/splash code in index.html; frame-src
+# *.firebaseapp.com is required by the Firebase Auth hidden iframe
+# (Google login); script-src https://apis.google.com is required because
+# the Firebase Auth SDK injects https://apis.google.com/js/api.js at
+# runtime for signInWithPopup — a real-browser isolated probe blocked
+# exactly that script before this origin was added (2026-11-22).
+# script/frame/connect *.razorpay.com is required by the Razorpay
+# checkout (SubscriptionPlansCard); connect *.cloudfunctions.net
+# is required by the httpsCallable Cloud Functions (AI + Razorpay).
+# STAGED ENFORCEMENT (2026-11-22): no live browser is available in
+# this sandbox, so no live Google login or Razorpay checkout has been
+# run against this CSP. Before relying on it: deploy, sign in with
+# Google on the live URL, open Razorpay sandbox checkout, and watch the
+# console for CSP violations (in particular any frame/connect-src from
+# accounts.google.com the popup flow may need — do NOT pre-add origins
+# without an observed violation). A config match is not a login pass.
 /*
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Strict-Transport-Security: max-age=31536000; includeSubDomains
   Referrer-Policy: strict-origin-when-cross-origin
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.supabase.co https://lovable.dev https://*.lovable.app; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://apis.google.com https://checkout.razorpay.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.cloudfunctions.net https://*.razorpay.com https://*.supabase.co wss://*.supabase.co https://lovable.dev https://*.lovable.app; frame-src 'self' https://*.firebaseapp.com https://*.razorpay.com; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests

@@ -18,11 +18,15 @@ import { useTheme } from "next-themes";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import {
   ShiftMode,
+  RoutineSettingPayload,
   mergeSchedule,
   mergeMilestones,
+  milestoneRows,
   buildDailyNotifications,
+  findSettingRow,
   retimeForMode,
   routineNotificationId,
+  routineSettingId,
   SCHEDULE_KEYS,
 } from "@/lib/routine";
 import {
@@ -66,47 +70,60 @@ export default function SettingsPage() {
    *  history never change. Reminders are cancelled and rescheduled from the
    *  same stable ids, so day+night duplicates cannot pile up; if the OS
    *  notification permission is not already granted we do not ask for it
-   *  here — the setting still saves. */
+   *  here — the setting still saves.
+   *
+   *  Save and scheduling are reported SEPARATELY: the writes run first,
+   *  and only then does scheduling run in its own try/catch. A scheduling
+   *  failure (no plugin, web, OS error) must never surface as a save
+   *  error — the setting saved, only the reminders could not be set.
+   *  Row writes are idempotent upserts (stable kind/key doc id), so a
+   *  toggle that cannot see the rows it just wrote cannot duplicate
+   *  them, and a legacy random-id row is updated in place. */
   const toggleNightShift = async (checked: boolean) => {
     if (!user || shiftSaving) return;
     setShiftSaving(true);
     try {
       const mode: ShiftMode = checked ? "night" : "day";
-      const modeRow = routineRows.find((r) => r.kind === "shift" && r.key === "mode");
+      const upsertRow = async (kind: "schedule" | "milestone" | "shift", key: string, payload: RoutineSettingPayload) => {
+        const existing = findSettingRow(routineRows, kind, key);
+        if (existing) {
+          const { error } = await db.from("routine_settings").update(payload).eq("id", existing.id);
+          if (error) throw error;
+        } else {
+          const { error } = await db.from("routine_settings").insert({ ...payload, id: routineSettingId(kind, key), user_id: user.id });
+          if (error) throw error;
+        }
+      };
       const modePayload = { kind: "shift", key: "mode", message: mode };
-      if (modeRow) {
-        const { error } = await db.from("routine_settings").update(modePayload).eq("id", modeRow.id);
-        if (error) throw error;
-      } else {
-        const { error } = await db.from("routine_settings").insert({ ...modePayload, user_id: user.id });
-        if (error) throw error;
-      }
+      await upsertRow("shift", "mode", modePayload);
       const current = mergeSchedule(routineRows.filter((r) => r.kind === "schedule"));
       const next = retimeForMode(current, checked ? "day" : "night", mode);
       for (const item of next) {
         const cur = current.find((c) => c.key === item.key);
         if (cur && cur.time === item.time) continue; // unchanged (custom or same)
-        const existing = routineRows.find((r) => r.kind === "schedule" && r.key === item.key);
         const payload = { kind: "schedule", key: item.key, time: item.time, enabled: item.enabled, message: item.message };
-        if (existing) {
-          const { error } = await db.from("routine_settings").update(payload).eq("id", existing.id);
-          if (error) throw error;
-        } else {
-          const { error } = await db.from("routine_settings").insert({ ...payload, user_id: user.id });
-          if (error) throw error;
-        }
+        await upsertRow("schedule", item.key, payload);
       }
-      const milestones = mergeMilestones(
-        routineRows.filter((r) => r.kind === "milestone").map((r) => ({ key: r.key, min: Number(r.min_amount) || 0, max: Number(r.max_amount) || 0 })),
-      );
-      const perm = await LocalNotifications.checkPermissions();
-      if (perm.display === "granted") {
-        await LocalNotifications.cancel({ notifications: SCHEDULE_KEYS.map((key) => ({ id: routineNotificationId(key) })) });
-        const notifications = buildDailyNotifications(next, (key) => t(`routine.item.${key}`), milestones);
-        if (notifications.length > 0) await LocalNotifications.schedule({ notifications });
+      // Scheduling is its own step: failure here is a warning on top of
+      // the saved setting, never a save error.
+      let scheduleFailed = false;
+      try {
+        const milestones = mergeMilestones(
+          milestoneRows(routineRows.filter((r) => r.kind === "milestone")),
+        );
+        const perm = await LocalNotifications.checkPermissions();
+        if (perm.display === "granted") {
+          await LocalNotifications.cancel({ notifications: SCHEDULE_KEYS.map((key) => ({ id: routineNotificationId(key) })) });
+          const notifications = buildDailyNotifications(next, (key) => t(`routine.item.${key}`), milestones);
+          if (notifications.length > 0) await LocalNotifications.schedule({ notifications });
+        }
+      } catch (e) {
+        console.warn("Night shift schedule failed", e);
+        scheduleFailed = true;
       }
       queryClient.invalidateQueries({ queryKey: ["routine_settings"] });
       toast.success(t("settings.nightShiftSaved"));
+      if (scheduleFailed) toast.warning(t("routine.savedButNotScheduled"));
     } catch (e) {
       toast.error(friendlyErrorMessage(e));
     } finally {
