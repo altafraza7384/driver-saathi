@@ -1,7 +1,7 @@
-# Driver Saathi — Android Play Store pipeline (unparked 2026-10-22, user-approved).
+# Driver Saathi — Android Play Store pipeline (unparked 2026-10-22).
 #
-# What it does, on every push to main that touches NATIVE-relevant files
-# (and on manual dispatch): build the web bundle, generate the Capacitor
+# What it does on manual dispatch after explicit release approval: build the
+# web bundle, generate the Capacitor
 # Android platform
 # (android/ is NOT committed to this repo), sign a release AAB, upload the
 # AAB as a workflow artifact, and — only when the Play secrets exist —
@@ -47,14 +47,7 @@
 name: Android Play Release
 
 "on":
-  push:
-    branches: [main]
-    paths:
-      - "package.json"
-      - "package-lock.json"
-      - "capacitor.config.ts"
-      - "assets/"
-      - ".github/workflows/android-play-release.yml"
+  # Manual only: merging code must not build/upload a Play release by itself.
   workflow_dispatch:
     inputs:
       track:
