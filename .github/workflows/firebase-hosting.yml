@@ -1,4 +1,4 @@
-# Driver Saathi — Firebase Hosting auto-deploy (WEB track, added 2026-10-24).
+# Driver Saathi — Firebase Hosting manual deploy (WEB track, added 2026-10-24).
 #
 # Why this exists: the live site is moving off driver-saathi.lovable.app
 # (whose free plan forces the "Edit with Lovable" badge) to Firebase
@@ -6,8 +6,9 @@
 # tier). Hosting serves only the static web bundle — it has no badge.
 #
 # How updates flow after this migration:
-#  - WEB feature add/remove (src/, pages, i18n, styles): push to main ->
-#    THIS workflow builds dist/ and deploys it to Hosting automatically.
+#  - WEB feature add/remove (src/, pages, i18n, styles): push to main runs
+#    Production Checks only. THIS workflow builds dist/ and deploys it to
+#    Hosting only when manually dispatched after explicit release approval.
 #    The installed native app loads the site through server.url on next
 #    open, so users get the feature with NO new APK and NO Play upload.
 #  - NATIVE change (capacitor.config.ts, new Capacitor plugin, icon):
@@ -42,18 +43,7 @@
 name: Firebase Hosting Deploy
 
 "on":
-  push:
-    branches: [main]
-    paths:
-      - "src/**"
-      - "public/**"
-      - "package.json"
-      - "package-lock.json"
-      - "vite.config.ts"
-      - "index.html"
-      - "firebase.json"
-      - "firebase/firebase.json"
-      - ".github/workflows/firebase-hosting.yml"
+  # Manual only: merging code must not deploy the live website by itself.
   workflow_dispatch:
 
 permissions:
